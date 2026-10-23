@@ -240,6 +240,7 @@ const TOKENS_MAP := {
 	'blood': 'red.svg',
 	'gold coin': 'yellow.svg',
 	'void': 'black.svg',
+	'escudo': 'orange.svg',
 }
 const STATS_URI := "http://127.0.0.1"
 const STATS_PORT := 8000

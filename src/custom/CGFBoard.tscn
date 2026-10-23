@@ -8,7 +8,7 @@
 [ext_resource path="res://src/custom/CGFCounters.tscn" type="PackedScene" id=6]
 [ext_resource path="res://src/custom/CGFPlacementGridDemo.tscn" type="PackedScene" id=7]
 [ext_resource path="res://src/custom/CGFModifiedLabelGrid.tscn" type="PackedScene" id=8]
-[ext_resource path="res://fonts/Comfortaa-Bold.ttf" type="DynamicFontData" id=9]
+[ext_resource path="res://fonts/comfortaa/Comfortaa-Bold.ttf" type="DynamicFontData" id=9]
 [ext_resource path="res://src/custom/CGFDeckbuilder/CGFDeckBuilder.tscn" type="PackedScene" id=10]
 [ext_resource path="res://themes/darktheme/darktheme.theme" type="Theme" id=12]
 

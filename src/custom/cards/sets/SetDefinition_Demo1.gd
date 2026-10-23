@@ -6,6 +6,7 @@ const SET = "Demo Set 1"
 const CARDS := {
 	"Rich Text Card": {
 		"Type": "Purple",
+		"_tipo": "Personagem",
 		"Tags": ["Rich","Text"],
 		"Requirements": "",
 		"Abilities": "Raise [color=yellow]5[/color] {damage}.\n[i](this card is [color=red]not[/color] scripted)[/i]",
@@ -14,6 +15,7 @@ const CARDS := {
 	},
 	"Shaking Card": {
 		"Type": "Purple",
+		"_tipo": "Personagem",
 		"Tags": ["Rich","Text"],
 		"Requirements": "",
 		"Abilities": "Gain 5 Research [color=green][shake rate=5 level=10]You may discard two cards[/shake][/color] to gain 3 more research.",
@@ -23,6 +25,7 @@ const CARDS := {
 	},
 	"Test Card 1": {
 		"Type": "Blue",
+		"_tipo": "Personagem",
 		"Tags": ["Tag 1","Tag 2"],
 		"Requirements": "Demo Requirements",
 		"Abilities": "While on board, this will rotate itself." \
@@ -35,6 +38,7 @@ const CARDS := {
 	},
 	"Test Card 2": {
 		"Type": "Red",
+		"_tipo": "Personagem",
 		"Tags": ["Tag 1","Tag 2"],
 		"Requirements": "",
 		"Abilities": "While on board, this card will discard itself " \

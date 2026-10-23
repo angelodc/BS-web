@@ -14,3 +14,4 @@ rect_min_size = Vector2( 150, 240 )
 [node name="ManipulationButtons" parent="Control" index="4"]
 script = ExtResource( 4 )
 manipulation_button = ExtResource( 5 )
+margin_right = 108.0

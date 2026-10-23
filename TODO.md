@@ -27,6 +27,12 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 
 ## 📝 2. Lista de Tarefas (Checklist de Desenvolvimento)
 
+### Inspeção inicial e ordem sugerida (pendente de confirmação)
+*   O repositório já contém `project.godot`, o framework, um tabuleiro de demonstração e testes automatizados; a etapa de importação não precisa ser presumida como trabalho futuro.
+*   O framework já oferece comportamentos de rotação e anexos, e o deck de demonstração já compra uma carta ao clique. A primeira etapa deve adaptar e validar esses recursos para as regras do Battle Scenes, não recriá-los sem necessidade.
+*   Ordem sugerida para a Fase 1: capacitação por clique; regra de baixar recurso por turno; anexos e contador de energia; dano, nocaute, prêmios e vitória. Multiplayer, banco de dados completo e deploy ficam para depois da validação do jogo local.
+*   Esta sequência é uma proposta inicial; confirmar escopo e regras com o Douglas antes de alterar o checklist ou implementar.
+
 ### 🃏 Fase 1: Mecânicas Únicas do Battle Scenes (Singleplayer Local)
 *   [ ] **Sistema de Capacitação por Clique:** Mudar a propriedade `rotation_degrees` da carta entre 0° (Pronta), 45° (V1) e 90° (V2) através do clique do mouse. Detailed logic in `BATTLE_SCENES_DESIGN.md`.
 *   [ ] **Compra de Cartas por Clique:** Configurar o contêiner do `Deck` para enviar um card para a mão sempre que for clicado.

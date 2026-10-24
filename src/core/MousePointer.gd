@@ -112,22 +112,22 @@ func _on_MousePointer_area_exited(area: Area2D) -> void:
 # Returns either the adjusted global mouse position
 # or a fake mouse position provided by integration testing
 func determine_global_mouse_pos() -> Vector2:
-	var mouse_position
+	if cfc.ut and cfc.NMAP.get("board"):
+		return cfc.NMAP.board._UT_mouse_position
+	var current_scene = get_tree().current_scene
+	if not current_scene:
+		return global_position
 	var zoom = Vector2(1,1)
 	# We have to do the below offset hack due to godotengine/godot#30215
 	# This is caused because we're using a viewport node and
 	# scaling the game in full-creen.
 	if get_viewport() and get_viewport().has_node("Camera2D"):
 		zoom = get_viewport().get_node("Camera2D").zoom
-	var offset_mouse_position = \
-		get_tree().current_scene.get_global_mouse_position() \
-		- get_viewport_transform().origin
+	var offset_mouse_position = current_scene.get_global_mouse_position() \
+			- get_viewport_transform().origin
 	offset_mouse_position *= zoom
 	#var scaling_offset = get_tree().get_root().get_node('Main').get_viewport().get_size_override() * OS.window_size
-	if cfc.ut and cfc.NMAP.get("board"):
-		mouse_position = cfc.NMAP.board._UT_mouse_position
-	else: mouse_position = offset_mouse_position
-	return mouse_position
+	return offset_mouse_position
 
 
 # Disables the mouse from interacting with the board
@@ -289,7 +289,13 @@ func _is_placement_slot_valid(slot: BoardPlacementSlot, potential_cards := []) -
 	else:
 		# We only hihglight a slot if it is not hosting a different card.
 		if slot.occupying_card and slot.occupying_card != cfc.card_drag_ongoing:
-			is_valid = false
+			var can_replace_scenario: bool = \
+					cfc.card_drag_ongoing.has_method(
+					"is_battle_scenes_scenario") \
+					and cfc.card_drag_ongoing.is_battle_scenes_scenario() \
+					and slot.get_grid_name() == "Cenário Ativo"
+			if not can_replace_scenario:
+				is_valid = false
 		# We only hihglight a slot if the dragged card is not an attachment
 		# with a potential host highlighted.
 		if cfc.card_drag_ongoing.attachment_mode != Card.AttachmentMode.DO_NOT_ATTACH \
@@ -318,4 +324,3 @@ func _is_placement_slot_valid(slot: BoardPlacementSlot, potential_cards := []) -
 		if cfc.card_drag_ongoing.board_placement in [Card.BoardPlacement.NONE]:
 				is_valid = false
 	return(is_valid)
-

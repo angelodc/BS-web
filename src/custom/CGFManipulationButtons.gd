@@ -88,7 +88,6 @@ func _on_Capacitar_pressed() -> void:
 			owner_node.get_parent() == cfc.NMAP.board,
 			owner_node.is_battle_scenes_character())
 
-
 func _on_Incapacitar_pressed() -> void:
 	var result = owner_node.incapacitar()
 	if result == CFConst.ReturnCode.FAILED:

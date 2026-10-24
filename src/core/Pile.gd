@@ -128,11 +128,21 @@ func _on_ViewPopup_popup_hide() -> void:
 			else:
 				card.ensure_proper()
 			card.state = card.CardState.IN_PILE
+	is_popup_open = false
+	_has_cards = not get_all_cards().empty()
+	card_count_label.text = str(get_card_count())
+	if not _has_cards:
+		if _opacity_tween.is_active():
+			_opacity_tween.stop_all()
+		_opacity_tween.remove($Control, 'self_modulate:a')
+		_opacity_tween.interpolate_property($Control, 'self_modulate:a',
+				$Control.self_modulate.a, 0.4, 0.5,
+				Tween.TRANS_SINE, Tween.EASE_IN)
+		_opacity_tween.start()
 	reorganize_stack()
 	if show_manipulation_buttons:
 		manipulation_buttons.visible = true
 	emit_signal("popup_closed")
-	is_popup_open = false
 
 
 # Populated the popup card viewer with the cards and displays them
@@ -199,7 +209,11 @@ func add_child(node, _legible_unique_name=false) -> void:
 	elif node as Card: # This triggers if the ViewPopup node is active
 		# When the player adds card while the viewpopup is active
 		# we move them automatically to the viewpopup grid.
+		if not pre_sorted_order.has(node):
+			pre_sorted_order.append(node)
 		_slot_card_into_popup(node)
+		_has_cards = true
+		card_count_label.text = str(get_card_count())
 
 
 # Overrides the function which removed chilren nodes so that it detects
@@ -226,7 +240,7 @@ func remove_child(node, _legible_unique_name=false) -> void:
 # Rearranges the position of the contained cards slightly
 # so that they appear to be stacked on top of each other
 func reorganize_stack() -> void:
-	if are_cards_still_animating():
+	if is_popup_open or are_cards_still_animating():
 		return
 #	while are_cards_still_animating():
 #		yield(get_tree().create_timer(0.3), "timeout")

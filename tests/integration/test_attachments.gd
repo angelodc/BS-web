@@ -278,3 +278,70 @@ class TestAttachmentNodeOrder:
 		drop_card(host_card,board._UT_mouse_position)
 		yield(yield_to(host_card._tween, "tween_all_completed", 1), YIELD)
 
+
+class TestBattleScenesAttachmentStack:
+	extends "res://tests/Attachment_common.gd"
+
+	func test_attachment_uses_its_own_downward_offset() -> void:
+		var host_card: Card = cards[0]
+		var attached_card: Card = cards[1]
+		yield(table_move(host_card, Vector2(300, 200)), "completed")
+		attached_card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
+		attached_card.attachment_offset = \
+				Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		yield(drag_drop(attached_card, Vector2(310, 210)), "completed")
+		yield(yield_for(0.2), YIELD)
+
+		var expected_y: float = host_card.global_position.y \
+				+ attached_card.card_size.y \
+				* CFConst.ATTACHMENT_OFFSET[
+						Card.AttachmentOffset.BATTLE_SCENES_BOTTOM].y
+		assert_almost_eq(
+				expected_y, attached_card.global_position.y, 2.0,
+				"Attachment offset moves the visible strip below the host")
+		assert_true(
+				attached_card.global_position.y > host_card.global_position.y,
+				"Attached card exposes its bottom edge, not its top edge")
+		assert_true(
+				host_card.get_index() > attached_card.get_index(),
+				"Host remains visually in front of the attached card")
+
+	func test_clicking_discard_does_not_open_resource_popup() -> void:
+		assert_false(discard.is_popup_open)
+		assert_false(discard.view_button.visible)
+		assert_false(discard.view_sorted_button.visible)
+		assert_false(discard.shuffle_button.visible)
+		assert_true(discard.get_node("Control/ManipulationButtons/SwapResource").visible)
+
+	func test_discard_swap_replaces_selected_character_attachment() -> void:
+		var host_card: Card = cards[0]
+		var attached_card: Card = cards[1]
+		var replacement_card: Card = cards[2]
+		yield(table_move(host_card, Vector2(300, 200)), "completed")
+		yield(table_move(attached_card, Vector2(300, 200)), "completed")
+		yield(table_move(replacement_card, Vector2(300, 200)), "completed")
+
+		host_card.properties["_tipo"] = "Personagem"
+		attached_card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
+		attached_card.attachment_offset = \
+				Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		attached_card.attach_to_host(host_card)
+		yield(replacement_card.move_to(discard), "completed")
+
+		discard.get_node("Control/ManipulationButtons/SwapResource") \
+				.emit_signal("pressed")
+		assert_true(discard.is_popup_open)
+		assert_true(board.select_resource_for_swap(replacement_card))
+		yield(yield_for(0.7), YIELD)
+
+		var click_event := InputEventMouseButton.new()
+		click_event.button_index = BUTTON_LEFT
+		click_event.pressed = true
+		attached_card._on_Card_gui_input(click_event)
+		yield(yield_for(0.7), YIELD)
+
+		assert_eq(host_card, replacement_card.current_host_card)
+		assert_null(attached_card.current_host_card)
+		assert_eq(discard, attached_card.get_parent())
+		assert_true(host_card.attachments.has(replacement_card))
+		assert_false(board.pending_resource_swap_active)

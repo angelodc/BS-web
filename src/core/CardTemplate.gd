@@ -60,6 +60,7 @@ enum AttachmentOffset{
 	BOTTOM_LEFT
 	BOTTOM
 	BOTTOM_RIGHT
+	BATTLE_SCENES_BOTTOM
 }
 # Used to spawn CardChoices. We have to add the consts together
 # before passing to the preload, or the parser complains.
@@ -1959,9 +1960,11 @@ func _organize_attachments() -> void:
 				card.global_position = global_position + \
 						Vector2(
 						(attach_index + 1) * card_size.x
-						* CFConst.ATTACHMENT_OFFSET[attachment_offset].x,
+						* CFConst.ATTACHMENT_OFFSET[
+								card.attachment_offset].x,
 						(attach_index + 1) * card_size.y \
-						* CFConst.ATTACHMENT_OFFSET[attachment_offset].y)
+						* CFConst.ATTACHMENT_OFFSET[
+								card.attachment_offset].y)
 
 # Returns the global mouse position but ensures it does not exit the
 # viewport limits when including the card rect

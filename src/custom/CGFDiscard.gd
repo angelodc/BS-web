@@ -1,16 +1,20 @@
 extends Pile
 
 
-# Declare member variables here. Examples:
-# var a = 2
-# var b = "text"
+func _ready() -> void:
+	$Control/ManipulationButtons/View.hide()
+	$Control/ManipulationButtons/ViewSorted.hide()
+	$Control/ManipulationButtons/Shuffle.hide()
+	var swap_button := Button.new()
+	swap_button.name = "SwapResource"
+	swap_button.text = "Trocar"
+	swap_button.rect_min_size = Vector2(92, 27)
+	swap_button.mouse_filter = Control.MOUSE_FILTER_PASS
+	swap_button.modulate.a = 0
+	swap_button.add_to_group("manipulation_button")
+	$Control/ManipulationButtons.add_child(swap_button)
+	swap_button.connect("pressed", self, "_on_SwapResource_pressed")
 
 
-# Called when the node enters the scene tree for the first time.
-func _ready():
-	pass # Replace with function body.
-
-
-# Called every frame. 'delta' is the elapsed time since the previous frame.
-#func _process(delta):
-#	pass
+func _on_SwapResource_pressed() -> void:
+	cfc.NMAP.board.begin_resource_swap()

@@ -168,9 +168,11 @@ const ATTACHMENT_OFFSET := [
 	# BOTTOM_LEFT
 	Vector2(-0.2,0.2),
 	# BOTTOM
-	Vector2(0,0.2),
+	Vector2(0,PLAY_AREA_SCALE * 0.9),
 	# BOTTOM_RIGHT
 	Vector2(0.2,0.2),
+	# BATTLE_SCENES_BOTTOM
+	Vector2(0,0.05),
 ]
 # The colour to use when hovering over a card.
 #

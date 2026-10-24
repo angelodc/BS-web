@@ -7,6 +7,7 @@ const CARDS := {
 	"Rich Text Card": {
 		"Type": "Purple",
 		"_tipo": "Personagem",
+		"ENERGIA": "3",
 		"Tags": ["Rich","Text"],
 		"Requirements": "",
 		"Abilities": "Raise [color=yellow]5[/color] {damage}.\n[i](this card is [color=red]not[/color] scripted)[/i]",
@@ -16,6 +17,7 @@ const CARDS := {
 	"Shaking Card": {
 		"Type": "Purple",
 		"_tipo": "Personagem",
+		"ENERGIA": "3",
 		"Tags": ["Rich","Text"],
 		"Requirements": "",
 		"Abilities": "Gain 5 Research [color=green][shake rate=5 level=10]You may discard two cards[/shake][/color] to gain 3 more research.",
@@ -26,6 +28,7 @@ const CARDS := {
 	"Test Card 1": {
 		"Type": "Blue",
 		"_tipo": "Personagem",
+		"ENERGIA": "3",
 		"Tags": ["Tag 1","Tag 2"],
 		"Requirements": "Demo Requirements",
 		"Abilities": "While on board, this will rotate itself." \
@@ -39,6 +42,7 @@ const CARDS := {
 	"Test Card 2": {
 		"Type": "Red",
 		"_tipo": "Personagem",
+		"ENERGIA": "3",
 		"Tags": ["Tag 1","Tag 2"],
 		"Requirements": "",
 		"Abilities": "While on board, this card will discard itself " \
@@ -49,6 +53,16 @@ const CARDS := {
 		"Power": 5,
 		"_max_allowed": 10,
 		"_illustration": "Nobody",
+	},
+	"Demo Scenario": {
+		"Type": "Green",
+		"_tipo": "Cenário",
+		"ENERGIA": "0",
+		"Tags": [],
+		"Requirements": "",
+		"Abilities": "Use this card to test the single active scenario zone.",
+		"Cost": 0,
+		"Power": 0,
 	},
 	"Spawn Card": {
 		"Type": "Token",

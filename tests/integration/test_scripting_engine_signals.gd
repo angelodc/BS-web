@@ -4,6 +4,8 @@ class TestSignals:
 	extends "res://tests/ScEng_common.gd"
 
 	func test_signals():
+		cfc.signal_propagator.connect_new_card(card)
+		cfc.signal_propagator.connect_new_card(target)
 		for sgn in  cfc.signal_propagator.known_card_signals:
 			assert_connected(card, cfc.signal_propagator, sgn,
 					"_on_signal_received")

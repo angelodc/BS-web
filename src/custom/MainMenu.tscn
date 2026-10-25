@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=2]
+[gd_scene load_steps=9 format=2]
 
 [ext_resource path="res://themes/darktheme/darktheme.theme" type="Theme" id=1]
 [ext_resource path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" type="DynamicFontData" id=2]
 [ext_resource path="res://src/custom/MainMenu.gd" type="Script" id=3]
 [ext_resource path="res://src/custom/CGFDeckbuilder/CGFDeckBuilder.tscn" type="PackedScene" id=4]
 [ext_resource path="res://src/custom/CGFDeckbuilder/CGFCardLibrary.tscn" type="PackedScene" id=5]
+[ext_resource path="res://src/custom/BSDBDeckImportDialog.tscn" type="PackedScene" id=6]
 
 [sub_resource type="StyleBoxFlat" id=1]
 bg_color = Color( 0.145098, 0.145098, 0.145098, 1 )
@@ -31,6 +32,8 @@ property_width_exceptions = {
 "Cost": 30,
 "Power": 50
 }
+
+[node name="DeckImportDialog" parent="." instance=ExtResource( 6 )]
 
 [node name="MainMenu" type="MarginContainer" parent="."]
 anchor_right = 1.0
@@ -71,49 +74,77 @@ margin_bottom = 720.0
 size_flags_vertical = 3
 
 [node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
-margin_left = 544.0
-margin_top = 73.0
-margin_right = 736.0
-margin_bottom = 285.0
-rect_min_size = Vector2( 192, 0 )
+margin_left = 500.0
+margin_top = 0.0
+margin_right = 780.0
+margin_bottom = 355.0
+rect_min_size = Vector2( 280, 0 )
 custom_constants/separation = 10
 
-[node name="SinglePlayerDemo" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_right = 192.0
+[node name="PlayerName" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
+margin_right = 280.0
 margin_bottom = 27.0
+max_length = 24
+placeholder_text = "Seu username"
+
+[node name="RelayAddress" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 37.0
+margin_right = 280.0
+margin_bottom = 64.0
+text = "127.0.0.1:9080"
+max_length = 256
+placeholder_text = "IP do relay na rede local"
+
+[node name="MatchStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 74.0
+margin_right = 280.0
+margin_bottom = 96.0
+text = "Desconectado"
+autowrap = true
+
+[node name="SinglePlayerDemo" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 106.0
+margin_right = 280.0
+margin_bottom = 133.0
 text = "Single Player Demo"
 __meta__ = {
 "_edit_use_anchors_": false
 }
 
 [node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 37.0
-margin_right = 192.0
-margin_bottom = 64.0
-text = "Multiplayer Demo"
+margin_top = 143.0
+margin_right = 280.0
+margin_bottom = 170.0
+text = "Procurar Partida"
+
+[node name="DeckFromLink" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 180.0
+margin_right = 280.0
+margin_bottom = 207.0
+text = "Play Deck from Link"
 
 [node name="Deckbuilder" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 74.0
-margin_right = 192.0
-margin_bottom = 101.0
+margin_top = 217.0
+margin_right = 280.0
+margin_bottom = 244.0
 text = "Deck Builder"
 
 [node name="CardLibrary" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 111.0
-margin_right = 192.0
-margin_bottom = 138.0
+margin_top = 254.0
+margin_right = 280.0
+margin_bottom = 281.0
 text = "Card Library"
 
 [node name="GUT" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 148.0
-margin_right = 192.0
-margin_bottom = 175.0
+margin_top = 291.0
+margin_right = 280.0
+margin_bottom = 318.0
 text = "Tests"
 
 [node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 185.0
-margin_right = 192.0
-margin_bottom = 212.0
+margin_top = 328.0
+margin_right = 280.0
+margin_bottom = 355.0
 text = "Exit"
 
 [node name="MenuTween" type="Tween" parent="."]

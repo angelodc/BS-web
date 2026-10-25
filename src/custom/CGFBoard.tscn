@@ -64,18 +64,28 @@ margin_right = 68.0
 margin_right = 45.0
 
 [node name="View" parent="Deck/Control/ManipulationButtons" index="0"]
-margin_right = 26.0
-margin_bottom = 27.0
+visible = false
 
 [node name="ViewSorted" parent="Deck/Control/ManipulationButtons" index="1"]
-margin_top = 30.0
-margin_right = 26.0
-margin_bottom = 57.0
+visible = false
 
 [node name="Shuffle" parent="Deck/Control/ManipulationButtons" index="2"]
-margin_top = 60.0
-margin_right = 26.0
-margin_bottom = 87.0
+rect_min_size = Vector2( 110, 27 )
+text = "Embaralhar"
+
+[node name="Clarividencia" type="Button" parent="Deck/Control/ManipulationButtons" index="3" groups=[
+"manipulation_button",
+]]
+rect_min_size = Vector2( 110, 27 )
+mouse_filter = 1
+text = "Clarividência"
+
+[node name="Procurar" type="Button" parent="Deck/Control/ManipulationButtons" index="4" groups=[
+"manipulation_button",
+]]
+rect_min_size = Vector2( 110, 27 )
+mouse_filter = 1
+text = "Procurar"
 
 [node name="CardView" parent="Deck/ViewPopup" index="0"]
 margin_left = 2.0
@@ -228,26 +238,6 @@ pressed = true
 text = "Scaling + Viewport Focus"
 items = [ "Scaling Focus", null, false, 0, null, "Viewport Focus", null, false, 1, null, "Scaling + Viewport Focus", null, false, 2, null, "Scaling + Info Panels", null, false, 3, null ]
 selected = 2
-__meta__ = {
-"_edit_use_anchors_": false
-}
-
-[node name="ReshuffleAllDeck" type="Button" parent="."]
-margin_left = 9.89948
-margin_top = 116.762
-margin_right = 200.899
-margin_bottom = 136.762
-text = "Reshuffle all cards into deck"
-__meta__ = {
-"_edit_use_anchors_": false
-}
-
-[node name="ReshuffleAllDiscard" type="Button" parent="."]
-margin_left = 9.89948
-margin_top = 140.334
-margin_right = 200.899
-margin_bottom = 160.334
-text = "Reshuffle all cards into discard"
 __meta__ = {
 "_edit_use_anchors_": false
 }
@@ -439,7 +429,7 @@ margin_left = 610.0
 margin_top = 445.0
 margin_right = 670.0
 margin_bottom = 470.0
-text = "MÃO"
+text = ""
 
 [node name="SeedLabel" type="Label" parent="."]
 margin_left = 10.0
@@ -469,8 +459,6 @@ replacements = {
 [connection signal="toggled" from="FancyMovementToggle" to="." method="_on_FancyMovementToggle_toggled"]
 [connection signal="toggled" from="EnableAttach" to="." method="_on_EnableAttach_toggled"]
 [connection signal="item_selected" from="ScalingFocusOptions" to="." method="_on_ScalingFocusOptions_item_selected"]
-[connection signal="pressed" from="ReshuffleAllDeck" to="." method="_on_ReshuffleAllDeck_pressed"]
-[connection signal="pressed" from="ReshuffleAllDiscard" to="." method="_on_ReshuffleAllDiscard_pressed"]
 [connection signal="toggled" from="OvalHandToggle" to="." method="_on_OvalHandToggle_toggled"]
 [connection signal="pressed" from="DeckBuilder" to="." method="_on_DeckBuilder_pressed"]
 [connection signal="pressed" from="BackToMain" to="." method="_on_BackToMain_pressed"]

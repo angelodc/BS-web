@@ -20,6 +20,7 @@ var selection_count : int
 var selection_type: String
 var is_selection_optional: bool
 var is_cancelled := false
+var close_on_selection := false
 var _card_dupe_map := {}
 
 onready var _card_grid = $GridContainer
@@ -206,6 +207,10 @@ func on_selection_gui_input(event: InputEvent, dupe_selection: Card, origin_card
 		if selection_type in ["equal", "max"]  and selected_cards.size() > selection_count:
 			_card_dupe_map[selected_cards[0]].highlight.set_highlight(false)
 			selected_cards.remove(0)
+		if close_on_selection \
+				and selected_cards.size() == selection_count:
+			emit_signal("confirmed")
+			hide()
 
 
 # Manually selects cards based on their index.

@@ -37,35 +37,53 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 
 ### 🃏 Fase 1: Mecânicas Únicas do Battle Scenes (Singleplayer Local)
 *   [x] **Campo de jogo (2 jogadores, oponente visual):** A metade superior reserva um campo espelhado sem cartas ou interações; o campo interativo do jogador atual fica na metade inferior. A Cena contém Personagens/Suportes e um único Cenário ativo; um novo Cenário envia o anterior a Recursos/Descarte. Recursos ficam visíveis para todos e, ao clicar, abrem em uma segunda mão para selecionar anexos. Prêmios têm marcador da soma de `ENERGIA`, sem `ENERGIA_EXTRA`. Limbo segue junto de Recursos/Descarte.
-    *   **Estado:** Implementados o layout dividido, as zonas espelhadas apenas visuais do oponente, a expansão de Recursos por clique, a exigência de ENERGIA para Personagens/Suportes e a seleção automática de anexos. Cancelar a seleção devolve a carta principal à Mão. A validação visual da nova divisão ainda está pendente no Godot.
-*   [ ] **Sistema de Capacitação pelo Menu de Ações:** Ao passar o mouse sobre um personagem em campo, exibir apenas as ações válidas de capacitar/incapacitar entre -90°, 0° e +90°, conforme `BATTLE_SCENES_DESIGN.md`.
-    *   **Estado:** Cartas de demonstração marcadas como personagens; Capacitar/Incapacitar alternam posições -90°/0°/+90° e mostram apenas a ação oposta nas posições inclinadas; Escudo disponível para personagens. Ainda não validada. A execução anterior do teste foi interrompida após travamentos do VS Code; usar a instância atual do Godot para uma verificação visual, sem iniciar outro processo.
+    *   **Estado:** Implementados o layout dividido, as zonas espelhadas apenas visuais do oponente, a expansão de Recursos por clique, a exigência de `ENERGIA` para Personagens/Suportes e a seleção automática de anexos. Cancelar a seleção devolve a carta principal à Mão. A validação visual da nova divisão ainda está pendente no Godot.
+*   [x] **Sistema de Capacitação pelo Menu de Ações:** Ao passar o mouse sobre um personagem em campo, exibir apenas as ações válidas de capacitar/incapacitar entre `-90°`, `0°` e `+90°`, conforme `BATTLE_SCENES_DESIGN.md`.
+    *   **Estado:** Cartas de demonstração marcadas como personagens; `Capacitar`/`Incapacitar` alternam posições `-90°`/`0°`/`+90°` e mostram apenas a ação oposta nas posições inclinadas; `Escudo` disponível para personagens. Validação concluída no fluxo de uso local.
     *   **Correção adicional:** As duas cenas do tabuleiro apontavam para um caminho incorreto da fonte Comfortaa; os caminhos agora correspondem ao arquivo existente em `fonts/comfortaa/`.
-*   [ ] **Compra de Cartas por Clique:** Configurar o contêiner do `Deck` para enviar um card para a mão sempre que for clicado.
-*   [ ] **Mecânica de Recursos:** Restringir o jogador a baixar apenas 1 recurso da mão por turno (virado para baixo).
-*   [ ] **Sistema de Energia e Anexos (*Attachments*):**
-    *   [ ] Implementados: ao colocar Personagem/Suporte da Mão em Cena, verificar `ENERGIA`, abrir Recursos automaticamente e permitir escolher anexos por clique; cancelar a seleção devolve a carta principal à Mão. Pendente validação no Godot.
-    *   [x] Exibir cartas anexadas empilhadas para baixo sob a carta principal, com 5% da borda inferior de cada anexo visível; a carta principal fica por cima.
-    *   [x] Impedir rotação de anexos junto com a carta principal.
-    *   [x] Adicionar botão **Trocar** em Recursos/Descarte: escolher uma carta disponível da pilha e depois um anexo de Personagem; o anexo substituído retorna à pilha.
-    *   [ ] Criar um contador numérico sobre o Personagem mostrando a quantidade de energias carregadas.
+*   [x] **Compra de Cartas por Clique:** Configurar o contêiner do `Deck` para enviar uma carta para a mão sempre que for clicada.
+*   [x] **Ações do Deck e da Mão:** Adicionar embaralhar, Clarividência e Procurar no Deck; deixar a Mão sem limite, enviar cartas para Recursos/Descarte com duplo clique e permitir visualizar essa pilha.
+*   [x] **Fluxo de Entrada em Cena com Energia e Anexos:** Ao colocar Personagem/Suporte da Mão em Cena, verificar `ENERGIA`, abrir Recursos automaticamente, permitir escolher anexos por clique e cancelar a seleção devolvendo a carta principal à Mão. Validado.
+*   [x] **Exibição de Anexos e Troca:** Cartas anexadas empilhadas para baixo sob a carta principal, com 5% da borda inferior de cada anexo visível; a carta principal fica por cima. Anexos não giram com a carta principal. Botão **Trocar** em Recursos/Descarte funcionando para substituir anexos de Personagem.
+*   [ ] **Contador de Energia sobre Personagem:** Criar um contador numérico sobre o Personagem mostrando a quantidade de energias carregadas.
 *   [ ] **Lógica de Dano, Nocaute e Vitória:**
     *   [ ] Criar função para tirar energias carregadas quando o personagem sofrer dano e mandá-las para o descarte.
-    *   [ ] Validar Nocaute: Quando as energias zerarem, mover o herói para o Limbo e colocar cards do topo do deck do oponente na zona de Prêmios dele.
-    *   [ ] Checar Vitória: Se a soma da energia inicial dos cards na zona de Prêmios chegar a 15, disparar a tela de vitória.
+    *   [ ] Validar Nocaute: quando as energias zerarem, mover o herói para os prêmios.
+    *   [ ] Checar Vitória: se a soma da energia inicial dos cards na zona de Prêmios chegar a 15, disparar a tela de vitória.
+
+### ✅ Base Funcional Validada
+*   [x] **Deck → Mão → Cena**
+*   [x] **Verificação de energia para entrada em cena**
+*   [x] **Seleção de anexos**
+*   [x] **Cancelar caso falhe**
+*   [x] **Capacitação e incapacitação por menu de ações**
+
+> Observação: a regra de “1 recurso por turno” foi removida do escopo atual e não deve permanecer como tarefa ativa.
 
 ### 🧱 Fase 2: Infraestrutura Básica & Interface Visual
 *   [ ] **Importar Projeto:** Clonar o seu fork do framework e abri-lo no Godot Engine.
 *   [ ] **Configurar Resolução (`CFConst.gd`):** Ajustar as proporções visuais dos cards para o padrão clássico do Battle Scenes.
 *   [ ] **Criar Conexão HTTP (CDN do Amigo):** Programar o nó `HTTPRequest` para gerar a URL dinâmica baseada nas pastas do repositório `inimig0r/bsdb-imagens`.
+*   [ ] **Carregar Deck por Link do BSDB:** Permitir que o jogador cole uma URL pública de deck e carregar a lista, os dados e as imagens das cartas diretamente do BSDB/CDN. O deck Resgate Aracnídeo abaixo é apenas a lista local de teste; a importação remota ainda não está implementada.
 *   [ ] **Montar o Tabuleiro 2D:** Posicionar na tela as zonas essenciais (Mão, Deck, Recursos, Cenário, Zona de Combate e Prêmios).
 
 ### 🌐 Fase 3: Multiplayer Simples (Espelhamento via WebSockets)
-*   [ ] **Criar Script de Rede (`Rede.gd`):** Adicionar o nó `WebSocketMultiplayerPeer` com interface de botões para "Criar Sala" (Host) e "Entrar na Sala" (Client).
-*   [ ] **Sincronizar Ações com `@rpc`:**
-    *   [ ] Sincronizar Arrastar: Mover uma carta na mesa deve replicar a posição na tela do oponente.
-    *   [ ] Sincronizar Rotação: Replicar o ângulo de rotação da capacitação em tempo real na outra aba.
-    *   [ ] Sincronizar Ações Ocultas: Avisar o oponente que um card misterioso se moveu (ex: "Comprou carta", "Baixou recurso"), mantendo a identidade oculta.
+*   [x] **Username e busca de partida na LAN:** O menu solicita username e endereço do relay, e o botão **Procurar Partida** coloca o jogador em uma fila de duas pessoas. O relay separa partidas, atribui identidades e cancela a busca pelo mesmo botão.
+*   [x] **Relay WebSocket (`Rede.gd` e `tools/ws_relay.py`):** Godot 3 usa mensagens JSON em WebSocket. Para jogar na LAN, iniciar `python tools/ws_relay.py` em uma máquina e informar seu IP privado e a porta 9080 nos dois jogos; o relay só encaminha mensagens entre os dois membros de cada partida. Não abrir a porta para a internet.
+*   [x] **Sincronizar ações (espelhamento):**
+    *   [x] Arrastar: a posição na Cena replica no campo visual do oponente.
+    *   [x] Rotação: capacitação/incapacitação replica no oponente.
+    *   [x] Ações ocultas: mão e deck vão virados para baixo; o oponente vê recados como "Comprou carta" e "Baixou recurso". Recursos em cena revelam a carta.
+    *   **Estado:** Protótipo LAN para dois jogadores; o relay pareia e isola conexões, mas o jogo ainda não tem autoridade de regras nem sincronização de RNG/deck remoto.
+*   [ ] **Mostrar o cursor do adversário ao vivo:** Enviar a posição do ponteiro enquanto se move e desenhá-lo no tabuleiro do oponente, identificado pelo username. Converter as coordenadas do tabuleiro para que funcionem com resoluções diferentes; limitar a frequência de envio, ocultar o cursor ao desconectar e não enviar informações das cartas sob o ponteiro. Este recurso é separado do espelhamento de cartas.
+*   [ ] **Exibir movimentos do oponente no campo espelhado:** Além de registrar as ações na caixa de texto existente, mostrar visualmente na metade espelhada os movimentos e mudanças de estado que o adversário realiza, preservando ocultas as informações de mão e deck.
+*   [ ] **Adicionar indicador central de fases e turnos:** Cada jogador realiza `REG` (início e verificações), `PREP` (baixar cartas e capacitar), `ADJ` (validar estado e efeitos globais) e `COMB` (combate). No bloco `COMB`, o adversário/defensor realiza `ANT` antes do jogador ativo declarar `ATK`. O botão identifica o jogador e a etapa atual; `PREP` é branco, `ANT` vermelho e `ATK` verde.
+    *   **Sequência da v1:** jogador que começa pelo d6: `REG` → `PREP` → `ADJ` → `ANT` do oponente → `ATK` do jogador ativo; depois o outro jogador realiza a mesma sequência. A rodada completa quando ambos terminarem `ATK`; o contador aumenta e o ciclo reinicia pelo jogador inicial.
+    *   **Compra (`BUY`):** planejada para a v2 do multiplayer; não entra na sequência inicial da v1.
+    *   **Limite da mão:** permanece ilimitado; `ADJ` não descarta cartas por tamanho da mão.
+    *   **Estado:** planejado; por enquanto, o indicador informa a etapa e não bloqueia ações do jogo.
+*   [ ] **Definir e implementar a autoridade da partida:** O relay atual apenas forma partidas e encaminha mensagens; não torna o jogador que abriu a partida o servidor autoritativo. Evoluir para que o jogador anfitrião valide as ações e publique o estado oficial, enquanto o relay mantém o pareamento e o transporte na LAN. Tratar entradas dos dois jogadores pelo mesmo fluxo de validação, inclusive as do anfitrião.
+    *   **Ordem sugerida:** primeiro validar uma partida local real com dois clientes; depois implementar o cursor remoto e completar/validar o espelhamento visual; então sincronizar turnos e fases; por fim, estabelecer a autoridade do anfitrião e testar estados divergentes, desconexões e informações ocultas. Não considerar o multiplayer pronto para partidas competitivas até a autoridade e a privacidade estarem verificadas.
 
 ### 🚀 Fase 4: Banco de Dados Completo & Deploy (Netlify)
 *   [ ] **Integrar Banco de Dados JSON:** Adicionar o arquivo de dados com os atributos das cartas (poderes, afiliação, escudo) para o motor do jogo validar as regras.
@@ -80,5 +98,5 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 | :--- | :---: | :---: |
 | **Fase 1: Mecânicas Core (BS)** | ⏳ Planejado | 0% |
 | **Fase 2: Interface & Imagens Web** | ⏳ Planejado | 0% |
-| **Fase 3: Multiplayer (WebSockets)**| ⏳ Planejado | 0% |
+| **Fase 3: Multiplayer (WebSockets)**| 🛠️ Espelhamento local | 40% |
 | **Fase 4: Deploy (Netlify)** | ⏳ Planejado | 0% |

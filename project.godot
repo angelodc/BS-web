@@ -399,6 +399,7 @@ config/icon="res://icon.png"
 [autoload]
 
 cfc="*res://src/core/CFControl.gd"
+Rede="*res://src/custom/Rede.gd"
 
 [display]
 

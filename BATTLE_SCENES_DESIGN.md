@@ -38,6 +38,23 @@ No Battle Scenes físico, as cartas inclinam para indicar uso. No jogo, a capaci
 *   **Cálculo de Dano:** quando um herói recebe dano, remover a quantidade correspondente de cartas anexadas e enviá-las a Recursos/Descarte. A regra detalhada de ordem de remoção e nocaute permanece para implementação posterior.
 *   A regra de entrada e a disposição visual ainda precisam de validação no Godot.
 
+### 3. Deck e Mão
+*   Os controles de demonstração do topo para reunir cartas no Deck ou em Recursos/Descarte foram removidos. No Deck do jogador, os controles são **Embaralhar**, **Clarividência** e **Procurar**.
+*   **Clarividência** abre opções para espiar 1, 2, 3 ou outra quantidade de cartas do topo. As cartas reais aparecem viradas para cima no campo por alguns segundos e retornam ao topo do Deck na ordem original.
+*   **Procurar** apresenta as cartas do Deck sem duplicar nomes. Ao escolher uma, a seleção fecha, a carta aparece virada para cima no campo por alguns segundos e depois vai para a Mão.
+*   A Mão não tem limite de cartas e seu contador mostra somente a quantidade. Um duplo clique em qualquer carta da Mão a envia para Recursos/Descarte; um clique simples mantém o comportamento atual.
+*   O botão **Ver** em Recursos/Descarte abre a lista de cartas nessa pilha.
+
+### 4. Multiplayer de teste na rede local
+*   O menu solicita um username e o endereço do relay. O jogador escolhe **Procurar Partida**; a busca pode ser cancelada pelo mesmo botão.
+*   Para iniciar o relay, execute `python tools/ws_relay.py` em uma máquina da rede. Nos dois jogos, use o IP privado dessa máquina com a porta `9080` (por exemplo, `192.168.1.20:9080`); `127.0.0.1:9080` funciona apenas quando jogo e relay estão no mesmo computador.
+*   O relay pareia dois jogadores por partida e encaminha mensagens somente ao oponente daquela partida. Ao sair um jogador, o outro recebe o aviso de desconexão.
+*   O espelhamento de cartas envia atualizações de posição durante o arraste e replica ações visíveis; isso não mostra o ponteiro do mouse do adversário. O cursor remoto é um recurso separado, ainda planejado: enviar coordenadas do tabuleiro em frequência limitada, exibir um cursor com o username, adaptar a posição a diferentes resoluções e removê-lo ao desconectar. A posição do cursor não deve transmitir a identidade de cartas ocultas.
+*   **Autoridade da partida:** atualmente, o relay somente pareia e encaminha mensagens; nenhum jogador é servidor autoritativo das regras. A arquitetura desejada é manter o relay para pareamento/transporte e atribuir ao anfitrião a validação das ações e a publicação do estado oficial. As ações locais do anfitrião também devem passar pela mesma validação. Isso ainda precisa ser projetado e implementado.
+*   **Fases e rodadas planejadas:** cada jogador realiza `REG` (verificações de início), `PREP` (baixar cartas/capacitar), `ADJ` (validar o estado e processar efeitos globais) e `COMB`. Em `COMB`, o adversário/defensor faz `ANT` antes de o jogador ativo declarar `ATK`. Na v1, o indicador percorre a sequência completa do jogador inicial definido pelo d6 e depois a do outro; a rodada termina quando ambos concluírem `ATK`. A compra `BUY` fica para a v2. A mão continua sem limite, portanto `ADJ` não descarta cartas por exceder um máximo. O indicador é informativo e não bloqueia ações por fase.
+*   **Caminho de evolução:** (1) validar o pareamento e o espelhamento com dois clientes reais; (2) adicionar cursor remoto; (3) completar e validar os movimentos e estados visíveis no campo espelhado, mantendo zonas ocultas privadas; (4) sincronizar as fases/rodadas definidas acima; (5) implementar autoridade do anfitrião e testar divergências, desconexões e privacidade.
+*   O multiplayer continua sendo um protótipo de espelhamento: não há autoridade das regras, sincronização completa de RNG/deck ou reconexão, e o relay não foi preparado para exposição pública. Use apenas em rede local confiável.
+
 ---
 
 ## 🔗 Notas da API e Banco de Dados (BSDB)
@@ -53,6 +70,8 @@ Para testar os IDs locais na pasta `C:\Users\doug\Projetos\bsdb-imagens`, as sig
 *   A referência local dos dados é `C:\Users\doug\Projetos\bsdb-imagens\dados\cards.json`.
 *   O campo `TIPO` identifica a categoria da carta (por exemplo, `Personagem`); mapear esse valor para `_tipo` nas propriedades internas do framework. Não confundir com `Type` nas cartas de demonstração, que escolhe uma cena/cor.
 *   O campo `IMAGEM` contém o caminho relativo à raiz do repositório de imagens. Para a CDN, concatenar esse valor a `https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main`.
+*   As cartas do deck de teste usam o valor `IMAGEM` como caminho relativo e carregam o scan completo da carta em tempo de execução pela CDN; o cache local fica em `user://CardImages/`. Os arquivos de imagem não são copiados para este repositório.
+*   **Importação futura por URL:** Dentro do jogo, o jogador poderá informar a URL pública de um deck no formato `https://battlescenes.vercel.app/deck/{id}`. O jogo deverá resolver a lista do deck e carregar os dados e as imagens das cartas diretamente do BSDB/CDN, sem depender de uma cópia local completa da coleção. A lista local de teste atual guarda os IDs BSDB das cartas para facilitar essa integração. O formato da API/resposta remota ainda precisa ser confirmado na implementação.
 
 ### Ideias de Melhorias Futuras (Backlog)
 *   [ ] Adicionar um efeito sonoro de papel/carta sendo arrastada.

@@ -8,6 +8,11 @@ onready var main_menu := $MainMenu
 #onready var settings_menu := $SettingsMenu
 onready var deck_builder := $DeckBuilder
 onready var card_library := $CardLibrary
+onready var deck_import_dialog := $DeckImportDialog
+onready var player_name_input := $MainMenu/VBox/Center/VButtons/PlayerName
+onready var relay_address_input := $MainMenu/VBox/Center/VButtons/RelayAddress
+onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
+onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -21,6 +26,16 @@ func _ready() -> void:
 #	settings_menu.recover_prebuilts.connect("pressed", self, "_on_PreBuilts_pressed")
 	deck_builder.back_button.connect("pressed", self, "_on_DeckBuilder_Back_pressed")
 	card_library.back_button.connect("pressed", self, "_on_CardLibrary_Back_pressed")
+	deck_import_dialog.connect("deck_loaded", self, "_on_deck_imported")
+	deck_import_dialog.get_node("VBox/Buttons/Cancel").connect(
+			"pressed", deck_import_dialog, "hide")
+	player_name_input.text = str(cfc.game_settings.get(
+			"multiplayer_username", ""))
+	relay_address_input.text = str(cfc.game_settings.get(
+			"multiplayer_relay_address", Rede.DEFAULT_ADDRESS))
+	Rede.connect("status_changed", self, "_on_match_status_changed")
+	Rede.connect("match_found", self, "_on_match_found")
+	match_status.text = Rede.get_status()
 	# warning-ignore:return_value_discarded
 	get_viewport().connect("size_changed", self, '_on_Menu_resized')
 
@@ -28,10 +43,27 @@ func _ready() -> void:
 func on_button_pressed(_button_name : String) -> void:
 	match _button_name:
 		"SinglePlayerDemo":
+			Rede.disconnect_game()
+			cfc.current_deck = {}
 			# warning-ignore:return_value_discarded
 			get_tree().change_scene(CFConst.PATH_CUSTOM + 'CGFMain.tscn')
+		"DeckFromLink":
+			deck_import_dialog.popup_centered(Vector2(560, 190))
 		"Multiplayer":
-			pass
+			if Rede.is_searching:
+				Rede.disconnect_game()
+				multiplayer_button.text = "Procurar Partida"
+				return
+			var username: String = player_name_input.text.strip_edges()
+			if username.empty():
+				match_status.text = "Digite um username para procurar partida."
+				player_name_input.grab_focus()
+				return
+			cfc.set_setting("multiplayer_username", username)
+			cfc.set_setting(
+					"multiplayer_relay_address", relay_address_input.text.strip_edges())
+			if Rede.find_match(relay_address_input.text, username):
+				multiplayer_button.text = "Cancelar Busca"
 		"GUT":
 			# warning-ignore:return_value_discarded
 			get_tree().change_scene("res://tests/tests.tscn")
@@ -41,6 +73,24 @@ func on_button_pressed(_button_name : String) -> void:
 			switch_to_tab(card_library)
 		"Exit":
 			get_tree().quit()
+
+
+func _on_deck_imported(_deck: Dictionary) -> void:
+	# warning-ignore:return_value_discarded
+	get_tree().change_scene(CFConst.PATH_CUSTOM + "CGFMain.tscn")
+
+
+func _on_match_status_changed(text: String) -> void:
+	match_status.text = text
+	multiplayer_button.text = \
+			"Cancelar Busca" if Rede.is_searching else "Procurar Partida"
+
+
+func _on_match_found(_opponent_username: String) -> void:
+	cfc.current_deck = {}
+	# warning-ignore:return_value_discarded
+	get_tree().change_scene(CFConst.PATH_CUSTOM + "CGFMain.tscn")
+
 
 func switch_to_tab(tab: Control) -> void:
 	var main_position_x : float

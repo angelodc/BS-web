@@ -117,6 +117,41 @@ func test_occupied_slot():
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to board when slot is occupied")
 
+
+func test_scenario_replaces_active_scenario():
+	grid.name_label.text = "Cenário Ativo"
+	var first_scenario: Card = cards[0]
+	var replacement_scenario: Card = cards[1]
+	first_scenario.properties["_tipo"] = "Cenário"
+	replacement_scenario.properties["_tipo"] = "Cenário"
+
+	yield(drag_drop(first_scenario, Vector2(250,300)), "completed")
+	assert_eq(first_scenario.get_parent(), board,
+			"First scenario is placed on the board")
+	assert_eq(grid.get_slot(0).occupying_card, first_scenario,
+			"Active scenario slot references the first scenario")
+
+	yield(drag_drop(replacement_scenario, Vector2(250,300)), "completed")
+	assert_eq(first_scenario.get_parent(), discard,
+			"Previous scenario moves to the discard pile")
+	assert_eq(replacement_scenario.get_parent(), board,
+			"Replacement scenario is placed on the board")
+	assert_eq(grid.get_slot(0).occupying_card, replacement_scenario,
+			"Active scenario slot references the replacement")
+
+
+func test_invalid_scenario_drop_returns_to_hand():
+	grid.name_label.text = "Cenário Ativo"
+	var scenario: Card = cards[0]
+	scenario.properties["_tipo"] = "Cenário"
+
+	yield(drag_drop(scenario, Vector2(900,300)), "completed")
+	assert_eq(scenario.get_parent(), hand,
+			"Scenario stays in hand when dropped outside its active slot")
+	assert_eq(scenario.state, Card.CardState.IN_HAND,
+			"Rejected scenario drop restores the card state")
+
+
 func test_move_script_placed_card_out_of_grid():
 	yield(yield_for(0.2), YIELD)
 	var card: Card = cards[1]

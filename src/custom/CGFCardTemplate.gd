@@ -2,7 +2,10 @@ extends Card
 
 
 func _ready() -> void:
-	pass
+	._ready()
+	var image_path: String = properties.get("_bsdb_image_path", "")
+	if image_path and not cfc.ut:
+		card_front.load_card_image(image_path)
 
 # Sample code on how to ensure costs are paid when a card
 # is dragged from hand to the table
@@ -27,6 +30,23 @@ func is_battle_scenes_character() -> bool:
 
 func is_battle_scenes_scenario() -> bool:
 	return properties.get("_tipo", "") == "Cenário"
+
+
+func _restore_after_invalid_board_drop(tags: Array) -> void:
+	var original_parent: Node = get_parent()
+	var original_position = _placement_slot \
+			if original_parent == cfc.NMAP.board else null
+	var movement = .move_to(original_parent, -1, original_position, tags)
+	if movement is GDScriptFunctionState:
+		yield(movement, "completed")
+
+
+func is_battle_scenes_energy() -> bool:
+	for property_name in ["_tipo", "Type"]:
+		var category := str(properties.get(property_name, "")).strip_edges().to_lower()
+		if category in ["energia", "energy"]:
+			return true
+	return false
 
 
 func move_to(targetHost: Node,
@@ -62,6 +82,10 @@ func move_to(targetHost: Node,
 					placement_slot.get_grid_name() == "Cenário Ativo"
 		if is_battle_scenes_scenario():
 			if not is_scenario_slot:
+				var restore_scenario = \
+						_restore_after_invalid_board_drop(tags)
+				if restore_scenario is GDScriptFunctionState:
+					yield(restore_scenario, "completed")
 				return
 			var previous_scenario: Card = placement_slot.occupying_card
 			if previous_scenario and previous_scenario != self:
@@ -74,6 +98,9 @@ func move_to(targetHost: Node,
 				yield(scenario_movement, "completed")
 			return
 		if is_scenario_slot:
+			var restore_card = _restore_after_invalid_board_drop(tags)
+			if restore_card is GDScriptFunctionState:
+				yield(restore_card, "completed")
 			return
 	var card_movement = .move_to(targetHost, index, board_position, tags)
 	if card_movement is GDScriptFunctionState:
@@ -152,8 +179,22 @@ func set_card_rotation(
 
 # A signal for whenever the player clicks on a card
 func _on_Card_gui_input(event) -> void:
+	if network_mirror:
+		return
 	if event is InputEventMouseButton \
 			and event.is_pressed() \
+			and event.get_button_index() == BUTTON_LEFT \
+			and event.doubleclick \
+			and cfc.NMAP.has("hand") \
+			and get_parent() == cfc.NMAP.hand \
+			and state in [CardState.IN_HAND, CardState.FOCUSED_IN_HAND] \
+			and not buttons.are_hovered() \
+			and not tokens.are_hovered():
+		cfc.card_drag_ongoing = null
+		move_to(cfc.NMAP.discard)
+		return
+	if event is InputEventMouseButton \
+			and not event.is_pressed() \
 			and event.get_button_index() == BUTTON_LEFT \
 			and cfc.NMAP.has("board") \
 			and state == CardState.FOCUSED_IN_POPUP:

@@ -107,28 +107,6 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="ReshuffleAllDeck" type="Button" parent="."]
-visible = false
-margin_left = 9.89948
-margin_top = 116.762
-margin_right = 200.899
-margin_bottom = 136.762
-text = "Reshuffle all cards into deck"
-__meta__ = {
-"_edit_use_anchors_": false
-}
-
-[node name="ReshuffleAllDiscard" type="Button" parent="."]
-visible = false
-margin_left = 9.89948
-margin_top = 140.334
-margin_right = 200.899
-margin_bottom = 160.334
-text = "Reshuffle all cards into discard"
-__meta__ = {
-"_edit_use_anchors_": false
-}
-
 [node name="OvalHandToggle" type="CheckButton" parent="."]
 visible = false
 margin_left = 405.31
@@ -224,8 +202,6 @@ margin_bottom = 14.0
 [connection signal="toggled" from="FancyMovementToggle" to="." method="_on_FancyMovementToggle_toggled"]
 [connection signal="toggled" from="EnableAttach" to="." method="_on_EnableAttach_toggled"]
 [connection signal="item_selected" from="ScalingFocusOptions" to="." method="_on_ScalingFocusOptions_item_selected"]
-[connection signal="pressed" from="ReshuffleAllDeck" to="." method="_on_ReshuffleAllDeck_pressed"]
-[connection signal="pressed" from="ReshuffleAllDiscard" to="." method="_on_ReshuffleAllDiscard_pressed"]
 [connection signal="toggled" from="OvalHandToggle" to="." method="_on_OvalHandToggle_toggled"]
 [connection signal="toggled" from="Debug" to="." method="_on_Debug_toggled"]
 

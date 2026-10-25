@@ -1,5 +1,8 @@
 extends CardFront
 
+onready var card_image: TextureRect = $CardImage
+onready var card_text_container: MarginContainer = $Margin
+
 func _ready() -> void:
 	_card_text = find_node("CardText")
 	# Map your card text label layout here. We use this when scaling
@@ -40,3 +43,19 @@ func _ready() -> void:
 				original_font_sizes[label] = 25
 			_:
 				original_font_sizes[label] = 16
+
+
+func load_card_image(image_path: String) -> void:
+	if not cfc.is_connected(
+				"card_image_loaded", self, "_on_card_image_loaded"):
+		# warning-ignore:return_value_discarded
+		cfc.connect("card_image_loaded", self, "_on_card_image_loaded")
+	cfc.request_card_image(image_path)
+
+
+func _on_card_image_loaded(image_path: String, texture: ImageTexture) -> void:
+	if image_path != card_owner.properties.get("_bsdb_image_path", ""):
+		return
+	card_image.texture = texture
+	card_image.visible = true
+	card_text_container.visible = false

@@ -2,7 +2,11 @@ extends Pile
 
 
 func _ready() -> void:
-	$Control/ManipulationButtons/View.hide()
+	._ready()
+	$Control/ManipulationButtons/View.show()
+	$Control/ManipulationButtons/View.text = "Ver"
+	$Control/ManipulationButtons/View.hint_tooltip = \
+			"Ver cartas em Recursos / Descarte"
 	$Control/ManipulationButtons/ViewSorted.hide()
 	$Control/ManipulationButtons/Shuffle.hide()
 	var swap_button := Button.new()

@@ -188,6 +188,134 @@ func test_card_not_draggable_without_focus_first():
 	assert_eq(Card.CardState.IN_HAND, card.state,
 			"Card state is still InHand because it wasn't focused first")
 
+
+func test_double_clicking_card_in_hand_moves_it_to_resources():
+	var card: Card = hand.draw_card()
+	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
+	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
+	card.properties["_tipo"] = "Personagem"
+	card.set_state(Card.CardState.FOCUSED_IN_HAND)
+	var double_click := InputEventMouseButton.new()
+	double_click.button_index = BUTTON_LEFT
+	double_click.pressed = true
+	double_click.doubleclick = true
+
+	card._on_Card_gui_input(double_click)
+
+	assert_eq(card.get_parent(), discard,
+			"Double-clicking a card in hand sends it to resources")
+
+
+func test_single_clicking_card_in_hand_does_not_move_it_to_resources():
+	var card: Card = hand.draw_card()
+	card.set_state(Card.CardState.FOCUSED_IN_HAND)
+	var single_click := InputEventMouseButton.new()
+	single_click.button_index = BUTTON_LEFT
+	single_click.pressed = false
+
+	card._on_Card_gui_input(single_click)
+
+	assert_eq(card.get_parent(), hand,
+			"A single click does not send a card to resources")
+
+
+func test_hand_counter_only_shows_card_count():
+	var card: Card = hand.draw_card()
+	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
+	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
+	hand._process(0)
+
+	assert_eq(hand._counter_cards.text, "1")
+
+
+func test_resources_pile_has_a_view_button():
+	assert_true(discard.view_button.visible,
+			"Resources and discard pile can be opened for viewing")
+	assert_true(discard.view_button.is_connected(
+			"pressed", discard, "_on_View_Button_pressed"),
+			"Pressing the view button opens the resources pile")
+
+
+func test_game_deck_actions_and_unlimited_hand_configuration():
+	var game_board = load("res://src/custom/CGFBoard.tscn").instance()
+	var game_deck = game_board.get_node("Deck")
+	var game_hand = game_board.get_node("Hand")
+
+	assert_false(game_board.has_node("ReshuffleAllDeck"))
+	assert_false(game_board.has_node("ReshuffleAllDiscard"))
+	assert_true(game_deck.get_node(
+			"Control/ManipulationButtons/Shuffle").visible)
+	assert_not_null(game_deck.get_node(
+			"Control/ManipulationButtons/Clarividencia"))
+	assert_not_null(game_deck.get_node(
+			"Control/ManipulationButtons/Procurar"))
+	assert_eq(
+			game_hand.excess_cards,
+			Hand.ExcessCardsBehaviour.ALLOW)
+	assert_eq(game_hand.hand_size, 10)
+
+	game_board.free()
+
+
+func test_peeking_top_cards_preserves_deck_order():
+	var expected_top := deck.get_top_card()
+	var deck_count := deck.get_card_count()
+	var peeked_cards: Array = deck.get_top_cards(3)
+
+	assert_eq(peeked_cards.size(), 3)
+	assert_eq(peeked_cards[0], expected_top)
+	assert_eq(deck.get_card_count(), deck_count)
+	assert_eq(deck.get_top_card(), expected_top)
+
+
+func test_search_selection_closes_immediately_after_card_click():
+	var card: Card = hand.draw_card()
+	var selection_window = load(
+			"res://src/core/SelectionWindow.tscn").instance()
+	board.add_child(selection_window)
+	selection_window.close_on_selection = true
+	selection_window.selection_count = 1
+	selection_window.selection_type = "equal"
+	selection_window._card_dupe_map[card] = card
+	selection_window.popup_centered()
+	watch_signals(selection_window)
+
+	var click := InputEventMouseButton.new()
+	click.button_index = BUTTON_LEFT
+	click.pressed = true
+	selection_window.on_selection_gui_input(click, card, card)
+
+	assert_false(selection_window.visible)
+	assert_signal_emitted(selection_window, "card_selected")
+	selection_window.queue_free()
+
+
+func test_clairvoyance_reveals_top_cards_then_restores_the_deck():
+	var expected_top := deck.get_top_card()
+	var deck_count := deck.get_card_count()
+	var top_cards: Array = deck.get_top_cards(2)
+	var reveal = deck._reveal_top_cards(top_cards)
+	if reveal is GDScriptFunctionState:
+		yield(reveal, "completed")
+
+	assert_eq(deck.get_card_count(), deck_count)
+	assert_eq(deck.get_top_card(), expected_top)
+	for card in top_cards:
+		assert_eq(card.get_parent(), deck)
+
+
+func test_searched_card_is_revealed_then_added_to_hand():
+	var card: Card = deck.get_top_card()
+	var search_move = deck._reveal_searched_card(card)
+
+	assert_eq(card.get_parent(), board,
+			"The selected card is revealed on the table first")
+	yield(search_move, "completed")
+
+	assert_eq(card.get_parent(), hand,
+			"The revealed card then moves into the player's hand")
+
+
 func test_excess_cards_disallowed():
 	hand.excess_cards = Hand.ExcessCardsBehaviour.DISALLOW
 	hand.hand_size = 3
@@ -201,6 +329,16 @@ func test_excess_cards_allowed():
 	var cards = draw_test_cards(5, false)
 	assert_eq(hand.get_card_count(), 5)
 	assert_ne(cards[3], cards[4])
+
+
+func test_game_hand_accepts_more_than_ten_cards():
+	hand.excess_cards = Hand.ExcessCardsBehaviour.ALLOW
+	hand.hand_size = 10
+	draw_test_cards(12, false)
+
+	assert_eq(hand.get_card_count(), 12,
+			"The Battle Scenes hand has no maximum card count")
+
 
 func test_excess_cards_discard_drawn():
 	hand.excess_cards = Hand.ExcessCardsBehaviour.DISCARD_DRAWN

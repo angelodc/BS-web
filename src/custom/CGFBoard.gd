@@ -37,6 +37,10 @@ func _ready() -> void:
 	cfc.NMAP.discard.connect(
 			"popup_closed", self, "_on_resource_popup_closed")
 	_update_prize_energy()
+	if not cfc.ut:
+		var sync := preload("res://src/custom/MultiplayerSync.gd").new()
+		sync.name = "MultiplayerSync"
+		add_child(sync)
 
 
 func _apply_battle_scenes_layout() -> void:
@@ -220,27 +224,6 @@ func _on_OvalHandToggle_toggled(_button_pressed: bool) -> void:
 		c.reorganize_self()
 
 
-# Reshuffles all Card objects created back into the deck
-func _on_ReshuffleAllDeck_pressed() -> void:
-	reshuffle_all_in_pile(cfc.NMAP.deck)
-
-
-func _on_ReshuffleAllDiscard_pressed() -> void:
-	reshuffle_all_in_pile(cfc.NMAP.discard)
-
-func reshuffle_all_in_pile(pile = cfc.NMAP.deck):
-	for c in get_tree().get_nodes_in_group("cards"):
-		if c.get_parent() != pile and c.state != Card.CardState.DECKBUILDER_GRID:
-			c.move_to(pile)
-			yield(get_tree().create_timer(0.1), "timeout")
-	# Last card in, is the top card of the pile
-	var last_card : Card = pile.get_top_card()
-	if last_card._tween.is_active():
-		yield(last_card._tween, "tween_all_completed")
-	yield(get_tree().create_timer(0.2), "timeout")
-	pile.shuffle_cards()
-
-
 # Button to change focus mode
 func _on_ScalingFocusOptions_item_selected(index) -> void:
 	cfc.set_setting('focus_style', index)
@@ -260,7 +243,6 @@ func _on_Debug_toggled(button_pressed: bool) -> void:
 
 # Loads a sample set of cards to use for testing
 func load_test_cards(gut := true) -> void:
-	var extras = 11
 	# Hardcoded the card order because for some reason, GUT on low-powered VMs
 	# ends up with a different card order, even when the seed is the same.
 	var gut_cards := [
@@ -286,20 +268,16 @@ func load_test_cards(gut := true) -> void:
 	if gut:
 		for card in gut_cards:
 			test_card_array.append(cfc.instance_card(card))
+	elif not cfc.current_deck.empty():
+		for card_name in cfc.current_deck.cards:
+			for _i in range(cfc.current_deck.cards[card_name]):
+				test_card_array.append(cfc.instance_card(card_name))
 	else:
-		var test_cards := []
-		for ckey in cfc.card_definitions.keys():
-			if ckey != "Spawn Card":
-				test_cards.append(ckey)
-		for _i in range(extras):
-			if not test_cards.empty():
-				var random_card_name = \
-						test_cards[CFUtils.randi() % len(test_cards)]
-				test_card_array.append(cfc.instance_card(random_card_name))
-		# 11 is the cards GUT expects. It's the testing standard
-		if extras == 11:
-		# I ensure there's of each test card, for use in GUT
-			for card_name in test_cards:
+		var spider_deck = load(
+				"res://src/custom/cards/sets/"
+				+ "SetDefinition_ResgateAracnideo.gd").TEST_DECK
+		for card_name in spider_deck:
+			for _i in range(spider_deck[card_name]):
 				test_card_array.append(cfc.instance_card(card_name))
 	for card in test_card_array:
 		cfc.NMAP.deck.add_child(card)

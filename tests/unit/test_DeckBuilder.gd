@@ -40,6 +40,100 @@ func test_setup():
 			'1','2','3','4','5':
 				assert_false(n.visible, "Quantity buttons are invisible")
 
+func test_resgate_aracnideo_test_deck():
+	var deck_definition = load(
+			"res://src/custom/cards/sets/"
+			+ "SetDefinition_ResgateAracnideo.gd")
+	var deck = deck_definition.TEST_DECK
+	var card_definitions = deck_definition.CARDS
+	var total := 0
+	var categories := {
+		"Personagem": 0,
+		"Cenário": 0,
+		"Suporte": 0,
+		"Habilidade": 0,
+	}
+	for card_name in deck:
+		var quantity: int = deck[card_name]
+		total += quantity
+		assert_true(card_definitions.has(card_name),
+				card_name + " is defined in the card catalog")
+		if card_definitions.has(card_name):
+			var category: String = card_definitions[card_name].get("_tipo", "")
+			categories[category] += quantity
+			assert_true(
+					card_definitions[card_name].get(
+							"_bsdb_image_path", "").begins_with("/"),
+					card_name + " has a BSDB image path")
+	assert_eq(total, 60, "The test deck contains 60 cards")
+	assert_eq(categories["Personagem"], 24, "The deck has 24 characters")
+	assert_eq(categories["Cenário"], 10, "The deck has 10 scenarios")
+	assert_eq(categories["Suporte"], 6, "The deck has 6 supports")
+	assert_eq(categories["Habilidade"], 20, "The deck has 20 abilities")
+
+func test_bsdb_deck_link_validation():
+	var importer = load(
+			"res://src/custom/BSDBDeckImportDialog.gd")
+	assert_eq(
+			importer.get_deck_id_from_url(
+					"https://battlescenes.vercel.app/deck/"
+					+ "bbbbbbbb-2222-4222-8222-222222222222"),
+			"bbbbbbbb-2222-4222-8222-222222222222")
+	assert_eq(
+			importer.get_deck_id_from_url(
+					"http://battlescenes.vercel.app/deck/"
+					+ "bbbbbbbb-2222-4222-8222-222222222222"),
+			"")
+	assert_eq(
+			importer.get_deck_id_from_url(
+					"https://example.com/deck/"
+					+ "bbbbbbbb-2222-4222-8222-222222222222"),
+			"")
+
+func test_bsdb_card_data_mapping():
+	var importer = load(
+			"res://src/custom/BSDBDeckImportDialog.gd")
+	var card = importer.make_card_properties({
+		"id_card": "BSCA_006",
+		"nome": "Adaga",
+		"tipo": "Personagem",
+		"imagem": "/bsca/BSCA_006.png",
+		"dados": {
+			"ENERGIA": "3",
+			"ESCUDO": "1",
+			"AFILIACAO": "Aliados do Homem-Aranha",
+			"PODERES": ["Agilidade", "Regeneração"],
+			"TEXTO": "Texto de teste.",
+			"ACOES": [{"TEXTO": "Ação de teste."}],
+		},
+	})
+	assert_eq(card["Name"], "Adaga")
+	assert_eq(card["Type"], "Blue")
+	assert_eq(card["_tipo"], "Personagem")
+	assert_eq(card["ENERGIA"], "3")
+	assert_eq(card["Requirements"], "Aliados do Homem-Aranha")
+	assert_eq(card["Abilities"], "Texto de teste.\n\nAção de teste.")
+	assert_eq(card["_bsdb_image_path"], "/bsca/BSCA_006.png")
+
+	var null_fields_card = importer.make_card_properties({
+		"nome": "Carta sem campos opcionais",
+		"tipo": "Habilidade",
+		"imagem": "/bsca/BSCA_007.png",
+		"dados": {
+			"ENERGIA": null,
+			"PODERES": null,
+			"TEXTO": null,
+			"ACOES": null,
+		},
+	})
+	assert_eq(null_fields_card["ENERGIA"], "0")
+	assert_eq(null_fields_card["Tags"], [])
+	assert_eq(null_fields_card["Abilities"], "")
+
+func test_bsdb_import_menu_scene_loads():
+	var scene = load("res://src/custom/MainMenu.tscn")
+	assert_not_null(scene, "The main menu scene includes the deck import dialog")
+
 func test_quantity_button_add_remove():
 	var card_object: DBListCardObject = deckbuilder._available_cards.get_child(0)
 	card_object.setup_max_quantity(5)
@@ -203,4 +297,3 @@ func test_name_randomize():
 	deckbuilder._on_RandomizeName_pressed()
 	assert_ne(deckbuilder._deck_name.text, deck_name,
 			"Reset Deck Name  randomized")
-

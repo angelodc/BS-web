@@ -36,6 +36,13 @@ theme = ExtResource( 3 )
 custom_styles/panel = SubResource( 1 )
 script = ExtResource( 2 )
 
+[node name="CardImage" type="TextureRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+visible = false
+expand = true
+
 [node name="Margin" type="MarginContainer" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0

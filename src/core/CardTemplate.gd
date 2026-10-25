@@ -205,6 +205,10 @@ export var focused_scale := CFConst.FOCUSED_SCALE
 # if that is also not set, will be set.
 # to the human-readable value of the "name" node property.
 var canonical_name : String setget set_card_name, get_card_name
+# Network identity for multiplayer mirroring. Empty when the card is local-only.
+var network_id := ""
+# Remote copies of the opponent's cards must not accept input or fire scripts.
+var network_mirror := false
 # Ensures all nodes fit inside this rect.
 var card_size := canonical_size setget set_card_size
 # Starting state for each card
@@ -317,10 +321,12 @@ func _ready() -> void:
 	# The board without calling setup() and then use its hardcoded labels
 	_init_card_name()
 	setup()
-	# warning-ignore:return_value_discarded
-	$Control.connect("gui_input", self, "_on_Card_gui_input")
-	# warning-ignore:return_value_discarded
-	$Control.connect("tree_exiting", self, "_on_tree_exiting")
+	if not $Control.is_connected("gui_input", self, "_on_Card_gui_input"):
+		# warning-ignore:return_value_discarded
+		$Control.connect("gui_input", self, "_on_Card_gui_input")
+	if not $Control.is_connected("tree_exiting", self, "_on_tree_exiting"):
+		# warning-ignore:return_value_discarded
+		$Control.connect("tree_exiting", self, "_on_tree_exiting")
 	cfc.signal_propagator.connect_new_card(self)
 
 func _init_card_layout() -> void:
@@ -408,6 +414,8 @@ func _process(delta) -> void:
 
 # Triggers the focus-in effect on the card
 func _on_Card_mouse_entered() -> void:
+	if network_mirror:
+		return
 	# This triggers the focus-in effect on the card
 	#print(state,":enter:",get_index(), ":", buttons._are_hovered()) # Debug
 	#print($Control/Tokens/Drawer/VBoxContainer.rect_size) # debug
@@ -442,6 +450,8 @@ func _input(event) -> void:
 
 # A signal for whenever the player clicks on a card
 func _on_Card_gui_input(event) -> void:
+	if network_mirror:
+		return
 	if event is InputEventMouseButton and cfc.NMAP.has("board"):
 		# because of https://github.com/godotengine/godot/issues/44138
 		# we need to double check that the card which is receiving the
@@ -1410,6 +1420,8 @@ func execute_scripts(
 		trigger: String = "manual",
 		trigger_details: Dictionary = {},
 		only_cost_check := false):
+	if network_mirror:
+		return
 	if cfc.game_paused:
 		return
 	# Just in case the card is displayed outside the main game
@@ -2466,6 +2478,11 @@ func _process_card_state() -> void:
 			tokens.is_drawer_open = false
 
 		CardState.ON_PLAY_BOARD:
+			if network_mirror:
+				set_focus(false)
+				set_control_mouse_filters(false)
+				buttons.set_active(false)
+				return
 			if state_finalized:
 				return
 			# Used when the card is idle on the board

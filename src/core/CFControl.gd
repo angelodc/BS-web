@@ -12,6 +12,7 @@ signal cache_cleared
 signal scripts_loaded
 # Sent when a new Card node is instanced
 signal new_card_instanced(card)
+signal card_image_loaded(image_path, texture)
 
 var load_start_time := OS.get_ticks_msec()
 
@@ -49,6 +50,7 @@ var are_all_nodes_mapped := false
 var game_rng_seed = "CFC Random Seed" setget set_seed
 # This will store all card properties which are placed in the card labels
 var card_definitions := {}
+var current_deck := {}
 # This will store all card scripts
 var set_scripts := {}
 # This will store all card scripts, including their format placeholders
@@ -104,8 +106,20 @@ var curr_scale: float
 
 var script_load_thread : Thread
 var scripts_loading := true
+const BSDB_IMAGE_BASE_URL := "https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main/cards/oficial"
+const CARD_IMAGE_CACHE_PATH := "user://CardImages/"
+var _card_image_request: HTTPRequest
+var _card_image_queue := []
+var _card_image_pending := {}
+var _card_image_textures := {}
+var _active_card_image_path := ""
 
 func _ready() -> void:
+	_card_image_request = HTTPRequest.new()
+	add_child(_card_image_request)
+	# warning-ignore:return_value_discarded
+	_card_image_request.connect(
+			"request_completed", self, "_on_card_image_request_completed")
 	var load_end_time = OS.get_ticks_msec()
 	if OS.has_feature("debug") and not cfc.is_testing:
 		print_debug("DEBUG INFO:CFControl: instance time = %sms" % [str(load_end_time - load_start_time)])
@@ -116,6 +130,91 @@ func _ready() -> void:
 	get_viewport().connect("size_changed", self, '_on_viewport_resized')
 	_on_viewport_resized()
 	_setup()
+
+
+func request_card_image(image_path: String) -> void:
+	var cached_texture: ImageTexture = _load_cached_card_image(image_path)
+	if cached_texture:
+		_card_image_textures[image_path] = cached_texture
+		emit_signal("card_image_loaded", image_path, cached_texture)
+		return
+	if _card_image_pending.has(image_path):
+		return
+	_card_image_pending[image_path] = true
+	_card_image_queue.append(image_path)
+	_start_next_card_image_request()
+
+
+func _load_cached_card_image(image_path: String) -> ImageTexture:
+	if _card_image_textures.has(image_path):
+		return _card_image_textures[image_path]
+	var file_name := image_path.get_file()
+	var cache_file := File.new()
+	var cache_path := CARD_IMAGE_CACHE_PATH + file_name
+	if not cache_file.file_exists(cache_path):
+		return null
+	var image := Image.new()
+	var image_error := image.load(cache_path)
+	if image_error != OK:
+		push_error("Could not load cached BSDB card image: " + cache_path)
+		return null
+	var texture := ImageTexture.new()
+	texture.create_from_image(image)
+	return texture
+
+
+func _start_next_card_image_request() -> void:
+	if _active_card_image_path or _card_image_queue.empty():
+		return
+	_active_card_image_path = _card_image_queue.pop_front()
+	var image_url := BSDB_IMAGE_BASE_URL + _active_card_image_path
+	var request_error := _card_image_request.request(image_url)
+	if request_error != OK:
+		push_error("Could not request BSDB card image: " + image_url)
+		_card_image_pending.erase(_active_card_image_path)
+		_active_card_image_path = ""
+		_start_next_card_image_request()
+
+
+func _on_card_image_request_completed(
+		result: int, response_code: int, _headers: PoolStringArray,
+		body: PoolByteArray) -> void:
+	var image_path := _active_card_image_path
+	_active_card_image_path = ""
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		push_error(
+				"BSDB card image request failed (result "
+				+ str(result) + ", HTTP " + str(response_code) + "): "
+				+ image_path)
+		_card_image_pending.erase(image_path)
+		_start_next_card_image_request()
+		return
+	var image := Image.new()
+	var image_error := image.load_png_from_buffer(body)
+	if image_error != OK:
+		push_error("Could not decode BSDB card image: " + image_path)
+		_card_image_pending.erase(image_path)
+		_start_next_card_image_request()
+		return
+	var texture := ImageTexture.new()
+	texture.create_from_image(image)
+	_card_image_textures[image_path] = texture
+	var directory := Directory.new()
+	var directory_error := directory.make_dir_recursive(CARD_IMAGE_CACHE_PATH)
+	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
+		push_error("Could not create card image cache directory.")
+	else:
+		var cache_file := File.new()
+		var file_error := cache_file.open(
+				CARD_IMAGE_CACHE_PATH + image_path.get_file(), File.WRITE)
+		if file_error != OK:
+			push_error("Could not cache BSDB card image: " + image_path)
+		else:
+			cache_file.store_buffer(body)
+			cache_file.close()
+	_card_image_pending.erase(image_path)
+	emit_signal("card_image_loaded", image_path, texture)
+	_start_next_card_image_request()
 
 
 func _setup() -> void:
@@ -255,6 +354,8 @@ func load_card_definitions() -> Dictionary:
 			loaded_definitions.append(load(CFConst.PATH_SETS + set_file))
 	var combined_sets := {}
 	for set_def in loaded_definitions:
+		if ut and set_def.SET == "Resgate Aracnídeo":
+			continue
 		for card_name in set_def.CARDS:
 			combined_sets[card_name] = set_def.CARDS[card_name]
 	return(combined_sets)
@@ -446,7 +547,8 @@ class SignalPropagator:
 	# to the SignalPropagator
 	func connect_new_card(card):
 		for sgn in known_card_signals:
-			card.connect(sgn, self, "_on_signal_received")
+			if not card.is_connected(sgn, self, "_on_signal_received"):
+				card.connect(sgn, self, "_on_signal_received")
 
 
 	# When a known signal is received, it asks all existing cards to check
@@ -465,13 +567,17 @@ class SignalPropagator:
 		# drags the card on the grid itself. If the player drags the card
 		# To an empty spot, it works fine
 		# It also fails to execute if I use any other flag than GROUP_CALL_UNIQUE
-		for card in cfc.get_tree().get_nodes_in_group("cards"):
-			card.execute_scripts(trigger_card,trigger,details)
-		# If we need other objects than cards to trigger scripts via signals
-		# add them to the 'scriptables' group ang ensure they have
-		# an "execute_scripts" function
-		for card in cfc.get_tree().get_nodes_in_group("scriptables"):
-			card.execute_scripts(trigger_card,trigger,details)
+		var tags = details.get("tags", [])
+		var is_network_update: bool = \
+				typeof(tags) == TYPE_ARRAY and tags.has("net")
+		if not is_network_update:
+			for card in cfc.get_tree().get_nodes_in_group("cards"):
+				card.execute_scripts(trigger_card,trigger,details)
+			# If we need other objects than cards to trigger signals,
+			# add them to the 'scriptables' group and ensure they have
+			# an "execute_scripts" function.
+			for card in cfc.get_tree().get_nodes_in_group("scriptables"):
+				card.execute_scripts(trigger_card,trigger,details)
 #		cfc.get_tree().call_group_flags(SceneTree.GROUP_CALL_UNIQUE  ,"cards",
 #				"execute_scripts",trigger_card,trigger,details)
 		emit_signal("signal_received", trigger_card, trigger, details)

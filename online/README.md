@@ -13,24 +13,46 @@ online/
 └── README.md
 ```
 
+## Estado
+
+- A Function `/api/salas` e a página `/salas` estão prontas para uso local.
+- O export HTML5 está configurado, mas o build em `site/game/` ainda não foi
+  gerado nem publicado.
+- O cliente web ainda não tem `join_room` nem leitura de `?room=CODIGO`
+  (Fase 4 do [ONLINE_HOSTING.md](../ONLINE_HOSTING.md)).
+
 ## Exportar o jogo
 
-No editor: **Projeto → Exportar → HTML5**. A saída configurada é
+Instale os templates de exportação do Godot 3.4.4 e use
+**Projeto → Exportar → HTML5**. A saída configurada é
 `online/site/game/index.html`.
 
 ## Testar localmente
 
+1. Suba o relay em outro terminal:
+
+```bash
+cd relay
+npm install   # uma vez
+npm start     # http://127.0.0.1:9080
+```
+
+2. Suba o site apontando o proxy para o relay:
+
 ```bash
 cd online
 npm install -g netlify-cli   # uma vez
-netlify dev
+RELAY_URL=http://127.0.0.1:9080 netlify dev
 ```
 
-Jogo em `http://localhost:8888/game/` e lobby em `http://localhost:8888/`.
+Jogo em `http://localhost:8888/game/` (depois do export) e lobby em
+`http://localhost:8888/` (funciona sem o export).
 
-A Function lê `RELAY_URL` (sem barra final), por exemplo
-`wss://relay.exemplo.com`. Sem a variável, `/api/salas` responde 503 com
-`relay.online = false`.
+A Function lê `RELAY_URL` **HTTP(S)** (sem barra final), por exemplo
+`https://relay.exemplo.com`. Não use `wss://` aqui: o proxy faz
+`fetch("${RELAY_URL}/rooms")`. O `wss://` é o endereço usado pelo cliente do
+jogo, que ainda será integrado na Fase 4. Sem a variável, `/api/salas` responde
+503 com `relay.online = false`.
 
 ## Publicar
 

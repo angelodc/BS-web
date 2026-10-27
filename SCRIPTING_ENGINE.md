@@ -17,12 +17,13 @@ in the Card object, checking filters, checking confirmations and finally invokin
 1. Add a `get_state_exec()` method to the object. This should return a string of one of the various states the object can be in, which are used to filter the correct scripts for execution.
 1. Add a `retrieve_scripts()` method to the object. This should retrieve all of the object's scripts, from wherever they are stored.
 
-## Planned multiplayer follow-up (not implemented)
+## Multiplayer
 
-The current LAN multiplayer prototype should be extended to:
+Multiplayer no longer lives in this document. The LAN v1 is implemented: mirrored
+board and opponent movements, remote cursor, central phase indicator, host
+authority for start/dice/phases/public state, checkpoints and resume. The online
+relay and Netlify lobby are implemented but not deployed; web-client integration
+is pending.
 
-- Show the opponent's movements and visible state changes on the mirrored half of the board, in addition to the existing textual action log. Hidden hand and deck information must remain concealed.
-- Add a central turn/phase indicator between the players. Each player's sequence is `REG` → `PREP` → `ADJ` → `COMB`; `BUY` is deferred to multiplayer v2. During `COMB`, the opponent/defender takes the `ANT` reaction before the active player declares `ATK`. In v1, the player selected to start by the die completes the sequence first, then the other player; the round is complete when both have finished `ATK`.
-- Use white for `PREP`, red for `ANT`, and green for `ATK`. The hand remains unlimited, so `ADJ` does not discard cards for exceeding a hand-size limit. The indicator reports the current step and does not restrict other actions in this version.
-
-Before implementing turn progression, decide whether this indicator only reports the current phase or also controls which actions are allowed and how the phase advances. These are planned requirements, not implemented behavior.
+See [MULTIPLAYER.md](./MULTIPLAYER.md) for behavior and limitations, and
+[ONLINE_HOSTING.md](./ONLINE_HOSTING.md) for the online deployment plan.

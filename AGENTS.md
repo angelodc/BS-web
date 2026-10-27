@@ -20,10 +20,18 @@ Antes de reiniciar, confirme que o usuario terminou o teste em andamento e
 autorizou a reinicializacao. Se o usuario estiver testando ou nao houver
 autorizacao clara, mantenha o jogo aberto e pergunte antes.
 
-O script pode ser chamado pelo PowerShell com a excecao temporaria de politica:
+O script pode ser chamado pelo PowerShell com a excecao temporaria de politica.
+No Git Bash, `-File` nao repassa o caminho corretamente, entao use `-Command`
+com o caminho absoluto e `-Confirm:$false`:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& 'C:\Users\doug\Projetos\BS-web\restart-godot-game.ps1' -Confirm:\$false"
+```
+
+Em PowerShell nativo, a forma equivalente e:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\restart-godot-game.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& '.\restart-godot-game.ps1' -Confirm:$false"
 ```
 
 Essa excecao vale somente para essa chamada e nao altera a politica permanente

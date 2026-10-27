@@ -14,7 +14,9 @@ no anfitrião (cliente Godot); ele não valida jogadas.
 - Implementado: salas em memória, código de 6 caracteres, `join_room`,
   handshake de protocolo, `/healthz`, `/rooms`, limite de frame/conexões/salas
   por IP, rate limit, heartbeat, allowlist de Origin, expiração de 120 s e logs
-  estruturados.
+  estruturados. A suíte tem 21 testes com clientes `ws` reais.
+- Ainda não publicado em nenhum provedor. O `fly.toml` é um modelo com
+  `app`/`primary_region` de exemplo.
 - Pendente (Fase 4): o cliente Godot ainda não envia `join_room` nem lê
   `?room=CODIGO`. Até lá, o desktop continua usando o relay LAN embutido e o
   `tools/ws_relay.py`.
@@ -174,6 +176,12 @@ fly deploy
 O `fly.toml` aponta o health check para `/healthz`, força HTTPS e usa uma única
 instância. O TLS do provedor termina a conexão; o cliente usa
 `wss://relay.exemplo.com` e o processo escuta em HTTP/WS na porta interna.
+Antes do primeiro deploy, troque `app` e `primary_region` no `fly.toml` (os
+valores atuais, `bs-web-relay` e `gru`, são apenas um exemplo).
+
+O lobby do Netlify precisa da URL **HTTP(S)** do relay em `RELAY_URL`
+(`https://relay.exemplo.com`), porque a Function chama `GET /rooms`; o cliente
+do jogo usa a mesma máquina com `wss://`.
 
 ### Docker
 

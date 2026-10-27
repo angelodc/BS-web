@@ -1,8 +1,9 @@
 # Hospedagem online: Netlify + lobby + relay
 
 Este documento planeja como publicar o Battle Scenes no navegador e oferecer
-descoberta de partidas pela internet. Ele não implementa nada por si só; registra
-decisões, limites e uma ordem de trabalho.
+descoberta de partidas pela internet. Ele registra decisões, limites, uma ordem
+de trabalho e o que já está implementado no repositório. Publicação e integração
+no cliente web continuam pendentes (ver “Estado atual do projeto”).
 
 ## Resposta curta
 
@@ -54,11 +55,23 @@ estado em tempo real.
 - O protocolo já separa transporte e mensagens: `create_room`, `find_match`,
   `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e
   `leave_room`, além do encaminhamento de mensagens entre os dois jogadores.
+- O relay Node.js está implementado em [relay/](./relay/README.md): `join_room`
+  por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites
+  por IP/conexão e mensagem, heartbeat, allowlist de `Origin` e 21 testes com
+  clientes `ws` reais. Usa `ws` + `http` no mesmo processo (Opção A).
+- O lobby do Netlify está implementado localmente:
+  [online/netlify/functions/salas.js](./online/netlify/functions/salas.js)
+  repassa `GET /rooms` com cache de 3 s e devolve `503` quando o relay está
+  fora; [online/site/index.html](./online/site/index.html) lista as salas e
+  monta links `/game/?room=CODIGO`.
 - O host é autoritativo para início, dados, fases e estado público; o relay não
   valida jogadas. Essa limitação está descrita em [MULTIPLAYER.md](./MULTIPLAYER.md)
   e continua valendo no modo online.
 - Já existe um preset HTML5 em [export_presets.cfg](./export_presets.cfg), agora
-  com saída em `online/site/game/index.html`.
+  com saída em `online/site/game/index.html`. O build ainda não foi gerado e os
+  templates de exportação do Godot 3.4.4 precisam ser instalados.
+- O cliente web ainda precisa da Fase 4: `join_room` por código, link `?room=`,
+  endereço padrão `wss://` e guardas para não subir o `LocalRelay` no navegador.
 - O [TODO.md](./TODO.md) já prevê “Exportar para HTML5” e “Hospedagem no Netlify”
   na Fase 4.
 
@@ -146,12 +159,25 @@ Regras:
 
 ## Como testar
 
-Teste local do site antes do deploy:
+Teste local do site antes do deploy, em dois terminais:
+
+```bash
+cd relay
+npm install   # uma vez
+npm start     # relay em http://127.0.0.1:9080
+```
 
 ```bash
 cd online
-netlify dev            # usa netlify.toml, funções e site juntos
+npm install -g netlify-cli   # uma vez
+RELAY_URL=http://127.0.0.1:9080 netlify dev
 ```
+
+`RELAY_URL` precisa ser **HTTP(S)**: a Function faz
+`fetch("${RELAY_URL}/rooms")`. Sem ele, `/api/salas` responde `503` com
+`relay.online = false`. O `wss://` é o endereço usado pelo **cliente do jogo**,
+não pelo proxy. Confira o relay em `http://127.0.0.1:9080/healthz` e
+`/rooms`.
 
 Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
 `online/site/game/` e responde em `http://localhost:8888/game/`.
@@ -182,8 +208,9 @@ Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
 
 - Escolher o provedor do relay. Free para começar: Cloudflare Workers com
   Durable Objects (WebSocket + SQLite, plano Free com limites diários) ou
-  Fly.io/Render com TLS automático. O relay em si precisa ser reescrito para o
-  provedor escolhido; o protocolo JSON não muda.
+  Fly.io/Render com TLS automático. O relay Node.js já está escrito para um
+  processo sempre ligado (Fly/Render/VPS); Cloudflare Workers exigiria adaptar
+  a hospedagem, sem mudar o protocolo JSON.
 - Definir domínios: `play.exemplo.com` (Netlify) e `relay.exemplo.com` (relay).
 - Definir o código de sala e o campo `protocol_version` no handshake.
 - Confirmar que o jogo pode ficar público antes de a autoridade do servidor
@@ -220,7 +247,7 @@ decisão registrada neste documento.
     testes, addons e ferramentas. Excluir `tests/`, `addons/gut/` e `tools/`
     do pacote web e medir o tamanho final do `.pck`.
 - Adicionar `netlify.toml` em `online/` com pasta de publicação e cabeçalhos
-  (o arquivo já existe como esqueleto). Exemplo:
+  (o arquivo já existe com o conteúdo abaixo). Exemplo:
 
 ```toml
 [build]
@@ -267,10 +294,10 @@ desabilitado no web sem erros, e uma partida local desktop continua funcionando.
 
 O `tools/ws_relay.py` atual é útil como referência, mas não deve ir para
 produção como está: usa sockets crus, sem TLS, sem autenticação e sem limites
-de abuso. O provedor escolhido na Fase 0 define a forma: Cloudflare
-Workers/Durable Objects exige adaptar o relay à API de objetos duráveis;
-Fly.io/Render/VPS permite manter Node + `ws`. As opções abaixo pressupõem um
-processo sempre ligado.
+de abuso. A Opção A já está implementada em `relay/`; falta publicá-la. O
+provedor escolhido na Fase 0 define a forma: Cloudflare Workers/Durable Objects
+exige adaptar o relay à API de objetos duráveis; Fly.io/Render/VPS permite
+manter Node + `ws`. As opções abaixo pressupõem um processo sempre ligado.
 
 **Opção A (recomendada): relay Node.js com `ws` + `http`.**
 
@@ -301,7 +328,7 @@ já houver experiência operacional com Python.
 
 Deploy sugerido:
 
-- `Dockerfile` com `node:22-slim` (ou equivalente) e `CMD ["node", "server.js"]`.
+- `Dockerfile` com `node:22-slim` (ou equivalente) e `CMD ["node", "src/server.js"]`.
 - `fly.toml`/`render.yaml` com `internal_port` do relay, health check em
   `/healthz` e TLS automático.
 - Uma única instância, região próxima dos jogadores.
@@ -326,11 +353,12 @@ da exportação HTML5 (Fase 1) e da integração do cliente (Fase 4).
 
 - Netlify Function `GET /api/salas` chama `https://relay.exemplo.com/rooms`
   no servidor e devolve uma lista sanitizada.
-- Cache curto de 2–5 s para reduzir chamadas; se o relay estiver fora, devolver
+- Cache curto de 3 s para reduzir chamadas; se o relay estiver fora, devolver
   `503` com status offline.
 - Nenhum estado de sala é gravado no Netlify; o relay continua sendo a verdade.
-- O esqueleto já existe em [online/netlify/functions/salas.js](./online/netlify/functions/salas.js)
-  e usa a variável de ambiente `RELAY_URL`.
+- A Function está implementada em
+  [online/netlify/functions/salas.js](./online/netlify/functions/salas.js) e usa
+  a variável de ambiente `RELAY_URL` (HTTP/HTTPS, sem `wss://`).
 
 **B. Diretório em Netlify Blobs (adiada, só se precisar de histórico).**
 
@@ -362,22 +390,32 @@ GET /api/salas
       "players": 1,
       "status": "waiting",
       "created_at": "2026-10-26T18:12:00Z",
-      "expires_at": "2026-10-26T18:22:00Z",
-      "protocol": 1
+      "expires_at": ""
     }
   ],
   "relay": { "online": true, "version": "1.0.0" }
 }
 ```
 
+Observações sobre o formato real:
+
+- `protocol` não vai por sala; ele aparece no topo de `GET /rooms` (junto de
+  `version`) e em `GET /healthz`.
+- `expires_at` hoje vem como string vazia: uma sala com o anfitrião conectado
+  não expira. Só depois que os dois saem é que o relay aplica a janela de 120 s
+  para `rejoin_room`, e nesse estado a sala não aparece no lobby.
+- O lobby só lista salas `match` com o anfitrião conectado; salas de retomada
+  (`resume`) são privadas e não aparecem.
+
 Regras do lobby:
 
 - Não devolver IP, porta interna, token de reconexão ou dados de cartas.
-- Validar `code`, `username` e `mode`; limitar taxa por IP.
-- CORS restrito ao domínio do jogo (a página é mesma origem; o jogo desktop
-  pode chamar via HTTPS se necessário).
-- Página `/salas` no Netlify com lista, atualização automática, botão “Entrar”
-  que abre `/?room=CODIGO`, e botão “Copiar link”.
+- A Function é somente leitura e não recebe parâmetros: não valida `code`,
+  `username` ou `mode` nem aplica rate limit próprio. O relay valida esses
+  campos nas mensagens WebSocket e aplica limites por IP/conexão.
+- CORS restrito ao domínio do jogo (a página é mesma origem).
+- Página `/salas` no Netlify com lista, atualização automática a cada 5 s,
+  botão “Entrar” que abre `/game/?room=CODIGO` e botão “Copiar link”.
 - Página inicial deve continuar funcionando sem lobby; se a API falhar, o jogo
   cria/entra por código normalmente.
 
@@ -397,6 +435,11 @@ jogador sair. O lobby só lê. Isso elimina CRUD, limpeza e corrida de entrada.
 
 Critério de aceite: página lista salas reais, remove expiradas, não vaza IPs e
 o link abre o jogo já com o código preenchido.
+
+**Status:** Function `GET /api/salas`, página `/salas` e `netlify.toml` estão
+implementados no repositório e funcionam localmente com `netlify dev` + relay.
+Falta publicar o site e o relay; o link `/game/?room=CODIGO` ainda não é lido
+pelo cliente Godot (Fase 4).
 
 ### Fase 4 — Integração no cliente (2–5 dias)
 
@@ -494,7 +537,8 @@ entra pelo link; uma partida completa funciona; desktop LAN continua intacto.
 1. PR pequeno: guardas de web no `LocalRelay`, endereço padrão `wss://` e
    esconder o campo de relay no build HTML5.
 2. PR: export HTML5 para `online/site/game/` + primeira publicação do
-   `netlify.toml` + página `/salas` lendo o proxy.
+   `netlify.toml` + página `/salas` lendo o proxy. (Function, página e
+   `netlify.toml` já implementados; falta o build e o deploy)
 3. PR: relay público (Node/`ws`) com `join_room` por código, `/healthz` e
    `/rooms`, além dos testes de relay. (implementado em `relay/`; falta deploy)
 4. PR: link `?room=` e integração do código de sala e do lobby no menu do jogo.

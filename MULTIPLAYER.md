@@ -12,7 +12,7 @@ Permitir uma partida local entre dois jogadores, em que ambos acompanhem ao vivo
 
 - A primeira versão é para dois jogadores, P1 e P2, em rede local.
 - O menu deve permitir informar username e procurar ou cancelar uma partida.
-- O jogador que abre/inicia a sala é o anfitrião e P1. Ele deverá ser a autoridade do estado e validar as ações, embora isso ainda não esteja implementado.
+- O jogador que abre/inicia a sala é o anfitrião e P1. Ele é a autoridade do estado para início, dados, fases e estado público; a validação de cada ação pelo anfitrião ainda não está implementada.
 - O username fica salvo entre execuções. Um menu de opções permitirá alterá-lo.
 
 ### Preparação e início
@@ -78,6 +78,7 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 
 - O relay é embutido no jogo ([src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd)) e inicia automaticamente quando o endereço configurado aponta para a própria máquina (por exemplo `127.0.0.1:9080`). Em rede local, a instância do anfitrião escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião. Não é necessário instalar Python para jogar na mesma máquina ou em LAN. Esse relay é um adaptador de desenvolvimento/LAN e não deve ser exposto à internet.
 - O relay [tools/ws_relay.py](./tools/ws_relay.py) continua disponível como alternativa externa. Se já houver um relay escutando na porta local, o jogo reutiliza esse relay em vez de abrir outra porta.
+- Para o modo online existe um relay dedicado em Node.js ([relay/](./relay/README.md)), com `join_room` por código, `protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`. Ele usa o mesmo protocolo JSON e ainda não foi publicado; o plano está em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
 - Ambos aceitam `create_room`, `find_match`, `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e `leave_room`, atribuem `H` (anfitrião/P1) a quem cria a sala e `C` (convidado/P2) a quem entra.
 - Mensagens acima de 12.000 caracteres são divididas em partes `mp_chunk` pelo cliente e remontadas pelo destinatário; o relay externo aceita frames de até 4 MiB.
 - Uma sala com pelo menos um jogador conectado não expira, atendendo à espera sem limite. Quando os dois se desconectam, a sala fica disponível para `rejoin_room` por 120 segundos.
@@ -91,7 +92,7 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - A preparação mostra a biblioteca local de decks salvos e seleciona automaticamente o último deck usado. Se ainda não houver um último deck memorizado e existir apenas um deck salvo, ele é usado. Decks importados do BSDB ficam em cache e são reutilizados sem baixar novamente. O botão `INICIAR` só habilita quando os dois jogadores escolheram decks com exatamente 60 cartas; qualquer um dos dois pode iniciá-lo.
 - Ao iniciar, o anfitrião sorteia dois d6 (repetindo em empate), publica os resultados e quem começa, gera uma semente de embaralhamento e envia tudo ao convidado. Cada cliente monta o próprio deck de forma determinística, embaralha e compra 10 cartas.
 - Se a preparação falhar em um dos clientes, o anfitrião envia `mp_abort` para que os dois encerrem a sessão em vez de um ficar preso no início.
-- O jogo usa uma resolução lógica fixa de `1280x720` em 16:9 (`stretch viewport` com `aspect keep`), então os dois clientes compartilham a mesma geometria de tabuleiro mesmo com janelas ou monitores de tamanhos diferentes. A cena é renderizada em 1280x720 e escalada para a janela; em telas fora de 16:9 aparecem barras pretas. A janela abre em fullscreen na resolução nativa do monitor; `F11` alterna para janela.
+- O jogo usa uma resolução lógica fixa de `1280x720` em 16:9 (`window/stretch/mode="2d"` com `aspect keep`), então os dois clientes compartilham a mesma geometria de tabuleiro mesmo com janelas ou monitores de tamanhos diferentes. A cena é renderizada em 1280x720 e escalada para a janela; em telas fora de 16:9 aparecem barras pretas. No desktop a janela abre em 1280x720 sem bordas (não em fullscreen); `F11` alterna para fullscreen. Para abrir a segunda instância em 960x540, use `run-second-instance.cmd` ou `BS_WINDOWED=1`.
 - O handshake troca tamanho de tela, janela e viewport lógica dos dois jogadores. A preparação mostra essas medidas e o log registra ambas; se as proporções de tela forem diferentes, o log avisa que o jogo vai letterboxar em vez de desalinhar cartas e cursor.
 
 ### Autoridade, fases e desconexão
@@ -105,7 +106,7 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 
 - Apenas `hand` e `deck` são ocultos. `board`, `scenario`, `resources` e `prizes` são públicos e espelhados em coordenadas normalizadas. As cartas do oponente são invertidas em 180° e mantidas dentro da área do campo superior; o Cenário remoto fica centralizado no slot de Cenário.
 - Só pode existir um Cenário ativo entre os dois campos. Ao colocar um Cenário, o Cenário ativo do oponente vai para o Recursos/Descarte do dono. Cada jogada leva uma marca de ordem (relógio lógico) para que a jogada mais recente vença, inclusive quando os dois jogadores jogam quase ao mesmo tempo; em empate, o Cenário do anfitrião permanece. A regra também é reaplicada na retomada de checkpoints, quando o Cenário local é devolvido ao slot `Cenário Ativo`.
-- O slot de Cenário do jogador ocupa exatamente a área de uma carta em campo (`120x192`), sem a borda extra das grades comuns.
+- O slot de Cenário do jogador ocupa exatamente a área de uma carta em campo (`150x210` × `0,55` = `82,5x115,5`), sem a borda extra das grades comuns.
 - Cartas ocultas do oponente são representadas por contadores e posições sem identidade, face ou nome; a identidade só é transmitida quando a carta passa para uma zona pública.
 - O cursor do oponente é enviado a 10 Hz, desenhado espelhado (rotação de 180°) na metade superior, some após 3 segundos sem movimento e exibe apenas o username, sem informação da carta sob o ponteiro.
 - O tabuleiro espelhado exibe o rótulo `CAMPO DO OPONENTE - <username>` e ignora interação do jogador local.
@@ -130,22 +131,25 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - [src/custom/CheckpointList.gd](./src/custom/CheckpointList.gd) — lista de saves para hospedar ou entrar.
 - [src/custom/DeckCatalog.gd](./src/custom/DeckCatalog.gd) — listagem, validação e memória do último deck salvo.
 - [src/custom/MatchHUD.gd](./src/custom/MatchHUD.gd) — preparação, indicador de fases, dados, resoluções e status.
-- [src/custom/DisplayMode.gd](./src/custom/DisplayMode.gd) — fullscreen na resolução nativa, modo janela para o segundo cliente e alternância com `F11`.
-- [tools/ws_relay.py](./tools/ws_relay.py) — relay LAN de salas.
+- [src/custom/DisplayMode.gd](./src/custom/DisplayMode.gd) — janela desktop em 1280x720 (sem bordas quando necessário), 960x540 para o segundo cliente (`BS_WINDOWED=1`) e alternância de fullscreen com `F11`.
+- [tools/ws_relay.py](./tools/ws_relay.py) — relay LAN de salas em Python.
+- [relay/](./relay/README.md) — relay Node.js para o modo online (`join_room`, limites, `/healthz`, `/rooms`).
+- [online/](./online/README.md) — Function e página de lobby do Netlify (proxy de `/rooms`).
 
 ## Como testar
 
 ### Automatizado
 
 - Suite GUT do multiplayer: `tests/integration/test_multiplayer_lobby.gd`, com 17 testes e 72 asserções. Execute pelo painel GUT do editor ou pela cena `tests/cli/tests.tscn` com janela (a execução completa com `--no-window` pode travar neste ambiente).
-- Testes do relay: `python tools/test_ws_relay.py` (14 testes). Neste ambiente não há Python instalado, então eles foram revisados estaticamente, mas não executados.
+- Testes do relay Node.js: `cd relay && npm test` (21 testes com clientes `ws` reais, incluindo `join_room`, sala cheia, código inválido, expiração, protocolo errado, limites e reconexão). Executados e passando em 27/10/2026.
+- Testes do relay Python (legado): `python tools/test_ws_relay.py` (14 testes). Neste ambiente não há Python instalado, então eles foram revisados estaticamente, mas não executados.
 - O relay embutido foi validado em headless com dois clientes WebSocket reais: criação/busca de sala, encaminhamento, queda e reconexão, além da sala de retomada e recusa de terceiro.
 - `src/custom/CGFMain.tscn` foi aberto em modo headless sem erros de script nos módulos de multiplayer.
 
 ### Manual, com dois clientes
 
 1. Para testar na mesma máquina, não é preciso iniciar nada: o relay embutido sobe no primeiro cliente que criar ou procurar a sala. Para jogar em máquinas diferentes, use o IP da máquina do anfitrião e deixe a porta 9080 liberada no firewall. Opcionalmente, execute `python tools/ws_relay.py` em uma máquina central.
-2. Abra duas instâncias do jogo. Na mesma máquina, use `run-second-instance.cmd`, que abre a segunda em janela (o `F5` fica em fullscreen). No menu, informe usernames diferentes e o mesmo endereço (`127.0.0.1:9080` na mesma máquina).
+2. Abra duas instâncias do jogo. Na mesma máquina, use `run-second-instance.cmd`, que define `BS_WINDOWED=1` e abre a segunda em 960x540. O primeiro cliente (`F5`) abre em 1280x720 sem bordas; `F11` alterna para fullscreen. No menu, informe usernames diferentes e o mesmo endereço (`127.0.0.1:9080` na mesma máquina).
 3. Jogador 1 usa **Criar Sala**; jogador 2 usa **Procurar Partida**. Confirme que ambos entram na mesma partida e que o indicador mostra os usernames corretos.
 4. Ao entrar na preparação, confirme que o último deck usado já está selecionado e que **Decks salvos** lista o deck importado. Escolham decks de 60 cartas. Confirme que `INICIAR` só habilita com os dois decks válidos, que qualquer jogador consegue iniciar e que os dois veem os mesmos dados, o mesmo vencedor e as mesmas 10 cartas iniciais (cada um vê a própria mão).
 5. Avancem as fases e confirme rodada, jogador ativo, cores e incremento de rodada após os dois completarem a sequência.
@@ -161,7 +165,8 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - Alterar o username reprotege apenas as cópias locais; as cópias do oponente continuam com o username antigo, então a retomada após renomear um jogador não é reconciliada automaticamente. Saves que não podem ser renomeados sem conflito continuam válidos apenas com o username anterior.
 - Se todos os checkpoints locais de uma partida estiverem ilegíveis, o jogador só pode entrar na sala de retomada do oponente, não hospedar.
 - O relay embutido só inicia para endereços locais; um endereço remoto continua exigindo um relay externo. Se outro processo já ocupa a porta, o jogo tenta usá-lo; se ele não falar este protocolo, a conexão falha com aviso no HUD.
-- Não há transferência de anfitrião, reconexão automática, espectadores, partidas pela internet nem limite de frequência configurável do cursor.
+- O relay Node.js e o lobby do Netlify existem no repositório, mas ainda não foram publicados; o build HTML5 também não foi gerado. O cliente web ainda não tem `join_room` por código, link `?room=` nem as proteções de `LocalRelay` no navegador (Fase 4 de [ONLINE_HOSTING.md](./ONLINE_HOSTING.md)).
+- Não há transferência de anfitrião, reconexão automática, espectadores nem limite configurável da frequência do cursor (fixo em 10 Hz).
 
 ## Roadmap para o modo online
 
@@ -204,15 +209,20 @@ A v1 é LAN, mas o código deve ser tratado como a base de um jogo online; o rel
 - Protocolo JSON separado do transporte e relay que apenas forma salas/encaminha mensagens.
 - `LocalRelay` só inicia para endereço local; um relay remoto continua sendo usado sem alterações.
 - Checkpoints locais e retomada já existem para o modo LAN/offline.
+- Relay Node.js ([relay/](./relay/README.md)) com `join_room` por código, `protocol_version`, `/healthz`, `/rooms`, limites por IP/conexão, heartbeat, allowlist de `Origin` e 21 testes com clientes reais.
+- Function e página de lobby do Netlify ([online/](./online/README.md)) prontas para rodar localmente; o lobby só repassa `/rooms` e não guarda estado.
 
 ### O que precisa mudar antes de abrir para internet
 
-- Autoridade do anfitrião e confiança no cliente.
-- Username como identidade e obfuscação de saves como proteção.
-- Relay embutido sem TLS nem autenticação: nunca expor à internet.
-- Falta de versionamento de protocolo, rate limiting e persistência no servidor.
+- Publicar o relay com TLS/`wss://` e validar dois navegadores em redes diferentes.
+- Gerar o build HTML5 e integrar no cliente web o `join_room` por código, o link `?room=` e as proteções de `LocalRelay` (Fase 4 de [ONLINE_HOSTING.md](./ONLINE_HOSTING.md)).
+- Autoridade no servidor: hoje o anfitrião continua autoritativo e as jogadas são validadas apenas estruturalmente no receptor.
+- Identidade verificada (username é público) e proteção real dos dados ocultos, não obfuscação.
+- Persistência de sessões/partidas para sobreviver a reinício do relay. O relay atual mantém as salas apenas em memória.
 
 ## Estado técnico observado antes da implementação (histórico)
+
+> Registro do que existia antes da v1; foi superado por [Implementação v1](#implementação-v1). Mantido apenas como histórico.
 
 - O cliente Godot usa WebSocket para comunicar-se com o relay.
 - O relay atual forma partidas de dois clientes, atribui os papéis `H` e `C`, encaminha mensagens ao oponente e avisa sobre desconexão. Esses papéis não implementam autoridade do jogo.

@@ -1,0 +1,38 @@
+# Deploy de referência no Fly.io. Ajuste `app` e `primary_region` antes do
+# primeiro deploy e configure a allowlist de Origin com `fly secrets set`.
+app = "bs-web-relay"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "9080"
+  # O proxy do Fly sobrescreve X-Forwarded-For; confiar nele é obrigatório para
+  # os limites por IP. Em exposição direta, mantenha TRUST_PROXY=0.
+  TRUST_PROXY = "1"
+  LOG_LEVEL = "info"
+
+[http_service]
+  internal_port = 9080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 500
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/healthz"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"

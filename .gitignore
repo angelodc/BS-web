@@ -12,3 +12,10 @@ export.cfg
 demo.txt
 reference.json
 .vscode
+
+# Build web (export HTML5)
+online/site/game/
+
+# Relay Node.js
+relay/node_modules/
+relay/.env

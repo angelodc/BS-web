@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Battle Scenes - Salas</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #14161a;
+    color: #e6e6e6;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.4rem; margin: 0; letter-spacing: .04em; }
+  .status { font-size: .85rem; opacity: .75; }
+  .status.offline { color: #f08a8a; }
+  .actions { margin: 24px 0 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+  a.button, button {
+    display: inline-block;
+    padding: 9px 16px;
+    border-radius: 6px;
+    border: 1px solid #3a3f47;
+    background: #1d2127;
+    color: inherit;
+    text-decoration: none;
+    font: inherit;
+    cursor: pointer;
+  }
+  a.button.primary { background: #2b5c3f; border-color: #3b7a54; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid #2a2f36;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: #191d22;
+  }
+  .code { font-family: ui-monospace, monospace; font-weight: 700; letter-spacing: .08em; }
+  .meta { font-size: .82rem; opacity: .7; }
+  .spacer { flex: 1; }
+  .empty { opacity: .6; padding: 18px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Salas abertas</h1>
+    <span id="status" class="status">carregando...</span>
+  </header>
+
+  <div class="actions">
+    <a class="button primary" href="/game/">Abrir o jogo</a>
+    <button type="button" id="refresh">Atualizar</button>
+  </div>
+
+  <ul id="rooms"></ul>
+  <p id="empty" class="empty" hidden>Nenhuma sala aberta agora.</p>
+</main>
+
+<script>
+  const list = document.getElementById("rooms");
+  const empty = document.getElementById("empty");
+  const status = document.getElementById("status");
+  const REFRESH_MS = 5000;
+
+  function roomUrl(code) {
+    return `/game/?room=${encodeURIComponent(code)}`;
+  }
+
+  function render(rooms) {
+    list.textContent = "";
+    empty.hidden = rooms.length > 0;
+    for (const room of rooms) {
+      const item = document.createElement("li");
+
+      const code = document.createElement("span");
+      code.className = "code";
+      code.textContent = room.code;
+
+      const meta = document.createElement("span");
+      meta.className = "meta";
+      const players = room.players === 1 ? "1 jogador" : `${room.players} jogadores`;
+      meta.textContent = `${room.host} - ${room.mode === "resume" ? "retomada" : "partida"} - ${players}`;
+
+      const spacer = document.createElement("span");
+      spacer.className = "spacer";
+
+      const enter = document.createElement("a");
+      enter.className = "button";
+      enter.href = roomUrl(room.code);
+      enter.textContent = "Entrar";
+
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.textContent = "Copiar link";
+      copy.addEventListener("click", () => {
+        navigator.clipboard.writeText(new URL(roomUrl(room.code), location.href).href);
+        copy.textContent = "Copiado";
+        setTimeout(() => { copy.textContent = "Copiar link"; }, 1500);
+      });
+
+      item.append(code, meta, spacer, enter, copy);
+      list.append(item);
+    }
+  }
+
+  async function load() {
+    try {
+      const response = await fetch("/api/salas", { headers: { Accept: "application/json" } });
+      const data = await response.json();
+      const online = data.relay && data.relay.online;
+      status.textContent = online ? "servidor online" : "servidor offline";
+      status.classList.toggle("offline", !online);
+      render(Array.isArray(data.rooms) ? data.rooms : []);
+    } catch (_error) {
+      status.textContent = "servidor offline";
+      status.classList.add("offline");
+      render([]);
+    }
+  }
+
+  document.getElementById("refresh").addEventListener("click", load);
+  load();
+  setInterval(load, REFRESH_MS);
+</script>
+</body>
+</html>

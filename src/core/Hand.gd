@@ -23,6 +23,8 @@ var _excess_discard_pile : Pile = null
 # When "Discard Drawn" or "Discard Oldest" is specified
 # in excess_cards
 export var excess_discard_pile_name : String
+# Scale applied to the cards while they rest in this hand
+export var card_display_scale := CFConst.HAND_CARD_SCALE
 # The maximum hand size. What happens if this is exceeded is determined
 # by `excess_cards`
 export var hand_size := 10
@@ -180,13 +182,13 @@ func re_place() -> void:
 	# If the hand is oriented horizontally, we reduce its size by other
 	# containers on the same row
 	if "top" in get_groups() or "bottom" in get_groups():
-		$Control.rect_size.x = get_viewport().size.x - others_rect_x
+		$Control.rect_size.x = get_viewport().get_visible_rect().size.x - others_rect_x
 		position.x = start_pos_left
 		$Control.rect_size.y = card_size.y
 	# If the hand is oriented vertically, we reduce its size by other
 	# containers on the same column
 	if "left" in get_groups() or "right" in get_groups():
-		$Control.rect_size.y = get_viewport().size.y - others_rect_y
+		$Control.rect_size.y = get_viewport().get_visible_rect().size.y - others_rect_y
 		position.x = start_pos_top
 		$Control.rect_size.x = card_size.x
 	if placement == Anchors.CONTROL:

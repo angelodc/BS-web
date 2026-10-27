@@ -25,6 +25,8 @@ font_data = ExtResource( 2 )
 "placement_grid",
 ]]
 self_modulate = Color( 1, 1, 1, 0.121569 )
+mouse_filter = 2
+z_index = -1
 custom_styles/panel = SubResource( 1 )
 script = ExtResource( 3 )
 __meta__ = {
@@ -36,6 +38,7 @@ margin_left = 2.0
 margin_top = 2.0
 margin_right = 122.0
 margin_bottom = 194.0
+mouse_filter = 2
 custom_constants/vseparation = 5
 custom_constants/hseparation = 5
 columns = 6
@@ -51,6 +54,7 @@ margin_left = 2.0
 margin_top = 2.0
 margin_right = 122.0
 margin_bottom = 194.0
+mouse_filter = 2
 
 [node name="Label" type="Label" parent="Control"]
 modulate = Color( 1, 1, 1, 0.627451 )

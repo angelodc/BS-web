@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=2]
+[gd_scene load_steps=10 format=2]
 
 [ext_resource path="res://themes/darktheme/darktheme.theme" type="Theme" id=1]
 [ext_resource path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" type="DynamicFontData" id=2]
@@ -6,6 +6,7 @@
 [ext_resource path="res://src/custom/CGFDeckbuilder/CGFDeckBuilder.tscn" type="PackedScene" id=4]
 [ext_resource path="res://src/custom/CGFDeckbuilder/CGFCardLibrary.tscn" type="PackedScene" id=5]
 [ext_resource path="res://src/custom/BSDBDeckImportDialog.tscn" type="PackedScene" id=6]
+[ext_resource path="res://src/custom/CheckpointList.tscn" type="PackedScene" id=7]
 
 [sub_resource type="StyleBoxFlat" id=1]
 bg_color = Color( 0.145098, 0.145098, 0.145098, 1 )
@@ -19,14 +20,16 @@ margin_right = 1280.0
 margin_bottom = 720.0
 theme = ExtResource( 1 )
 script = ExtResource( 3 )
-__meta__ = {
-"_edit_use_anchors_": false
-}
 
 [node name="DeckBuilder" parent="." instance=ExtResource( 4 )]
+margin_left = -2.0
+margin_top = 4.0
+margin_bottom = -2.0
 custom_styles/panel = SubResource( 1 )
 
 [node name="CardLibrary" parent="." instance=ExtResource( 5 )]
+margin_right = -54.0
+margin_bottom = 52.0
 custom_styles/panel = SubResource( 1 )
 property_width_exceptions = {
 "Cost": 30,
@@ -35,51 +38,55 @@ property_width_exceptions = {
 
 [node name="DeckImportDialog" parent="." instance=ExtResource( 6 )]
 
+[node name="CheckpointList" parent="." instance=ExtResource( 7 )]
+
+[node name="ActionError" type="AcceptDialog" parent="."]
+window_title = "Aviso"
+dialog_text = "Mensagem"
+
 [node name="MainMenu" type="MarginContainer" parent="."]
-anchor_right = 1.0
-anchor_bottom = 1.0
-__meta__ = {
-"_edit_use_anchors_": false
-}
+anchor_right = 1.19
+anchor_bottom = 1.181
+margin_right = -242.2
+margin_bottom = -127.32
 
 [node name="ColorRect" type="ColorRect" parent="MainMenu"]
-margin_right = 1280.0
-margin_bottom = 720.0
+margin_right = 1281.0
+margin_bottom = 723.0
 color = Color( 0.0705882, 0.0705882, 0.0705882, 1 )
 
 [node name="VBox" type="VBoxContainer" parent="MainMenu"]
-margin_right = 1280.0
-margin_bottom = 720.0
+margin_right = 1281.0
+margin_bottom = 723.0
 
 [node name="Margin" type="MarginContainer" parent="MainMenu/VBox"]
-margin_right = 1280.0
-margin_bottom = 358.0
+margin_right = 1281.0
+margin_bottom = 356.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 custom_constants/margin_top = 90
 
 [node name="Label" type="Label" parent="MainMenu/VBox/Margin"]
-margin_top = 108.0
-margin_right = 1280.0
-margin_bottom = 340.0
+margin_top = 107.0
+margin_right = 1281.0
+margin_bottom = 339.0
 custom_fonts/font = SubResource( 2 )
 text = "Godot 
 Card Game Framework"
 align = 1
 
 [node name="Center" type="CenterContainer" parent="MainMenu/VBox"]
-margin_top = 361.0
-margin_right = 1280.0
-margin_bottom = 720.0
+margin_top = 359.0
+margin_right = 1281.0
+margin_bottom = 723.0
 size_flags_vertical = 3
 
 [node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
 margin_left = 500.0
-margin_top = 0.0
 margin_right = 780.0
-margin_bottom = 355.0
+margin_bottom = 364.0
 rect_min_size = Vector2( 280, 0 )
-custom_constants/separation = 10
+custom_constants/separation = 4
 
 [node name="PlayerName" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
 margin_right = 280.0
@@ -88,63 +95,75 @@ max_length = 24
 placeholder_text = "Seu username"
 
 [node name="RelayAddress" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 37.0
+margin_top = 31.0
 margin_right = 280.0
-margin_bottom = 64.0
+margin_bottom = 58.0
 text = "127.0.0.1:9080"
 max_length = 256
 placeholder_text = "IP do relay na rede local"
 
 [node name="MatchStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 74.0
+margin_top = 62.0
 margin_right = 280.0
-margin_bottom = 96.0
+margin_bottom = 85.0
 text = "Desconectado"
 autowrap = true
 
 [node name="SinglePlayerDemo" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 106.0
+margin_top = 89.0
 margin_right = 280.0
-margin_bottom = 133.0
+margin_bottom = 116.0
 text = "Single Player Demo"
 __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 143.0
+[node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 120.0
 margin_right = 280.0
-margin_bottom = 170.0
+margin_bottom = 147.0
+text = "Criar Sala"
+
+[node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 151.0
+margin_right = 280.0
+margin_bottom = 178.0
 text = "Procurar Partida"
 
-[node name="DeckFromLink" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 180.0
+[node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 182.0
 margin_right = 280.0
-margin_bottom = 207.0
-text = "Play Deck from Link"
+margin_bottom = 209.0
+text = "Iniciar jogo salvo"
+
+[node name="SavedDecks" type="MenuButton" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 213.0
+margin_right = 280.0
+margin_bottom = 240.0
+text = "Decks salvos"
 
 [node name="Deckbuilder" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 217.0
+margin_top = 244.0
 margin_right = 280.0
-margin_bottom = 244.0
+margin_bottom = 271.0
 text = "Deck Builder"
 
 [node name="CardLibrary" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 254.0
+margin_top = 275.0
 margin_right = 280.0
-margin_bottom = 281.0
+margin_bottom = 302.0
 text = "Card Library"
 
 [node name="GUT" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 291.0
+margin_top = 306.0
 margin_right = 280.0
-margin_bottom = 318.0
+margin_bottom = 333.0
 text = "Tests"
 
 [node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 328.0
+margin_top = 337.0
 margin_right = 280.0
-margin_bottom = 355.0
+margin_bottom = 364.0
 text = "Exit"
 
 [node name="MenuTween" type="Tween" parent="."]

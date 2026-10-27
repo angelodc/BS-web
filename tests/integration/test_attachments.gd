@@ -34,7 +34,7 @@ class TestAttachAndSwitch:
 				"Attaching card turns attach highlights off")
 
 		card = cards[2]
-		yield(drag_drop(card,Vector2(410,310)), 'completed')
+		yield(drag_drop(card,Vector2(370,310)), 'completed')
 		assert_almost_eq(card.global_position,cards[0].global_position
 				+ Vector2(0,2)
 				* card.get_node('Control').rect_size.y
@@ -91,7 +91,7 @@ class TestAttachAndSwitch:
 		yield(yield_to(card._tween, "tween_all_completed", 1), YIELD)
 		assert_almost_eq(card_prev_pos,card.global_position, Vector2(2,2),
 				"After dropping an attached card, it returns to the parent host")
-		yield(drag_drop(card,Vector2(400,600)), 'completed')
+		yield(drag_drop(card,Vector2(400,650)), 'completed')
 		assert_null(card.current_host_card,
 				"Attachment clears out correctly when removed from table")
 		assert_eq(2,len(cards[0].attachments),
@@ -169,7 +169,7 @@ class TestMultiHostHover:
 		yield(yield_for(0.3), YIELD)
 		assert_true(cards[2].highlight.visible,
 				"Card hovering over two or more with attachment flag on, highlights only the top one")
-		board._UT_interpolate_mouse_move(Vector2(300,100),card.global_position,10)
+		board._UT_interpolate_mouse_move(Vector2(270,100),card.global_position,10)
 		yield(yield_for(0.3), YIELD)
 		assert_false(cards[2].highlight.visible,
 				"Card leaving the hovering of a card, turns attach highlights off")
@@ -195,7 +195,7 @@ class TestAttachmentNodeOrder:
 		assert_true(host_card.get_index() > attached_cards[0].get_index(), 
 			"Card attached behind host card comes before host parent node heirarchy")
 			
-		yield(drag_drop(attached_cards[0], Vector2(400,600)), "completed")	
+		yield(drag_drop(attached_cards[0], Vector2(400,650)), "completed")	
 		yield(yield_for(0.1), YIELD)
 		
 		attached_cards[0].attachment_mode = Card.AttachmentMode.ATTACH_IN_FRONT
@@ -204,7 +204,7 @@ class TestAttachmentNodeOrder:
 		assert_true(host_card.get_index() < attached_cards[0].get_index(), 
 			"Card attached above host card comes after host parent node heirarchy")
 			
-		yield(drag_drop(attached_cards[0], Vector2(400,600)), "completed")	
+		yield(drag_drop(attached_cards[0], Vector2(400,650)), "completed")	
 		yield(yield_for(0.1), YIELD)
 		
 		for attached_card in attached_cards:
@@ -240,7 +240,7 @@ class TestAttachmentNodeOrder:
 		
 		#move cards back to hand and then reattach with other attach mode
 		for attached_card in attached_cards:
-			yield(drag_drop(attached_card, Vector2(400,600)), "completed")
+			yield(drag_drop(attached_card, Vector2(400,650)), "completed")
 		
 		for attached_card in attached_cards:
 			attached_card.attachment_mode = Card.AttachmentMode.ATTACH_IN_FRONT
@@ -308,7 +308,8 @@ class TestBattleScenesAttachmentStack:
 
 	func test_clicking_discard_does_not_open_resource_popup() -> void:
 		assert_false(discard.is_popup_open)
-		assert_false(discard.view_button.visible)
+		assert_true(discard.view_button.visible,
+				"Discard keeps its View button for browsing resources")
 		assert_false(discard.view_sorted_button.visible)
 		assert_false(discard.shuffle_button.visible)
 		assert_true(discard.get_node("Control/ManipulationButtons/SwapResource").visible)

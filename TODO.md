@@ -36,8 +36,8 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 *   A sequência das demais tarefas continua sujeita a alinhamento antes de cada etapa.
 
 ### 🃏 Fase 1: Mecânicas Únicas do Battle Scenes (Singleplayer Local)
-*   [x] **Campo de jogo (2 jogadores, oponente visual):** A metade superior reserva um campo espelhado sem cartas ou interações; o campo interativo do jogador atual fica na metade inferior. A Cena contém Personagens/Suportes e um único Cenário ativo; um novo Cenário envia o anterior a Recursos/Descarte. Recursos ficam visíveis para todos e, ao clicar, abrem em uma segunda mão para selecionar anexos. Prêmios têm marcador da soma de `ENERGIA`, sem `ENERGIA_EXTRA`. Limbo segue junto de Recursos/Descarte.
-    *   **Estado:** Implementados o layout dividido, as zonas espelhadas apenas visuais do oponente, a expansão de Recursos por clique, a exigência de `ENERGIA` para Personagens/Suportes e a seleção automática de anexos. Cancelar a seleção devolve a carta principal à Mão. A validação visual da nova divisão ainda está pendente no Godot.
+*   [x] **Campo de jogo (2 jogadores, oponente visual):** A metade superior mostra o campo espelhado do oponente, com as cartas públicas dele viradas 180° e arrastáveis na Cena; o campo interativo do jogador atual fica na metade inferior. A Cena contém Personagens/Suportes e um único Cenário ativo; um novo Cenário envia o anterior a Recursos/Descarte. Recursos ficam visíveis para todos e, ao clicar, abrem em uma segunda mão para selecionar anexos. Prêmios são uma área de uma carta por jogador, com o mesmo empilhamento de Recursos, apenas o botão **Ver** e contador da soma de `ENERGIA` dos personagens derrotados (sem `ENERGIA_EXTRA`). Limbo segue junto de Recursos/Descarte.
+    *   **Estado:** Implementados o layout dividido, a Cena em 3 colunas × 2 linhas por jogador (3×4 no total), as zonas espelhadas do oponente, os botões **Ver** para Recursos e Prêmios remotos e o arraste das cartas da Cena do oponente. Os Prêmios usam escala de carta do tabuleiro (0,8) e o rótulo `Energia` soma `ENERGIA`. A expansão de Recursos por clique, a exigência de `ENERGIA` para Personagens/Suportes e a seleção automática de anexos seguem implementadas. Cancelar a seleção devolve a carta principal à Mão. Testes automatizados de grade, pilhas e multiplayer passam; a validação visual no Godot com dois clientes ainda está pendente.
 *   [x] **Sistema de Capacitação pelo Menu de Ações:** Ao passar o mouse sobre um personagem em campo, exibir apenas as ações válidas de capacitar/incapacitar entre `-90°`, `0°` e `+90°`, conforme `BATTLE_SCENES_DESIGN.md`.
     *   **Estado:** Cartas de demonstração marcadas como personagens; `Capacitar`/`Incapacitar` alternam posições `-90°`/`0°`/`+90°` e mostram apenas a ação oposta nas posições inclinadas; `Escudo` disponível para personagens. Validação concluída no fluxo de uso local.
     *   **Correção adicional:** As duas cenas do tabuleiro apontavam para um caminho incorreto da fonte Comfortaa; os caminhos agora correspondem ao arquivo existente em `fonts/comfortaa/`.
@@ -47,9 +47,9 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 *   [x] **Exibição de Anexos e Troca:** Cartas anexadas empilhadas para baixo sob a carta principal, com 5% da borda inferior de cada anexo visível; a carta principal fica por cima. Anexos não giram com a carta principal. Botão **Trocar** em Recursos/Descarte funcionando para substituir anexos de Personagem.
 *   [ ] **Contador de Energia sobre Personagem:** Criar um contador numérico sobre o Personagem mostrando a quantidade de energias carregadas.
 *   [ ] **Lógica de Dano, Nocaute e Vitória:**
-    *   [ ] Criar função para tirar energias carregadas quando o personagem sofrer dano e mandá-las para o descarte.
-    *   [ ] Validar Nocaute: quando as energias zerarem, mover o herói para os prêmios.
-    *   [ ] Checar Vitória: se a soma da energia inicial dos cards na zona de Prêmios chegar a 15, disparar a tela de vitória.
+    *   [ ] Criar função para tirar energias carregadas quando o personagem sofrer dano e mandá-las para o descarte do dono.
+    *   [ ] Validar Nocaute: quando as energias zerarem, devolver as cartas anexadas ao descarte do dono e mover a carta do personagem para a área de Prêmios do adversário, não para a do dono.
+    *   [ ] Checar Vitória: quando a soma da energia inicial (`ENERGIA`) dos personagens na área de Prêmios de um jogador chegar a 15, disparar a tela de vitória desse jogador.
 
 ### ✅ Base Funcional Validada
 *   [x] **Deck → Mão → Cena**

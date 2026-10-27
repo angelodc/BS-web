@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=2]
+[gd_scene load_steps=16 format=2]
 
 [ext_resource path="res://src/custom/CGFDiscard.gd" type="Script" id=1]
 [ext_resource path="res://src/core/Pile.tscn" type="PackedScene" id=2]
@@ -28,6 +28,9 @@ font_data = ExtResource( 9 )
 
 [sub_resource type="StyleBoxFlat" id=3]
 bg_color = Color( 0.145098, 0.145098, 0.145098, 1 )
+
+[sub_resource type="RectangleShape2D" id=4]
+extents = Vector2( 60, 84 )
 
 [node name="Board" type="Control"]
 anchor_right = 1.0
@@ -164,37 +167,54 @@ margin_top = 52.0
 margin_bottom = 75.0
 
 [node name="Prêmios" parent="." instance=ExtResource( 2 )]
-position = Vector2( 1124, 360 )
+position = Vector2( 1139, 540 )
 placement = 0
-pile_name = "Prêmios (Neutro)"
+pile_name = "Prêmios"
 faceup_cards = true
+card_size = Vector2( 120, 168 )
+card_display_scale = 0.8
+
+[node name="CollisionShape2D" parent="Prêmios" index="1"]
+position = Vector2( 60, 84 )
+shape = SubResource( 4 )
 
 [node name="VBoxContainer" parent="Prêmios/Control/CenterContainer" index="0"]
-margin_right = 150.0
+margin_right = 120.0
 margin_bottom = 109.0
 
 [node name="Label" parent="Prêmios/Control/CenterContainer/VBoxContainer" index="0"]
-margin_right = 150.0
+margin_right = 120.0
 
 [node name="PanelContainer" parent="Prêmios/Control/CenterContainer/VBoxContainer" index="1"]
+visible = false
 margin_top = 32.0
-margin_right = 150.0
+margin_right = 120.0
 margin_bottom = 61.0
 
 [node name="CenterContainer" parent="Prêmios/Control/CenterContainer/VBoxContainer/PanelContainer" index="0"]
-margin_right = 150.0
+margin_right = 120.0
 
 [node name="CardCount" parent="Prêmios/Control/CenterContainer/VBoxContainer/PanelContainer/CenterContainer" index="0"]
-margin_right = 150.0
+margin_right = 120.0
+
+[node name="View" parent="Prêmios/Control/ManipulationButtons" index="0"]
+rect_min_size = Vector2( 50, 27 )
+text = "Ver"
+
+[node name="ViewSorted" parent="Prêmios/Control/ManipulationButtons" index="1"]
+visible = false
+
+[node name="Shuffle" parent="Prêmios/Control/ManipulationButtons" index="2"]
+visible = false
 
 [node name="PrizeEnergyLabel" type="Label" parent="."]
-margin_left = 1060.0
-margin_top = 335.0
-margin_right = 1275.0
-margin_bottom = 360.0
+margin_left = 1139.0
+margin_top = 680.0
+margin_right = 1259.0
+margin_bottom = 704.0
 custom_fonts/font = SubResource( 2 )
-align = 2
-text = "Energia dos Prêmios: 0"
+align = 1
+text = "Energia: 0"
 
 [node name="Hand" parent="." instance=ExtResource( 3 )]
 position = Vector2( 170, 475 )
@@ -285,142 +305,166 @@ __meta__ = {
 }
 
 [node name="PlacementGridDemo" parent="." instance=ExtResource( 7 )]
-margin_left = 155.0
+margin_left = 453.0
 margin_top = 360.0
-margin_right = 902.0
-margin_bottom = 556.0
-rect_min_size = Vector2( 747, 196 )
+margin_right = 827.0
+margin_bottom = 705.0
+rect_min_size = Vector2( 374, 345 )
 highlight = Color( 0.985156, 0, 1.3, 1.3 )
 
 [node name="ModifiedLabelGrid" parent="." instance=ExtResource( 8 )]
-margin_left = 920.0
+margin_left = 1139.0
 margin_top = 360.0
-margin_right = 1042.0
-margin_bottom = 556.0
-rect_min_size = Vector2( 122, 196 )
+margin_right = 1259.0
+margin_bottom = 528.0
+rect_min_size = Vector2( 120, 168 )
 
 [node name="OpponentFieldVisual" type="Control" parent="."]
 anchor_right = 1.0
-margin_bottom = 355.0
+margin_bottom = 328.0
 mouse_filter = 2
 z_index = -1
 
 [node name="OpponentFieldBackground" type="ColorRect" parent="OpponentFieldVisual"]
 anchor_right = 1.0
-margin_top = 175.0
-margin_bottom = 355.0
+margin_top = 80.0
+margin_bottom = 328.0
 mouse_filter = 2
 color = Color( 0.12, 0.14, 0.2, 0.42 )
 
 [node name="OpponentHandBackground" type="ColorRect" parent="OpponentFieldVisual"]
 margin_left = 170.0
-margin_top = 20.0
 margin_right = 1110.0
-margin_bottom = 145.0
+margin_bottom = 80.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.4 )
 
 [node name="OpponentHandLabel" type="Label" parent="OpponentFieldVisual"]
 margin_left = 180.0
-margin_top = 24.0
+margin_top = 2.0
 margin_right = 430.0
-margin_bottom = 47.0
+margin_bottom = 22.0
 mouse_filter = 2
 text = "Mão do Oponente"
 
 [node name="OpponentResourcesBackground" type="ColorRect" parent="OpponentFieldVisual"]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -155.0
-margin_top = 20.0
-margin_right = -10.0
-margin_bottom = 145.0
+margin_left = -156.0
+margin_top = 86.0
+margin_right = 0.0
+margin_bottom = 200.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.4 )
 
 [node name="OpponentResourcesLabel" type="Label" parent="OpponentFieldVisual"]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -151.0
-margin_top = 24.0
-margin_right = -10.0
-margin_bottom = 47.0
+margin_left = -152.0
+margin_top = 90.0
+margin_right = -48.0
+margin_bottom = 113.0
 mouse_filter = 2
 text = "Recursos / Descarte"
 
+[node name="OpponentResourcesView" type="Button" parent="OpponentFieldVisual"]
+anchor_left = 1.0
+anchor_right = 1.0
+margin_left = -54.0
+margin_top = 89.0
+margin_right = -4.0
+margin_bottom = 113.0
+text = "Ver"
+
 [node name="OpponentFieldLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 15.0
-margin_top = 175.0
-margin_right = 470.0
-margin_bottom = 198.0
+margin_left = 150.0
+margin_top = 305.0
+margin_right = 420.0
+margin_bottom = 328.0
 mouse_filter = 2
 text = "CAMPO DO OPONENTE - VISUAL"
 
 [node name="OpponentPrizes" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 10.0
-margin_top = 205.0
-margin_right = 145.0
-margin_bottom = 350.0
+margin_left = 18.0
+margin_top = 6.0
+margin_right = 141.0
+margin_bottom = 170.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentPrizesLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 14.0
-margin_top = 211.0
-margin_right = 145.0
-margin_bottom = 234.0
+margin_left = 22.0
+margin_top = 10.0
+margin_right = 105.0
+margin_bottom = 33.0
 mouse_filter = 2
 text = "Prêmios"
 
+[node name="OpponentPrizesView" type="Button" parent="OpponentFieldVisual"]
+margin_left = 86.0
+margin_top = 9.0
+margin_right = 137.0
+margin_bottom = 33.0
+text = "Ver"
+
+[node name="OpponentPrizesEnergy" type="Label" parent="OpponentFieldVisual"]
+margin_left = 18.0
+margin_top = 146.0
+margin_right = 141.0
+margin_bottom = 170.0
+mouse_filter = 2
+align = 1
+text = "Energia: 0"
+
 [node name="OpponentScenario" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 155.0
-margin_top = 205.0
-margin_right = 290.0
-margin_bottom = 350.0
+margin_left = 21.0
+margin_top = 178.0
+margin_right = 141.0
+margin_bottom = 328.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentScenarioLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 159.0
-margin_top = 211.0
-margin_right = 290.0
-margin_bottom = 234.0
+margin_left = 25.0
+margin_top = 182.0
+margin_right = 138.0
+margin_bottom = 205.0
 mouse_filter = 2
 text = "Cenário"
 
 [node name="OpponentScene" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 300.0
-margin_top = 205.0
-margin_right = 1045.0
-margin_bottom = 350.0
+margin_left = 211.0
+margin_top = 80.0
+margin_right = 1069.0
+margin_bottom = 328.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentSceneLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 310.0
-margin_top = 211.0
-margin_right = 620.0
-margin_bottom = 234.0
+margin_left = 221.0
+margin_top = 84.0
+margin_right = 531.0
+margin_bottom = 107.0
 mouse_filter = 2
 text = "Cena"
 
 [node name="OpponentDeck" type="ColorRect" parent="OpponentFieldVisual"]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -145.0
-margin_top = 205.0
-margin_right = -10.0
-margin_bottom = 350.0
+margin_left = -156.0
+margin_top = 206.0
+margin_right = 0.0
+margin_bottom = 328.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentDeckLabel" type="Label" parent="OpponentFieldVisual"]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -141.0
-margin_top = 211.0
-margin_right = -10.0
-margin_bottom = 234.0
+margin_left = -152.0
+margin_top = 210.0
+margin_right = -48.0
+margin_bottom = 233.0
 mouse_filter = 2
 text = "Deck"
 

@@ -1,7 +1,12 @@
 extends CardFront
 
+const VALID_TYPES := ["Personagem", "Suporte", "Habilidade", "Cenário"]
+const LEGEND_COLOUR := Color(1, 1, 1, 1)
+const LEGEND_ERROR_COLOUR := Color(1, 0.35, 0.35, 1)
+
 onready var card_image: TextureRect = $CardImage
 onready var card_text_container: MarginContainer = $Margin
+onready var type_legend: Label = $TypeLegend
 
 func _ready() -> void:
 	_card_text = find_node("CardText")
@@ -21,7 +26,8 @@ func _ready() -> void:
 	card_label_min_sizes["Type"] = Vector2(CFConst.CARD_SIZE.x - 4, 13)
 	card_label_min_sizes["Tags"] = Vector2(CFConst.CARD_SIZE.x - 4, 17)
 	card_label_min_sizes["Requirements"] = Vector2(CFConst.CARD_SIZE.x - 4, 11)
-	card_label_min_sizes["Abilities"] = Vector2(CFConst.CARD_SIZE.x - 4, 120)
+	card_label_min_sizes["Abilities"] = Vector2(
+			CFConst.CARD_SIZE.x - 4, CFConst.CARD_SIZE.y - 100)
 	card_label_min_sizes["Cost"] = Vector2(16,16)
 	card_label_min_sizes["Power"] = Vector2(16,16)
 
@@ -43,6 +49,33 @@ func _ready() -> void:
 				original_font_sizes[label] = 25
 			_:
 				original_font_sizes[label] = 16
+
+	if not card_owner.is_connected("state_changed", self, "_on_card_state_changed"):
+		# warning-ignore:return_value_discarded
+		card_owner.connect("state_changed", self, "_on_card_state_changed")
+	call_deferred("_refresh_type_legend")
+
+
+func _on_card_state_changed(_card, _old_state, _new_state) -> void:
+	_refresh_type_legend()
+
+
+# The legend only exists to spot bad type data on cards while they are in hand.
+func _refresh_type_legend() -> void:
+	if not is_instance_valid(card_owner):
+		return
+	var in_hand: bool = cfc.NMAP.has("hand") \
+			and card_owner.get_parent() == cfc.NMAP.hand
+	type_legend.visible = in_hand
+	if not in_hand:
+		return
+	var card_type := str(card_owner.properties.get("_tipo", "")).strip_edges()
+	if card_type in VALID_TYPES:
+		type_legend.text = card_type
+		type_legend.add_color_override("font_color", LEGEND_COLOUR)
+	else:
+		type_legend.text = "SEM TIPO" if card_type.empty() else card_type
+		type_legend.add_color_override("font_color", LEGEND_ERROR_COLOUR)
 
 
 func load_card_image(image_path: String) -> void:

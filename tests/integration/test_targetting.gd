@@ -16,11 +16,23 @@ func before_each():
 	yield(yield_for(0.1), YIELD)
 
 
+# Moves the targeting arrow onto the target card, retrying because the hand
+# reorganizes while the virtual mouse crosses it.
+func hover_target(source: Card, target: Card) -> void:
+	for _attempt in range(4):
+		var target_point: Vector2 = target.global_position + Vector2(10, 10)
+		board._UT_interpolate_mouse_move(target_point,
+				source.global_position if _attempt == 0 else board._UT_mouse_position, 3)
+		yield(yield_for(0.6), YIELD)
+		if target.highlight.visible:
+			break
+
+
 func test_targetting():
 	var card: Card
 	card = cards[0]
 	card.targeting_arrow.initiate_targeting()
-	yield(move_mouse(cards[4].global_position), 'completed')
+	yield(hover_target(card, cards[4]), 'completed')
 	assert_lt(0,card.targeting_arrow.get_point_count(),
 			"test that TargetLine has length higher than 1 while active")
 	assert_true(card.targeting_arrow.get_node("ArrowHead").visible,
@@ -42,8 +54,7 @@ func test_targetting():
 	yield(table_move(cards[3],Vector2(300,300)), 'completed')
 	yield(table_move(cards[2],Vector2(350,400)), 'completed')
 	card.targeting_arrow.initiate_targeting()
-	board._UT_interpolate_mouse_move(cards[2].global_position,card.global_position,3)
-	yield(yield_for(0.6), YIELD)
+	yield(hover_target(card, cards[2]), 'completed')
 	assert_true(cards[2].highlight.visible,
 			"test that hovering over multiple cards selects the top one")
 	assert_false(cards[3].highlight.visible,
@@ -54,20 +65,17 @@ func test_targetting():
 
 	card = cards[2]
 	card.targeting_arrow.initiate_targeting()
-	board._UT_interpolate_mouse_move(cards[3].global_position,card.global_position,3)
-	yield(yield_for(0.6), YIELD)
+	yield(hover_target(card, cards[3]), 'completed')
 	card.targeting_arrow.complete_targeting()
 	assert_eq(card.targeting_arrow.target_object,cards[3],
 			"Test that card on board can target card on board")
 	card.targeting_arrow.initiate_targeting()
-	board._UT_interpolate_mouse_move(cards[2].global_position,card.global_position,3)
-	yield(yield_for(0.6), YIELD)
+	yield(hover_target(card, cards[2]), 'completed')
 	card.targeting_arrow.complete_targeting()
 	assert_eq(card.targeting_arrow.target_object,cards[2],
 			"Test that card can target itself")
 	card.targeting_arrow.initiate_targeting()
-	board._UT_interpolate_mouse_move(cards[1].global_position,card.global_position,3)
-	yield(yield_for(0.6), YIELD)
+	yield(hover_target(card, cards[1]), 'completed')
 	card.targeting_arrow.complete_targeting()
 	assert_eq(card.targeting_arrow.target_object,cards[1],
 			"Test that card on board can target card in hand")

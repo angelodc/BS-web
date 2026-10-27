@@ -1,6 +1,6 @@
 # Planejamento do Multiplayer
 
-Este documento reúne os requisitos e decisões confirmados para o multiplayer, separa o que já existe do que ainda precisa ser feito e registra as perguntas em aberto. É planejamento: nada descrito como futuro aqui deve ser entendido como implementado.
+Este documento reúne os requisitos e decisões confirmados para o multiplayer, separa o que já existe do que ainda precisa ser feito e registra as perguntas em aberto. As seções de requisitos e plano registram o planejamento original; o estado real da v1 está em [Implementação v1](#implementação-v1).
 
 ## Objetivo
 
@@ -70,7 +70,149 @@ Permitir uma partida local entre dois jogadores, em que ambos acompanhem ao vivo
 - Se um checkpoint estiver corrompido, tratar o checkpoint íntegro disponível como oficial e continuar a partir dele. A implementação precisa verificar que esse checkpoint contém ou consegue recuperar os dados privados necessários dos dois jogadores; se não contiver, não pode tratar a retomada como completa.
 - Se não houver nenhum checkpoint íntegro, bloquear a retomada, informar que o save não pode ser restaurado e oferecer iniciar uma nova partida.
 
-## Estado técnico observado
+## Implementação v1
+
+Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida é LAN, para dois jogadores, e o anfitrião é quem cria a sala.
+
+### Transporte e salas
+
+- O relay é embutido no jogo ([src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd)) e inicia automaticamente quando o endereço configurado aponta para a própria máquina (por exemplo `127.0.0.1:9080`). Em rede local, a instância do anfitrião escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião. Não é necessário instalar Python para jogar na mesma máquina ou em LAN. Esse relay é um adaptador de desenvolvimento/LAN e não deve ser exposto à internet.
+- O relay [tools/ws_relay.py](./tools/ws_relay.py) continua disponível como alternativa externa. Se já houver um relay escutando na porta local, o jogo reutiliza esse relay em vez de abrir outra porta.
+- Ambos aceitam `create_room`, `find_match`, `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e `leave_room`, atribuem `H` (anfitrião/P1) a quem cria a sala e `C` (convidado/P2) a quem entra.
+- Mensagens acima de 12.000 caracteres são divididas em partes `mp_chunk` pelo cliente e remontadas pelo destinatário; o relay externo aceita frames de até 4 MiB.
+- Uma sala com pelo menos um jogador conectado não expira, atendendo à espera sem limite. Quando os dois se desconectam, a sala fica disponível para `rejoin_room` por 120 segundos.
+- O relay não valida jogadas nem mantém estado oficial: ele apenas forma salas e encaminha mensagens.
+
+### Menu, preparação e início
+
+- O menu permite informar username e endereço do relay (padrão `127.0.0.1:9080`), criar sala, procurar partida, cancelar e abrir **Iniciar jogo salvo**. Username e endereço ficam salvos entre execuções.
+- Os dois jogadores precisam de usernames diferentes. O relay recusa entrar na sala de um anfitrião com o mesmo username, comparando sem diferenciar maiúsculas e minúsculas. Erros de identidade e de sala aparecem em um diálogo com botão **OK** e também no status do menu.
+- O botão **Decks salvos** no menu principal lista os decks locais e inicia o jogo com o escolhido; a importação por link continua disponível como a última opção do menu.
+- A preparação mostra a biblioteca local de decks salvos e seleciona automaticamente o último deck usado. Se ainda não houver um último deck memorizado e existir apenas um deck salvo, ele é usado. Decks importados do BSDB ficam em cache e são reutilizados sem baixar novamente. O botão `INICIAR` só habilita quando os dois jogadores escolheram decks com exatamente 60 cartas; qualquer um dos dois pode iniciá-lo.
+- Ao iniciar, o anfitrião sorteia dois d6 (repetindo em empate), publica os resultados e quem começa, gera uma semente de embaralhamento e envia tudo ao convidado. Cada cliente monta o próprio deck de forma determinística, embaralha e compra 10 cartas.
+- Se a preparação falhar em um dos clientes, o anfitrião envia `mp_abort` para que os dois encerrem a sessão em vez de um ficar preso no início.
+- O jogo usa uma resolução lógica fixa de `1280x720` em 16:9 (`stretch viewport` com `aspect keep`), então os dois clientes compartilham a mesma geometria de tabuleiro mesmo com janelas ou monitores de tamanhos diferentes. A cena é renderizada em 1280x720 e escalada para a janela; em telas fora de 16:9 aparecem barras pretas. A janela abre em fullscreen na resolução nativa do monitor; `F11` alterna para janela.
+- O handshake troca tamanho de tela, janela e viewport lógica dos dois jogadores. A preparação mostra essas medidas e o log registra ambas; se as proporções de tela forem diferentes, o log avisa que o jogo vai letterboxar em vez de desalinhar cartas e cursor.
+
+### Autoridade, fases e desconexão
+
+- O anfitrião é autoritativo para início, dados, semente, sequência de fases e estado público canônico. As ações recebidas são validadas estruturalmente antes de serem aplicadas; não há aprovação do anfitrião para cada jogada (ver limitações).
+- A v1 usa a sequência por jogador `REG → PREP → ADJ → ANT → ATK`, sem `BUY`. A rodada conta 10 passos e só incrementa depois que os dois completam a sequência; o ciclo recomeça por quem venceu o d6.
+- O indicador central mostra rodada, etapa, jogador ativo, quem começa, resultados dos dados e as cores `PREP` (branco), `ANT` (vermelho) e `ATK` (verde).
+- Após o início, se um jogador cair, o cliente restante congela o jogo e mostra a espera sem limite. Ele pode encerrar manualmente ou aguardar a reconexão do oponente na mesma sala.
+
+### Visibilidade e acompanhamento
+
+- Apenas `hand` e `deck` são ocultos. `board`, `scenario`, `resources` e `prizes` são públicos e espelhados em coordenadas normalizadas. As cartas do oponente são invertidas em 180° e mantidas dentro da área do campo superior; o Cenário remoto fica centralizado no slot de Cenário.
+- Só pode existir um Cenário ativo entre os dois campos. Ao colocar um Cenário, o Cenário ativo do oponente vai para o Recursos/Descarte do dono. Cada jogada leva uma marca de ordem (relógio lógico) para que a jogada mais recente vença, inclusive quando os dois jogadores jogam quase ao mesmo tempo; em empate, o Cenário do anfitrião permanece. A regra também é reaplicada na retomada de checkpoints, quando o Cenário local é devolvido ao slot `Cenário Ativo`.
+- O slot de Cenário do jogador ocupa exatamente a área de uma carta em campo (`120x192`), sem a borda extra das grades comuns.
+- Cartas ocultas do oponente são representadas por contadores e posições sem identidade, face ou nome; a identidade só é transmitida quando a carta passa para uma zona pública.
+- O cursor do oponente é enviado a 10 Hz, desenhado espelhado (rotação de 180°) na metade superior, some após 3 segundos sem movimento e exibe apenas o username, sem informação da carta sob o ponteiro.
+- O tabuleiro espelhado exibe o rótulo `CAMPO DO OPONENTE - <username>` e ignora interação do jogador local.
+
+### Checkpoints e retomada
+
+- A cada troca de fase, os dois clientes salvam um checkpoint local em `user://Checkpoints/<game_id>/<sequência>.json`.
+- Cada checkpoint contém o estado público e dois envelopes privados (mão e deck de cada jogador), ofuscados com uma chave derivada de SHA-256 do username. Isso é proteção fraca contra leitura casual, **não criptografia**.
+- **Iniciar jogo salvo** lista as partidas locais. Quem hospeda cria a sala de retomada; o outro entra com o username participante. Se o save não identificar os dois usernames, a sala é recusada em vez de trocar participante.
+- Os clientes trocam manifestos e retomam a sequência mais recente presente e íntegra nos dois lados (mesma partida, sequência e checksum público).
+- Se a cópia escolhida estiver corrompida, o outro cliente envia a cópia íntegra. Se a cópia falhar no carregamento, o convidado pede a cópia do anfitrião. Se não houver checkpoint íntegro comum, a retomada é abortada com explicação e a opção de iniciar uma nova partida.
+- Se todos os arquivos locais de uma partida estiverem ilegíveis, a lista mostra a entrada como somente entrada (`join_only`): o jogador pode entrar na sala de retomada do oponente, mas não pode hospedar.
+- Alterar o username tenta reproteger os checkpoints locais com o novo nome. Checkpoints que não puderem acompanhar a mudança — por exemplo, quando o novo nome já identifica o outro jogador ou o envelope está ilegível — permanecem com o username anterior e não bloqueiam a alteração.
+
+### Arquivos principais
+
+- [src/custom/Multiplayer.gd](./src/custom/Multiplayer.gd) — sessão, autoridade, início, fases e retomada.
+- [src/custom/MultiplayerSync.gd](./src/custom/MultiplayerSync.gd) — espelhamento, privacidade e cursor remoto.
+- [src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd) — relay embutido para endereços locais.
+- [src/custom/Rede.gd](./src/custom/Rede.gd) — WebSocket, pareamento, reconexão e divisão de mensagens.
+- [src/custom/CheckpointStore.gd](./src/custom/CheckpointStore.gd) — gravação, envelopes e validação.
+- [src/custom/CheckpointList.gd](./src/custom/CheckpointList.gd) — lista de saves para hospedar ou entrar.
+- [src/custom/DeckCatalog.gd](./src/custom/DeckCatalog.gd) — listagem, validação e memória do último deck salvo.
+- [src/custom/MatchHUD.gd](./src/custom/MatchHUD.gd) — preparação, indicador de fases, dados, resoluções e status.
+- [src/custom/DisplayMode.gd](./src/custom/DisplayMode.gd) — fullscreen na resolução nativa, modo janela para o segundo cliente e alternância com `F11`.
+- [tools/ws_relay.py](./tools/ws_relay.py) — relay LAN de salas.
+
+## Como testar
+
+### Automatizado
+
+- Suite GUT do multiplayer: `tests/integration/test_multiplayer_lobby.gd`, com 17 testes e 72 asserções. Execute pelo painel GUT do editor ou pela cena `tests/cli/tests.tscn` com janela (a execução completa com `--no-window` pode travar neste ambiente).
+- Testes do relay: `python tools/test_ws_relay.py` (14 testes). Neste ambiente não há Python instalado, então eles foram revisados estaticamente, mas não executados.
+- O relay embutido foi validado em headless com dois clientes WebSocket reais: criação/busca de sala, encaminhamento, queda e reconexão, além da sala de retomada e recusa de terceiro.
+- `src/custom/CGFMain.tscn` foi aberto em modo headless sem erros de script nos módulos de multiplayer.
+
+### Manual, com dois clientes
+
+1. Para testar na mesma máquina, não é preciso iniciar nada: o relay embutido sobe no primeiro cliente que criar ou procurar a sala. Para jogar em máquinas diferentes, use o IP da máquina do anfitrião e deixe a porta 9080 liberada no firewall. Opcionalmente, execute `python tools/ws_relay.py` em uma máquina central.
+2. Abra duas instâncias do jogo. Na mesma máquina, use `run-second-instance.cmd`, que abre a segunda em janela (o `F5` fica em fullscreen). No menu, informe usernames diferentes e o mesmo endereço (`127.0.0.1:9080` na mesma máquina).
+3. Jogador 1 usa **Criar Sala**; jogador 2 usa **Procurar Partida**. Confirme que ambos entram na mesma partida e que o indicador mostra os usernames corretos.
+4. Ao entrar na preparação, confirme que o último deck usado já está selecionado e que **Decks salvos** lista o deck importado. Escolham decks de 60 cartas. Confirme que `INICIAR` só habilita com os dois decks válidos, que qualquer jogador consegue iniciar e que os dois veem os mesmos dados, o mesmo vencedor e as mesmas 10 cartas iniciais (cada um vê a própria mão).
+5. Avancem as fases e confirme rodada, jogador ativo, cores e incremento de rodada após os dois completarem a sequência.
+6. Movimentem cartas entre zonas públicas e confirme o espelhamento; mantenham cartas na mão/deck e confirme que o oponente vê apenas contadores, nunca a identidade. Confira o cursor remoto com username e o desaparecimento após 3 segundos.
+7. Derrube um cliente e confirme o congelamento do outro e a reconexão na mesma sala. Encerre manualmente para testar a saída durante a espera.
+8. Fechem os dois clientes e usem **Iniciar jogo salvo** para retomar: teste a cópia íntegra, uma cópia local corrompida e o caso sem checkpoint íntegro comum.
+
+## Limitações conhecidas da v1
+
+- As jogadas são enviadas diretamente entre os clientes e validadas apenas estruturalmente pelo receptor. O anfitrião não aprova cada ação antes de ela ser aplicada; ele é autoritativo para início, dados, fases e estado público canônico.
+- O modelo confia no cliente do anfitrião: um cliente modificado pode falsificar dados, semente ou estado.
+- A proteção dos dados ocultos nos saves é obfuscação derivada do username, não criptografia. O username é público.
+- Alterar o username reprotege apenas as cópias locais; as cópias do oponente continuam com o username antigo, então a retomada após renomear um jogador não é reconciliada automaticamente. Saves que não podem ser renomeados sem conflito continuam válidos apenas com o username anterior.
+- Se todos os checkpoints locais de uma partida estiverem ilegíveis, o jogador só pode entrar na sala de retomada do oponente, não hospedar.
+- O relay embutido só inicia para endereços locais; um endereço remoto continua exigindo um relay externo. Se outro processo já ocupa a porta, o jogo tenta usá-lo; se ele não falar este protocolo, a conexão falha com aviso no HUD.
+- Não há transferência de anfitrião, reconexão automática, espectadores, partidas pela internet nem limite de frequência configurável do cursor.
+
+## Roadmap para o modo online
+
+A v1 é LAN, mas o código deve ser tratado como a base de um jogo online; o relay embutido é apenas o adaptador de desenvolvimento. O cliente já usa um endereço WebSocket configurável e o protocolo de mensagens é separado do transporte, então o modo online não exige reescrever o cliente. O que muda é quem hospeda o relay e quem é a autoridade da partida.
+
+### Princípios
+
+- Nenhuma lógica de partida pode depender de `127.0.0.1`, de o relay rodar no cliente do anfitrião ou de os dois jogadores estarem na mesma rede.
+- O protocolo deve ser versionado e independente do transporte local; mensagens de estado precisam sobreviver a reconexão e reenvio.
+- Online não reutiliza a confiança no cliente do anfitrião nem a proteção de saves derivada do username.
+
+### Etapas
+
+1. **Protocolo e sessão**
+   - Incluir `protocol_version` no handshake e recusar versões incompatíveis com mensagem clara.
+   - Usar IDs de sessão/jogador atribuídos pelo servidor, token de reconexão rotativo e códigos de erro estáveis.
+   - Numerar ou confirmar mensagens de estado para reaplicar após queda e limitar a frequência por conexão.
+2. **Relay/servidor dedicado**
+   - Serviço `wss://` com TLS no proxy reverso, matchmaking, salas, presença, reconexão e expiração.
+   - Modelo relay-only: os dois clientes conectam para fora; para este jogo de cartas não é necessário P2P/STUN.
+   - Autenticação de conta ou sessão assinada, username único e rate limiting.
+   - Persistência de sessões/partidas para sobreviver a reinício do servidor.
+3. **Autoridade**
+   - O servidor passa a ser autoritativo para dados, semente, ordem de fases, estado canônico e validação de jogadas.
+   - O cliente envia intenções; o servidor responde com estado e projeções. O anfitrião deixa de ser confiável.
+   - Mão e deck continuam privados, mas o servidor envia a cada jogador apenas a própria projeção, em vez de manter as duas mãos nos clientes.
+4. **Retomada**
+   - Checkpoints canônicos no servidor, retomada por sessão/token e não por manifestos locais.
+   - Saves locais com envelopes continuam como fallback offline/LAN.
+5. **Identidade e privacidade**
+   - Contas/username verificado; a chave derivada do username não serve para internet.
+   - Definir política de dados e logs para não expor mãos, decks ou checkpoints.
+6. **Operação**
+   - Relay dedicado local para desenvolvimento, depois staging e produção; métricas, logs, limites e reconexão.
+   - Testar dois clientes contra esse relay em localhost, além dos testes atuais do relay embutido.
+
+### O que já está alinhado
+
+- Cliente WebSocket configurável para `ws://` e `wss://`, sem URL fixa no código.
+- Protocolo JSON separado do transporte e relay que apenas forma salas/encaminha mensagens.
+- `LocalRelay` só inicia para endereço local; um relay remoto continua sendo usado sem alterações.
+- Checkpoints locais e retomada já existem para o modo LAN/offline.
+
+### O que precisa mudar antes de abrir para internet
+
+- Autoridade do anfitrião e confiança no cliente.
+- Username como identidade e obfuscação de saves como proteção.
+- Relay embutido sem TLS nem autenticação: nunca expor à internet.
+- Falta de versionamento de protocolo, rate limiting e persistência no servidor.
+
+## Estado técnico observado antes da implementação (histórico)
 
 - O cliente Godot usa WebSocket para comunicar-se com o relay.
 - O relay atual forma partidas de dois clientes, atribui os papéis `H` e `C`, encaminha mensagens ao oponente e avisa sobre desconexão. Esses papéis não implementam autoridade do jogo.
@@ -144,10 +286,10 @@ As etapas abaixo são uma proposta de ordem para implementar e validar os requis
 
 Só considerar a partida pronta após testes reais com dois clientes e confirmação de sincronização e privacidade.
 
-## Decisões ainda necessárias antes da implementação
+## Decisões de projeto
 
-- **Checkpoint íntegro:** projetar como o checkpoint íntegro disponível contém ou recupera os dados privados dos dois jogadores quando a cópia do outro estiver corrompida.
+- **Checkpoint íntegro (resolvido na v1):** cada checkpoint contém os dois envelopes privados e é validado antes do uso; se uma cópia estiver corrompida, a cópia íntegra do outro jogador é transferida. Se nenhuma cópia íntegra comum existir, a retomada é bloqueada com explicação.
 
 ## Fora do escopo confirmado
 
-Não foram definidos neste planejamento: partidas pela internet, autenticação de contas, reconexão automática, transferência do anfitrião durante uma partida ativa, espectadores ou limite/frequência exatos de mensagens do cursor. Essas decisões devem ser discutidas antes de serem tratadas como requisitos.
+Não foram definidos neste planejamento: partidas pela internet, autenticação de contas, reconexão automática, transferência do anfitrião durante uma partida ativa, espectadores ou limite/frequência exatos de mensagens do cursor. A direção para o modo online está no roadmap acima; essas decisões continuam fora do escopo da v1 e devem ser detalhadas antes de serem tratadas como requisitos.

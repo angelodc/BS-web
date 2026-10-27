@@ -1,14 +1,29 @@
-[gd_scene load_steps=2 format=2]
+[gd_scene load_steps=3 format=2]
 
 [ext_resource path="res://src/core/BoardPlacementGrid.tscn" type="PackedScene" id=2]
 
+[sub_resource type="StyleBoxFlat" id=1]
+bg_color = Color( 0, 0, 0, 1 )
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
 [node name="ModifiedLabelGrid" instance=ExtResource( 2 )]
+exact_card_size = true
+custom_styles/panel = SubResource( 1 )
 
 [node name="GridContainer" parent="." index="0"]
-margin_right = 122.0
+margin_left = 0.0
+margin_top = 0.0
+margin_right = 120.0
+margin_bottom = 192.0
 
 [node name="Control" parent="." index="1"]
-margin_right = 122.0
+margin_left = 0.0
+margin_top = 0.0
+margin_right = 120.0
+margin_bottom = 192.0
 
 [node name="Label" parent="Control" index="0"]
 text = "Cenário Ativo"

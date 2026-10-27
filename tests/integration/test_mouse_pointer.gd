@@ -21,14 +21,14 @@ func test_highlight_priority():
 	yield(drag_card(card, Vector2(600,500)), 'completed')
 	assert_null(grid.get_highlighted_slot(),
 		"No slot highlighted when potential host highlighted")
-	yield(move_mouse(Vector2(600,600)), 'completed')
+	yield(move_mouse(Vector2(600,650)), 'completed')
 	assert_null(grid.get_highlighted_slot(),
 		"No slot highlighted when potential host highlighted")
 	assert_false(cards[2].highlight.visible,
 		"Potential host not highlighted when mouse over CardContainer")
 	assert_true(hand.highlight.visible,
 		"Hand higlighted for placement")
-	yield(move_mouse(Vector2(700,600)), 'completed')
+	yield(move_mouse(Vector2(700,650)), 'completed')
 	assert_null(grid.get_highlighted_slot(),
 		"No slot highlighted when potential host highlighted")
 	assert_true(hand.highlight.visible,

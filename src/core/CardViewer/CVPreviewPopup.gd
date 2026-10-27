@@ -69,7 +69,7 @@ func get_preview_placement() -> Vector2:
 			+ card_size.x\
 			+ 20\
 			+ focus_panel_offset\
-			> get_viewport().size.x:
+			> get_viewport().get_visible_rect().size.x:
 		ret.x = get_global_mouse_position().x - card_size.x - 20 - focus_panel_offset
 	else:
 		ret.x = get_global_mouse_position().x + 20
@@ -78,13 +78,13 @@ func get_preview_placement() -> Vector2:
 	var focus_offscreen_y = get_global_mouse_position().y + focus_info.rect_size.y
 	if card_offscreen_y > focus_offscreen_y\
 			and is_instance_valid(preview_card)\
-			and card_offscreen_y > get_viewport().size.y:
-		ret.y = get_viewport().size.y\
+			and card_offscreen_y > get_viewport().get_visible_rect().size.y:
+		ret.y = get_viewport().get_visible_rect().size.y\
 				- card_size.y\
 				+ 30
 	elif card_offscreen_y < focus_offscreen_y\
-			and focus_offscreen_y > get_viewport().size.y:
-		ret.y = get_viewport().size.y\
+			and focus_offscreen_y > get_viewport().get_visible_rect().size.y:
+		ret.y = get_viewport().get_visible_rect().size.y\
 				- focus_info.rect_size.y + 30
 	else:
 		ret.y = get_global_mouse_position().y + 30

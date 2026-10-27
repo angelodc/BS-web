@@ -25,11 +25,12 @@ func _ready() -> void:
 	call_deferred("_apply_battle_scenes_layout")
 	get_viewport().connect(
 			"size_changed", self, "_on_board_viewport_size_changed")
-	# Fill up the deck for demo purposes
+	var multiplayer_session := Multiplayer.is_session_active()
 	if not cfc.ut:
 		cfc.game_rng_seed = CFUtils.generate_random_seed()
-		$SeedLabel.text = "Game Seed is: " + cfc.game_rng_seed
-	if not get_tree().get_root().has_node('Gut'):
+		if not multiplayer_session:
+			$SeedLabel.text = "Game Seed is: " + cfc.game_rng_seed
+	if not get_tree().get_root().has_node('Gut') and not multiplayer_session:
 		load_test_cards(false)
 	# warning-ignore:return_value_discarded
 	$DeckBuilderPopup.connect('popup_hide', self, '_on_DeckBuilder_hide')
@@ -38,27 +39,76 @@ func _ready() -> void:
 			"popup_closed", self, "_on_resource_popup_closed")
 	_update_prize_energy()
 	if not cfc.ut:
-		var sync := preload("res://src/custom/MultiplayerSync.gd").new()
-		sync.name = "MultiplayerSync"
-		add_child(sync)
+		if multiplayer_session:
+			_setup_multiplayer()
+		else:
+			var sync := preload("res://src/custom/MultiplayerSync.gd").new()
+			sync.name = "MultiplayerSync"
+			add_child(sync)
+
+
+func _setup_multiplayer() -> void:
+	for control in [
+			$FancyMovementToggle, $OvalHandToggle, $ScalingFocusOptions,
+			$EnableAttach, $DeckBuilder, $BackToMain, $Debug, $SeedLabel]:
+		control.visible = false
+	var hud := preload("res://src/custom/MatchHUD.tscn").instance()
+	hud.name = "MatchHUD"
+	add_child(hud)
+	var sync := preload("res://src/custom/MultiplayerSync.gd").new()
+	sync.name = "MultiplayerSync"
+	add_child(sync)
+	Multiplayer.register_board(self, hud, sync)
 
 
 func _apply_battle_scenes_layout() -> void:
 	if cfc.ut:
 		return
-	var viewport_size: Vector2 = get_viewport().size
-	var player_field_y: float = viewport_size.y / 2
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
 	var deck: Pile = get_node("Deck")
+	var discard: Pile = get_node("Discard")
 	var prizes: Pile = get_node("Prêmios")
+	var right_column_x: float = viewport_size.x - 141
+	var scene_grid: BoardPlacementGrid = get_node("PlacementGridDemo")
+	var left_column_width := 156.0
+
+	# Three horizontal bands: opponent hand strip on top, then the two field
+	# rows, then a shorter hand row at the bottom.
+	scene_grid.configure_width(right_column_x - left_column_width)
+	var scene_size: Vector2 = scene_grid.rect_size
+	var opponent_strip_height := 80.0
+	var player_field_y: float = opponent_strip_height + scene_size.y
+	var hand_band_y: float = player_field_y + scene_size.y
 
 	deck.position = Vector2(0, player_field_y)
-	prizes.position = Vector2(viewport_size.x - 156, player_field_y)
-	get_node("PlacementGridDemo").rect_position = Vector2(
-			viewport_size.x * 155.0 / 1280.0, player_field_y)
+	discard.position = Vector2(0, player_field_y + 115)
+	prizes.position = Vector2(right_column_x, player_field_y + 180)
+	scene_grid.rect_position = Vector2(
+			(viewport_size.x - scene_size.x) * 0.5, player_field_y)
 	get_node("ModifiedLabelGrid").rect_position = Vector2(
-			viewport_size.x * 920.0 / 1280.0, player_field_y)
+			right_column_x, player_field_y)
 	$PrizeEnergyLabel.rect_position = Vector2(
-			viewport_size.x - 220, player_field_y - 25)
+			right_column_x, viewport_size.y - 40)
+
+	# The hand cards are drawn above the hand node origin (the oval fan), so
+	# the margin is computed from the top of the hand band.
+	var hand: Hand = get_node("Hand")
+	hand.bottom_margin = hand_band_y + hand.card_size.y * 0.25 \
+			- (viewport_size.y - hand.card_size.y)
+	# warning-ignore:return_value_discarded
+	hand.re_place()
+	$ResourceSelectionLabel.rect_position = Vector2(165, hand_band_y + 2)
+	$HandLabel.rect_position = Vector2(610, hand_band_y + 2)
+
+	var opponent_scene: ColorRect = get_node(
+			"OpponentFieldVisual/OpponentScene")
+	opponent_scene.rect_position = Vector2(
+			scene_grid.rect_position.x, opponent_strip_height)
+	opponent_scene.rect_size = scene_size
+	var opponent_scene_label: Label = get_node(
+			"OpponentFieldVisual/OpponentSceneLabel")
+	opponent_scene_label.rect_position = opponent_scene.rect_position \
+			+ Vector2(10, 4)
 
 
 func _on_board_viewport_size_changed() -> void:
@@ -76,11 +126,59 @@ func _update_prize_energy() -> void:
 	var prize_pile: Pile = get_node("Prêmios")
 	var total_energy := 0
 	for card in prize_pile.get_all_cards():
-		if prize_pile.is_a_parent_of(card):
+		var card_parent = card.get_parent()
+		if card_parent == prize_pile \
+				or (card_parent and "CardPopUpSlot" in str(card_parent.name)):
 			total_energy += str(card.properties.get("ENERGIA", "0")).to_int()
 	if total_energy != _last_prize_energy:
-		$PrizeEnergyLabel.text = "Energia dos Prêmios: " + str(total_energy)
+		$PrizeEnergyLabel.text = "Energia: " + str(total_energy)
 		_last_prize_energy = total_energy
+
+
+# Sends a character on the scene to the opponent's prize area. Attached cards
+# return to their owner's Resources/Discard, as the character leaves the field.
+func send_character_to_opponent_prizes(card: Card) -> void:
+	if not is_instance_valid(card) or card.get_parent() != self \
+			or not card.is_battle_scenes_character():
+		return
+	if not Multiplayer.is_session_active():
+		show_resource_message(
+				"Prêmios do adversário só estão disponíveis em partidas multiplayer.")
+		return
+	var sync = get_node_or_null("MultiplayerSync")
+	if not sync or not sync.has_method("send_card_to_opponent_prizes") \
+			or not sync.send_card_to_opponent_prizes(card):
+		show_resource_message(
+				"Não foi possível enviar a carta para os Prêmios.")
+		return
+	_release_card_attachments_to_discard(card)
+	if card._placement_slot:
+		card._placement_slot.occupying_card = null
+		card._placement_slot = null
+	card.remove_from_group("cards")
+	card.monitoring = false
+	card.monitorable = false
+	card.visible = false
+	card.queue_free()
+	show_resource_message(card.canonical_name + " foi para os Prêmios do adversário.")
+
+
+# Removes a support from the scene together with the cards attached under it.
+func knockout_support(card: Card) -> void:
+	if not is_instance_valid(card) or card.get_parent() != self \
+			or not card.is_battle_scenes_support():
+		return
+	_release_card_attachments_to_discard(card)
+	card.move_to(cfc.NMAP.discard)
+	show_resource_message(card.canonical_name + " foi nocauteado.")
+
+
+func _release_card_attachments_to_discard(card: Card) -> void:
+	for attachment in card.attachments.duplicate():
+		attachment.current_host_card = null
+		card.attachments.erase(attachment)
+		attachment.move_to(cfc.NMAP.discard)
+	card.attachments.clear()
 
 
 func get_available_resource_count() -> int:
@@ -293,5 +391,7 @@ func _on_DeckBuilder_hide() -> void:
 
 
 func _on_BackToMain_pressed() -> void:
+	if Multiplayer.is_session_active():
+		Multiplayer.leave_session("Partida encerrada pelo jogador.")
 	cfc.quit_game()
 	get_tree().change_scene("res://src/custom/MainMenu.tscn")

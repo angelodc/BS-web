@@ -2,10 +2,16 @@ extends WindowDialog
 
 signal deck_loaded(deck)
 
+const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
+const ValidationDialogScene = preload(
+		"res://src/custom/BSDBDeckValidationDialog.tscn")
+
 const BSDB_BASE_URL := "https://battlescenes.vercel.app/deck/"
 const SUPABASE_REST_URL := "https://xtdqcfchdqmqlbmkvdit.supabase.co/rest/v1"
 const SUPABASE_PUBLIC_KEY := "sb_publishable_mx4QrlcZMx-FgZyGC7Q-uw_w3qbMhd9"
 const DECK_CACHE_PATH := "user://Decks/"
+const VALID_CARD_TYPES := ["Personagem", "Suporte", "Habilidade", "Cenário"]
+const ENERGY_CARD_TYPES := ["Personagem", "Suporte"]
 
 enum RequestStage {
 	DECK,
@@ -23,6 +29,9 @@ var _deck_id := ""
 var _deck_record := {}
 var _deck_cards := []
 var _card_definitions := {}
+var _validation_dialog: WindowDialog
+var _validation_queue := []
+var _pending_deck := {}
 
 
 func _ready() -> void:
@@ -32,6 +41,12 @@ func _ready() -> void:
 	_request.connect("request_completed", self, "_on_request_completed")
 	# warning-ignore:return_value_discarded
 	_import_button.connect("pressed", self, "_on_import_pressed")
+	_validation_dialog = ValidationDialogScene.instance()
+	add_child(_validation_dialog)
+	# warning-ignore:return_value_discarded
+	_validation_dialog.connect("card_confirmed", self, "_on_validation_confirmed")
+	# warning-ignore:return_value_discarded
+	_validation_dialog.connect("cancelled", self, "_on_validation_cancelled")
 
 
 static func get_deck_id_from_url(url: String) -> String:
@@ -53,11 +68,11 @@ func _on_import_pressed() -> void:
 				"Cole um link válido do BSDB, no formato "
 				+ BSDB_BASE_URL + "{id}.")
 		return
+	_deck_id = deck_id
 	var cached_deck = _load_cached_deck(deck_id)
 	if not cached_deck.empty():
-		_start_game_with_deck(cached_deck)
+		_begin_validation(cached_deck)
 		return
-	_deck_id = deck_id
 	_deck_record = {}
 	_deck_cards.clear()
 	_card_definitions.clear()
@@ -177,29 +192,123 @@ func _handle_card_data_response(records: Array) -> void:
 		"definitions": _card_definitions,
 		"source_url": BSDB_BASE_URL + _deck_id,
 	}
-	if not _save_cached_deck(deck):
+	_begin_validation(deck)
+
+
+func _begin_validation(deck: Dictionary) -> void:
+	_pending_deck = deck
+	var definitions = deck.get("definitions", {})
+	_card_definitions = definitions if typeof(definitions) == TYPE_DICTIONARY \
+			else {}
+	_validation_queue.clear()
+	var keys := _card_definitions.keys()
+	for index in range(keys.size()):
+		var definition = _card_definitions[keys[index]]
+		if typeof(definition) != TYPE_DICTIONARY:
+			continue
+		var missing := _missing_essential_fields(definition)
+		if not missing.empty():
+			_validation_queue.append({
+				"key": keys[index],
+				"card_index": index,
+				"missing": missing,
+			})
+	if _validation_queue.empty():
+		_finish_import()
 		return
-	_start_game_with_deck(deck)
+	_set_status(
+			"Complete os dados essenciais de "
+			+ str(_validation_queue.size()) + " carta(s) do deck.")
+	_show_next_validation()
+
+
+func _show_next_validation() -> void:
+	if _validation_queue.empty():
+		_finish_import()
+		return
+	if not _validation_dialog:
+		_fail_import("Não foi possível abrir a correção dos dados do deck.")
+		return
+	var entry: Dictionary = _validation_queue[0]
+	var definition = _card_definitions.get(entry["key"], {})
+	_validation_dialog.show_card(
+			definition,
+			int(entry["card_index"]),
+			_card_definitions.size(),
+			entry["missing"])
+
+
+func _on_validation_confirmed(
+		card_name: String, category: String, energy: String) -> void:
+	if _validation_queue.empty():
+		return
+	var entry: Dictionary = _validation_queue.pop_front()
+	var definition = _card_definitions.get(entry["key"], {})
+	if typeof(definition) != TYPE_DICTIONARY:
+		definition = {}
+	definition["Name"] = card_name
+	definition["_tipo"] = category
+	definition["Type"] = _template_for_category(category)
+	if category in ENERGY_CARD_TYPES:
+		definition["ENERGIA"] = energy
+	elif str(definition.get("ENERGIA", "")).strip_edges().empty():
+		definition["ENERGIA"] = "0"
+	_card_definitions[entry["key"]] = definition
+	_show_next_validation()
+
+
+func _on_validation_cancelled() -> void:
+	_validation_queue.clear()
+	_pending_deck = {}
+	_import_button.disabled = false
+	_set_status(
+			"Importação cancelada. Importe o deck novamente para completar "
+			+ "os dados.")
+
+
+func _finish_import() -> void:
+	_pending_deck["definitions"] = _card_definitions
+	if not _save_cached_deck(_pending_deck):
+		return
+	_start_game_with_deck(_pending_deck)
+
+
+static func _missing_essential_fields(definition: Dictionary) -> Array:
+	var missing := []
+	if str(definition.get("Name", "")).strip_edges().empty():
+		missing.append("Nome")
+	var category := str(definition.get("_tipo", "")).strip_edges()
+	if not category in VALID_CARD_TYPES:
+		missing.append("Tipo")
+	elif category in ENERGY_CARD_TYPES:
+		var energy := str(definition.get("ENERGIA", "")).strip_edges()
+		if energy.empty():
+			missing.append("ENERGIA")
+	return missing
+
+
+static func _template_for_category(category: String) -> String:
+	match category:
+		"Personagem":
+			return "Blue"
+		"Cenário":
+			return "Green"
+		"Suporte":
+			return "Red"
+		"Habilidade":
+			return "Purple"
+	return ""
 
 
 static func make_card_properties(record: Dictionary) -> Dictionary:
 	var data = record.get("dados", {})
 	if typeof(data) != TYPE_DICTIONARY:
 		return {}
-	var category := str(record.get("tipo", data.get("TIPO", "")))
-	var template_type := ""
-	match category:
-		"Personagem":
-			template_type = "Blue"
-		"Cenário":
-			template_type = "Green"
-		"Suporte":
-			template_type = "Red"
-		"Habilidade":
-			template_type = "Purple"
-		_:
-			push_error("Unsupported BSDB card category: " + category)
-			return {}
+	var category := str(record.get("tipo", data.get("TIPO", ""))).strip_edges()
+	var template_type := _template_for_category(category)
+	if template_type.empty():
+		push_warning("BSDB card without a valid type: " + category)
+	var energy_default: String = "" if category in ENERGY_CARD_TYPES else "0"
 	var ability_text := _string_or_default(data, "TEXTO", "")
 	var actions = data.get("ACOES", [])
 	if typeof(actions) == TYPE_NIL:
@@ -227,7 +336,7 @@ static func make_card_properties(record: Dictionary) -> Dictionary:
 		"Name": str(record.get("nome", data.get("NOME", ""))),
 		"Type": template_type,
 		"_tipo": category,
-		"ENERGIA": _string_or_default(data, "ENERGIA", "0"),
+		"ENERGIA": _string_or_default(data, "ENERGIA", energy_default),
 		"Tags": tags,
 		"Requirements": _string_or_default(data, "AFILIACAO", ""),
 		"Abilities": ability_text,
@@ -298,8 +407,9 @@ func _get_cache_file_path(deck_id: String) -> String:
 func _start_game_with_deck(deck: Dictionary) -> void:
 	_import_button.disabled = false
 	cfc.current_deck = deck
-	for card_id in deck.definitions:
-		cfc.card_definitions[card_id] = deck.definitions[card_id]
+	DeckCatalog.apply_definitions(deck)
+	if not _deck_id.empty():
+		DeckCatalog.remember_deck(_get_cache_file_path(_deck_id))
 	_set_status("Deck pronto. Abrindo a partida...")
 	hide()
 	emit_signal("deck_loaded", deck)

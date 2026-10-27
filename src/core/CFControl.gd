@@ -509,7 +509,7 @@ func hide_all_previews() -> void:
 
 func _on_viewport_resized() -> void:
 	var pix = CFConst.DESIGN_RESOLUTION.x * CFConst.DESIGN_RESOLUTION.y
-	var curr_pix = get_viewport().size.x * get_viewport().size.y
+	var curr_pix = get_viewport().get_visible_rect().size.x * get_viewport().get_visible_rect().size.y
 	curr_scale = curr_pix / pix
 	if curr_scale > 1:
 		curr_scale = 1

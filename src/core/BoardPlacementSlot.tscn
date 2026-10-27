@@ -38,6 +38,7 @@ extents = Vector2( 60, 96 )
 ]]
 margin_right = 120.0
 margin_bottom = 192.0
+mouse_filter = 2
 rect_min_size = Vector2( 120, 192 )
 script = ExtResource( 2 )
 __meta__ = {

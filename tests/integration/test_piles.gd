@@ -169,3 +169,21 @@ class TestShuffleRng:
 		prev_index = card.get_my_card_index()
 		assert_gt(2,rng_threshold,
 			"Card should not fall in he same spot too many times")
+
+
+class TestPileDisplayScale:
+	extends "res://tests/Basic_common.gd"
+
+	func test_scaled_pile_keeps_card_display_scale():
+		var scaled_pile: Pile = add_child_autofree(
+				load("res://src/core/Pile.tscn").instance())
+		scaled_pile.card_size = Vector2(120, 168)
+		scaled_pile.card_display_scale = 0.8
+		yield(yield_for(0.1), YIELD)
+		var card: Card = cards[0]
+		card.move_to(scaled_pile)
+		yield(yield_for(1), YIELD)
+		assert_eq(Vector2(0.8, 0.8), card.scale,
+				"Card keeps the pile display scale while idle in the pile")
+		assert_eq(scaled_pile.get_stack_position(card), card.position,
+				"Card is stacked inside the scaled pile")

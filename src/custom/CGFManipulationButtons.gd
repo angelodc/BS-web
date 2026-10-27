@@ -8,6 +8,8 @@ func _ready() -> void:
 		"Escudo": "Escudo",
 		"Flip": "Flip",
 		"Rot90": "T",
+		"Premios": "Prêmios",
+		"Nocaute": "Nocaute",
 	}
 	spawn_manipulation_buttons()
 	var shield_menu: PopupMenu = PopupMenu.new()
@@ -23,6 +25,10 @@ func _ready() -> void:
 				button.rect_min_size = Vector2(70, 26)
 			elif button.name == "Flip":
 				button.rect_min_size = Vector2(60, 26)
+			elif button.name == "Premios":
+				button.rect_min_size = Vector2(80, 26)
+			elif button.name == "Nocaute":
+				button.rect_min_size = Vector2(80, 26)
 
 
 func set_active(value = true) -> void:
@@ -36,15 +42,27 @@ func set_active(value = true) -> void:
 
 func _update_action_visibility(is_available: bool, is_character: bool) -> void:
 	var stage: int = owner_node.get_incapacitation_stage()
+	var is_support: bool = owner_node.is_battle_scenes_support()
 	set_button_visible("Rot90", is_available and not is_character)
 	set_button_visible("Flip", is_available)
 	set_button_visible("Escudo", is_available and is_character)
+	set_button_visible("Premios",
+			is_available and is_character and Multiplayer.is_session_active())
+	set_button_visible("Nocaute", is_available and is_support)
 	set_button_visible(
 			"Capacitar",
 			is_available and is_character and stage >= -1 and stage <= 0)
 	set_button_visible(
 			"Incapacitar",
 			is_available and is_character and stage >= 0 and stage <= 1)
+
+
+func _on_Premios_pressed() -> void:
+	owner_node.send_to_opponent_prizes()
+
+
+func _on_Nocaute_pressed() -> void:
+	owner_node.knockout()
 
 
 func _on_Rot90_pressed() -> void:

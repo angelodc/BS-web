@@ -1,370 +1,970 @@
-# Mirrors local Battle Scenes actions onto the opponent visual field.
+# Mirrors public card state to the opponent field and shows hidden counts.
+#
+# Only hand and deck are private. Prizes, resources, scenario and board are
+# public and mirrored. Board coordinates travel normalized so both clients can
+# use different viewport sizes. The remote cursor shows only the pointer.
 extends Control
 
+const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
 const DRAG_SEND_INTERVAL := 0.08
-const HIDDEN_ZONES := ["hand", "deck", "prizes"]
+const CURSOR_SEND_INTERVAL := 0.1
+const CURSOR_HIDE_AFTER := 3.0
+const COUNTS_SEND_DELAY := 0.12
+const HIDDEN_ZONES := ["hand", "deck"]
+const VISIBLE_ZONES := ["board", "scenario", "resources", "prizes"]
+# The opponent field is the local field rotated 180 degrees, so scene cards
+# must have the same size on both sides to line up across the middle.
+const BOARD_SCALE := CFConst.PLAY_AREA_SCALE
+const SCENARIO_SCALE := CFConst.PLAY_AREA_SCALE
+const PILE_SCALE := 0.3
+const HAND_SCALE := 0.24
+const MAX_HAND_PLACEHOLDERS := 24
 
-var _local_seq := 0
-var _remote_cards := {}
-var _hand_order := []
-var _drag_timer := 0.0
+var _active := false
+var _suppressed := false
 var _spawning_remote := false
-var _status: Label
-var _log: Label
-var _disconnect_button: Button
+var _remote_cards := {}
+var _remote_meta := {}
+var _remote_zone_order := {"resources": [], "prizes": []}
+var _remote_drag_card: Card = null
+var _remote_drag_offset := Vector2.ZERO
+var _sent_visible := {}
+var _pending_cards := {}
+var _hand_placeholders := []
+var _cursor: Control
+var _cursor_hide_timer := 0.0
+var _cursor_send_timer := 0.0
+var _drag_timer := 0.0
+var _counts_timer := 0.0
+var _counts_dirty := false
+var _last_sent_counts := {"hand": -1, "deck": -1}
+var _last_hidden_counts := {"hand": -1, "deck": -1}
+# Scenarios are unique across both fields. Claims use a Lamport-style clock so
+# the latest play wins even when both players act at nearly the same time.
+var _scenario_clock := 0
+var _scenario_claims := {}
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if cfc.ut:
 		return
-	_build_ui()
+	_build_cursor()
 	# warning-ignore:return_value_discarded
-	Rede.connect("status_changed", self, "_on_status_changed")
-	# warning-ignore:return_value_discarded
-	Rede.connect("peer_connected", self, "_on_peer_connected")
+	Rede.connect("message_received", self, "_on_network_message")
 	# warning-ignore:return_value_discarded
 	Rede.connect("peer_disconnected", self, "_on_peer_disconnected")
 	# warning-ignore:return_value_discarded
-	Rede.connect("message_received", self, "_on_network_message")
+	Multiplayer.connect("session_ended", self, "_on_session_ended")
 	# warning-ignore:return_value_discarded
 	cfc.signal_propagator.connect("signal_received", self, "_on_card_signal")
 	# warning-ignore:return_value_discarded
 	cfc.connect("new_card_instanced", self, "_on_new_card")
-	_on_status_changed(Rede.get_status())
-	if Rede.is_connected:
-		_on_peer_connected()
+	_connect_view_button("OpponentResourcesView", "resources")
+	_connect_view_button("OpponentPrizesView", "prizes")
 
 
-func _exit_tree() -> void:
-	if not cfc.ut:
-		Rede.disconnect_game()
+func start_mirroring() -> void:
+	if _active:
+		return
+	_active = true
+	_counts_dirty = true
+	_last_sent_counts = {"hand": -1, "deck": -1}
+	_update_opponent_labels(0, 0)
+
+
+func stop_mirroring() -> void:
+	_active = false
+	_remote_drag_card = null
+	_clear_remote_cards()
+	_clear_hand_placeholders()
+	if _cursor and is_instance_valid(_cursor):
+		_cursor.visible = false
+
+
+func set_suppressed(value: bool) -> void:
+	_suppressed = value
 
 
 func _process(delta: float) -> void:
-	if cfc.ut or not Rede.is_connected:
+	_update_remote_drag()
+	_update_cursor_receiver(delta)
+	if not _can_send():
 		return
-	var dragged: Card = cfc.card_drag_ongoing
-	if dragged and not dragged.network_mirror:
-		_drag_timer += delta
-		if _drag_timer >= DRAG_SEND_INTERVAL:
-			_drag_timer = 0.0
-			_send_card_state(dragged, _zone_for_card(dragged), true)
+	_send_cursor(delta)
+	_send_pending_counts(delta)
+	_send_dragged_card(delta)
 
 
-func _build_ui() -> void:
-	anchor_left = 1.0
-	anchor_right = 1.0
-	margin_left = -530
-	margin_top = 328
-	margin_right = -8
-	margin_bottom = 430
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var panel := PanelContainer.new()
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(panel)
-
-	var box := VBoxContainer.new()
-	panel.add_child(box)
-
-	_status = Label.new()
-	_status.text = "Multiplayer: desconectado"
-	box.add_child(_status)
-
-	_disconnect_button = Button.new()
-	_disconnect_button.text = "Sair da partida"
-	_disconnect_button.connect("pressed", self, "_on_disconnect_pressed")
-	box.add_child(_disconnect_button)
-
-	_log = Label.new()
-	_log.autowrap = true
-	_log.text = "Ações do oponente aparecem aqui."
-	box.add_child(_log)
+func _can_send() -> bool:
+	return _active and not _suppressed and Rede.is_connected \
+			and Multiplayer.is_playing()
 
 
-func _on_disconnect_pressed() -> void:
-	Rede.disconnect_game()
+#-----------------------------------------------------------------------------
+# Outgoing state
+#-----------------------------------------------------------------------------
 
-
-func _on_status_changed(text: String) -> void:
-	if _status:
-		_status.text = text
-
-
-func _on_peer_connected() -> void:
-	_log_action("Partida contra " + Rede.opponent_username
-			+ ". Enviando estado atual.")
-	Rede.send_message({"t": "hello"})
-	_send_snapshot()
-
-
-func _on_peer_disconnected() -> void:
-	_clear_remote_cards()
-	_log_action("Espelhamento encerrado.")
-
-
-func _on_new_card(card: Card) -> void:
-	if _spawning_remote:
-		card.network_mirror = true
+func send_snapshot() -> void:
+	if not _can_send():
 		return
-	if card.network_mirror:
-		return
-	_ensure_id(card)
-
-
-func _on_card_signal(card: Card, trigger: String, details: Dictionary) -> void:
-	if not Rede.is_connected or card.network_mirror:
-		return
-	var tags = details.get("tags", [])
-	if typeof(tags) == TYPE_ARRAY and "net" in tags:
-		return
-	match trigger:
-		"card_moved_to_hand":
-			_send_card_state(card, "hand")
-			if str(details.get("source", "")).to_lower() == "deck":
-				_send_hidden("Comprou carta")
-		"card_moved_to_pile":
-			var destination := _pile_zone(str(details.get("destination", "")))
-			_send_card_state(card, destination)
-			_send_hidden(_hidden_for_pile(destination, str(details.get("source", ""))))
-		"card_moved_to_board":
-			_send_card_state(card, "board")
-		"card_rotated":
-			_send_card_state(card, "board")
-		"card_flipped":
-			_send_card_state(card, _zone_for_card(card))
-		"card_attached", "card_unattached":
-			_send_card_state(card, "board")
-
-
-func _on_network_message(data: Dictionary) -> void:
-	var kind := str(data.get("t", ""))
-	match kind:
-		"hidden":
-			_log_action(str(data.get("msg", "O oponente fez uma ação oculta.")))
-		"card":
-			_apply_remote_card(data)
-		"hello":
-			_send_snapshot()
-
-
-func _send_snapshot() -> void:
-	var snapshot := []
+	_last_sent_counts = {"hand": -1, "deck": -1}
 	for card in get_tree().get_nodes_in_group("cards"):
-		if not (card is Card) or card.network_mirror:
+		if not (card is Card) or not is_instance_valid(card) \
+				or not card.is_inside_tree() or card.network_mirror:
 			continue
-		snapshot.append(card)
-	snapshot.sort_custom(self, "_sort_hosts_first")
-	for card in snapshot:
-		_send_card_state(card, _zone_for_card(card))
+		var zone := _zone_for_card(card)
+		if zone in HIDDEN_ZONES:
+			continue
+		_send_card_state(card, zone)
+	send_counts()
 
 
-func _send_hidden(message: String) -> void:
-	if message.empty():
+func send_counts() -> void:
+	if not _can_send():
 		return
+	var counts := _local_hidden_counts()
+	if int(counts["hand"]) == int(_last_sent_counts["hand"]) \
+			and int(counts["deck"]) == int(_last_sent_counts["deck"]):
+		return
+	_last_sent_counts = counts
 	Rede.send_message({
-		"t": "hidden",
-		"msg": message,
+		"t": "mp_counts",
+		"hand": int(counts["hand"]),
+		"deck": int(counts["deck"]),
 	})
 
 
+func _send_pending_counts(delta: float) -> void:
+	if not _counts_dirty:
+		return
+	_counts_timer += delta
+	if _counts_timer < COUNTS_SEND_DELAY:
+		return
+	_counts_timer = 0.0
+	_counts_dirty = false
+	send_counts()
+
+
+func _send_dragged_card(delta: float) -> void:
+	var dragged = cfc.card_drag_ongoing
+	if not (dragged is Card) or not is_instance_valid(dragged) \
+			or dragged.network_mirror:
+		return
+	var zone := _zone_for_card(dragged)
+	if zone in HIDDEN_ZONES:
+		return
+	_drag_timer += delta
+	if _drag_timer < DRAG_SEND_INTERVAL:
+		return
+	_drag_timer = 0.0
+	_send_card_state(dragged, zone, true)
+
+
 func _send_card_state(card: Card, zone: String, dragging := false) -> void:
-	_ensure_id(card)
-	var hidden := zone in HIDDEN_ZONES
+	if not _can_send() or not is_instance_valid(card) or card.network_mirror:
+		return
+	var net_id := Multiplayer.ensure_card_id(card)
+	if net_id.empty():
+		return
+	if zone in HIDDEN_ZONES:
+		_send_hidden_card(card)
+		return
 	var payload := {
-		"t": "card",
-		"id": card.network_id,
+		"t": "mp_card",
+		"id": net_id,
 		"zone": zone,
-		"x": card.global_position.x,
-		"y": card.global_position.y,
-		"rot": card.card_rotation,
-		"face": 1 if card.is_faceup and not hidden else 0,
-		"hidden": 1 if hidden else 0,
-		"name": "" if hidden else card.canonical_name,
-		"host": "",
+		"name": card.canonical_name,
+		"face": 1 if card.is_faceup else 0,
+		"rot": int(card.card_rotation),
 		"drag": 1 if dragging else 0,
+		"host": "",
+		"x": 0.5,
+		"y": 0.5,
 	}
-	if card.current_host_card and card.current_host_card.network_id:
-		payload["host"] = card.current_host_card.network_id
+	if zone == "board":
+		var normalized := _normalize_board_position(card.global_position)
+		payload["x"] = normalized.x
+		payload["y"] = normalized.y
+	if zone == "scenario":
+		payload["claim"] = int(_scenario_claims.get(net_id, 0))
+	if card.current_host_card and is_instance_valid(card.current_host_card):
+		payload["host"] = Multiplayer.ensure_card_id(card.current_host_card)
+	var definition = cfc.card_definitions.get(card.canonical_name, {})
+	if typeof(definition) == TYPE_DICTIONARY and not definition.empty():
+		payload["definition"] = definition
 	Rede.send_message(payload)
+	_sent_visible[net_id] = true
+
+
+func _send_hidden_card(card: Card) -> void:
+	if not is_instance_valid(card):
+		return
+	var net_id := Multiplayer.ensure_card_id(card)
+	if _sent_visible.has(net_id):
+		_sent_visible.erase(net_id)
+		Rede.send_message({"t": "mp_remove", "id": net_id})
+	_counts_dirty = true
+
+
+func _send_card_state_soon(card: Card) -> void:
+	if not is_instance_valid(card):
+		return
+	yield(get_tree().create_timer(0.2), "timeout")
+	if not is_instance_valid(card) or not card.is_inside_tree():
+		return
+	_send_card_state(card, _zone_for_card(card))
+
+
+# Sends a local character to the opponent's prize area. The card leaves the
+# local field; the receiver hosts it as one of its own prize cards.
+func send_card_to_opponent_prizes(card: Card) -> bool:
+	if not _can_send() or not is_instance_valid(card) or card.network_mirror:
+		return false
+	var net_id := Multiplayer.ensure_card_id(card)
+	if net_id.empty():
+		return false
+	var payload := {
+		"t": "mp_card",
+		"id": net_id,
+		"zone": "opponent_prizes",
+		"name": card.canonical_name,
+		"face": 1,
+		"rot": 0,
+		"drag": 0,
+		"host": "",
+		"x": 0.5,
+		"y": 0.5,
+		"claim": 0,
+	}
+	var definition = cfc.card_definitions.get(card.canonical_name, {})
+	if typeof(definition) == TYPE_DICTIONARY and not definition.empty():
+		payload["definition"] = definition
+	Rede.send_message(payload)
+	_sent_visible[net_id] = true
+	return true
+
+
+#-----------------------------------------------------------------------------
+# Incoming state
+#-----------------------------------------------------------------------------
+
+func _on_network_message(data: Dictionary) -> void:
+	match str(data.get("t", "")):
+		"mp_card":
+			_apply_remote_card(data)
+		"mp_remove":
+			_remove_remote_card(str(data.get("id", "")))
+		"mp_counts":
+			_apply_remote_counts(data)
+		"mp_defs":
+			_apply_definitions(data.get("definitions", {}))
+			_apply_remote_defs_waiting()
+		"mp_def_request":
+			_send_definition(str(data.get("name", "")))
+		"mp_sync_request":
+			send_snapshot()
+		"mp_cursor":
+			_apply_remote_cursor(data)
+		"mp_card_move_request":
+			_apply_move_request(data)
 
 
 func _apply_remote_card(data: Dictionary) -> void:
+	if not Multiplayer.is_session_active():
+		return
 	var net_id := str(data.get("id", ""))
-	if net_id.empty():
-		return
 	var zone := str(data.get("zone", "board"))
-	var hidden := int(data.get("hidden", 0)) == 1
 	var card_name := str(data.get("name", ""))
-	var card: Card = _remote_cards.get(net_id)
-	if zone == "deck":
-		if card and is_instance_valid(card):
-			card.queue_free()
-		_remote_cards.erase(net_id)
-		_hand_order.erase(net_id)
+	if net_id.empty() or card_name.empty() \
+			or (not zone in VISIBLE_ZONES and zone != "opponent_prizes"):
 		return
-	if hidden:
-		if not is_instance_valid(card):
-			card = _instance_hidden_card(net_id)
-	else:
-		if is_instance_valid(card) and card.canonical_name != card_name and card_name:
-			card.queue_free()
-			_remote_cards.erase(net_id)
-			card = null
-		if not is_instance_valid(card):
-			card = _instance_named_card(net_id, card_name)
+	var definition = data.get("definition", {})
+	if typeof(definition) == TYPE_DICTIONARY and not definition.empty():
+		cfc.card_definitions[card_name] = definition
+	if not cfc.card_definitions.has(card_name):
+		if not _pending_cards.has(card_name):
+			_pending_cards[card_name] = []
+		_pending_cards[card_name].append(data.duplicate(true))
+		Rede.send_message({"t": "mp_def_request", "name": card_name})
+		return
+	if zone == "opponent_prizes":
+		_apply_remote_card_to_local_prizes(net_id, card_name)
+		return
+	var claim := int(data.get("claim", 0))
+	if zone == "scenario" and not _accept_remote_scenario(net_id, claim):
+		var resource_data := data.duplicate(true)
+		resource_data["zone"] = "resources"
+		resource_data["x"] = 0.5
+		resource_data["y"] = 0.5
+		resource_data["claim"] = 0
+		_apply_remote_card(resource_data)
+		return
+	var card: Card = _remote_cards.get(net_id)
+	if is_instance_valid(card) and card.canonical_name != card_name:
+		_discard_remote_card(net_id)
+		card = null
+	if not is_instance_valid(card):
+		card = _instance_named_card(net_id, card_name)
 	if not is_instance_valid(card):
 		return
-	_configure_remote_card(card)
-	# warning-ignore:return_value_discarded
-	card.set_is_faceup(int(data.get("face", 0)) == 1, true, false, ["net"])
+	var travel := Vector2(float(data.get("x", 0.5)), float(data.get("y", 0.5)))
+	var rotation := int(data.get("rot", 0))
+	var face := int(data.get("face", 1)) == 1
 	var host_id := str(data.get("host", ""))
-	if host_id and _remote_cards.has(host_id):
-		var host: Card = _remote_cards[host_id]
+	_remember_remote_meta(
+			net_id, zone, card_name, travel, rotation, face, host_id, claim)
+	_configure_remote_card(card)
+	_set_remote_card_interactive(card, zone)
+	var host: Card = _remote_cards.get(host_id)
+	if is_instance_valid(host) and host != card:
 		card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
 		card.attachment_offset = Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
 		if card.current_host_card != host:
 			card.attach_to_host(host, false, ["net"])
 	elif card.current_host_card:
-		card._clear_attachment_status()
-	var target := _position_for_zone(zone, Vector2(data.get("x", 0), data.get("y", 0)), net_id)
+		card._clear_attachment_status(["net"])
+	var target := _position_for_remote(zone, travel, net_id)
 	if card.get_parent() != cfc.NMAP.board:
-		card.get_parent().remove_child(card)
+		if card.get_parent():
+			card.get_parent().remove_child(card)
 		cfc.NMAP.board.add_child(card)
 	card.global_position = target
 	card._target_position = target
 	card.set_state(Card.CardState.ON_PLAY_BOARD)
-	if zone == "board":
-		# warning-ignore:return_value_discarded
-		card.set_card_rotation(int(data.get("rot", 0)), false, true, false, ["net"])
-	if zone == "hand" and not net_id in _hand_order:
-		_hand_order.append(net_id)
-		_layout_remote_hand()
-	elif zone != "hand":
-		_hand_order.erase(net_id)
-		_layout_remote_hand()
+	# warning-ignore:return_value_discarded
+	card.set_is_faceup(face, true, false, ["net"])
+	card.scale = Vector2(1, 1) * _scale_for_zone(zone)
+	# warning-ignore:return_value_discarded
+	card.set_card_rotation(rotation, false, false, false, ["net"])
+	if card.attachments.size() > 0:
+		card._organize_attachments()
+	_update_remote_zone_labels()
+	if _cursor and is_instance_valid(_cursor):
+		_cursor.raise()
 
 
-func _instance_hidden_card(net_id: String) -> Card:
-	var dummy_name := _dummy_card_name()
-	if dummy_name.empty():
-		return null
-	return _instance_named_card(net_id, dummy_name)
-
-
-func _instance_named_card(net_id: String, card_name: String) -> Card:
-	if card_name.empty() or not cfc.card_definitions.has(card_name):
-		card_name = _dummy_card_name()
-	if card_name.empty():
-		return null
+# The opponent sent one of their characters to this player's prize area. It
+# stops being a mirror and becomes a real local prize card.
+func _apply_remote_card_to_local_prizes(net_id: String, card_name: String) -> void:
+	if _remote_cards.has(net_id):
+		_discard_remote_card(net_id)
+	var board = cfc.NMAP.get("board", null)
+	if not board:
+		return
+	var prize_pile = board.get_node_or_null("Prêmios")
+	if not prize_pile:
+		return
+	for existing in get_tree().get_nodes_in_group("cards"):
+		if existing is Card and is_instance_valid(existing) \
+				and not existing.network_mirror \
+				and str(existing.network_id) == net_id:
+			return
 	_spawning_remote = true
-	var card: Card = cfc.instance_card(card_name)
+	var card = cfc.instance_card(card_name)
 	_spawning_remote = false
+	if not card:
+		return
 	card.network_id = net_id
-	card.network_mirror = true
-	cfc.NMAP.board.add_child(card)
-	_configure_remote_card(card)
-	_remote_cards[net_id] = card
-	return card
+	prize_pile.add_child(card)
+	card._determine_idle_state()
+	# warning-ignore:return_value_discarded
+	card.set_is_faceup(true, true, false, ["net"])
+	card.card_rotation = 0
+	_send_card_state(card, "prizes")
+	if board.has_method("_update_prize_energy"):
+		board._update_prize_energy()
 
 
-func _configure_remote_card(card: Card) -> void:
-	card.network_mirror = true
-	card.remove_from_group("cards")
-	if not card.is_in_group("remote_cards"):
-		card.add_to_group("remote_cards")
-	card.monitoring = false
-	card.monitorable = false
-	card.set_control_mouse_filters(false)
-	if card.buttons:
-		card.buttons.set_active(false)
+# Scene cards can be dragged by either player. The owner receives the request,
+# snaps the real card to its nearest free slot and broadcasts the new state.
+func _set_remote_card_interactive(card: Card, zone: String) -> void:
+	var interactive := zone in ["board", "scenario"]
+	card.remote_draggable = interactive
+	card.set_control_mouse_filters(interactive)
+	if not interactive:
+		if _remote_drag_card == card:
+			_remote_drag_card = null
+		return
+	var control := card.get_node("Control")
+	if not control.is_connected("gui_input", self, "_on_remote_card_gui_input"):
+		control.connect("gui_input", self, "_on_remote_card_gui_input", [card])
 
 
-func _dummy_card_name() -> String:
-	if cfc.card_definitions.has("Test Card 1"):
-		return "Test Card 1"
-	var names := cfc.card_definitions.keys()
-	if names.empty():
-		return ""
-	return str(names[0])
+func _on_remote_card_gui_input(event, card: Card) -> void:
+	if not _active or not is_instance_valid(card) \
+			or not card.remote_draggable:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	if event.button_index != BUTTON_LEFT or not event.pressed:
+		return
+	_remote_drag_card = card
+	_remote_drag_offset = card.get_global_mouse_position() \
+			- card.global_position
+	card.z_index = 100
 
 
-func _position_for_zone(zone: String, local_pos: Vector2, net_id: String) -> Vector2:
-	var visual: Control = cfc.NMAP.board.get_node("OpponentFieldVisual")
-	match zone:
-		"hand":
-			return _hand_slot_position(net_id)
-		"resources":
-			return visual.get_node("OpponentResourcesBackground").rect_global_position + Vector2(10, 30)
-		"prizes":
-			return visual.get_node("OpponentPrizes").rect_global_position + Vector2(10, 30)
-		"scenario":
-			return visual.get_node("OpponentScenario").rect_global_position + Vector2(10, 30)
-		_:
-			return _map_board_position(local_pos)
+func _update_remote_drag() -> void:
+	if not is_instance_valid(_remote_drag_card):
+		_remote_drag_card = null
+		return
+	if Input.is_mouse_button_pressed(BUTTON_LEFT):
+		var target := _remote_drag_card.get_global_mouse_position() \
+				- _remote_drag_offset
+		_remote_drag_card.global_position = target
+		_remote_drag_card._target_position = target
+		return
+	var card := _remote_drag_card
+	_remote_drag_card = null
+	card.z_index = 0
+	if not _can_send():
+		return
+	var meta = _remote_meta.get(str(card.network_id), {})
+	var zone := str(meta.get("zone", "board"))
+	if not zone in ["board", "scenario"]:
+		return
+	var travel := Vector2(0.5, 0.5)
+	if zone == "board":
+		var grid: Control = cfc.NMAP.board.get_node_or_null(
+				"PlacementGridDemo")
+		if grid and grid.rect_size.x > 0 and grid.rect_size.y > 0:
+			travel = (card.global_position - grid.rect_global_position) \
+					/ grid.rect_size
+			travel.x = clamp(travel.x, 0.0, 1.0)
+			travel.y = clamp(travel.y, 0.0, 1.0)
+	Rede.send_message({
+		"t": "mp_card_move_request",
+		"id": str(card.network_id),
+		"zone": zone,
+		"x": travel.x,
+		"y": travel.y,
+	})
 
 
-func _map_board_position(local_pos: Vector2) -> Vector2:
+func _apply_move_request(data: Dictionary) -> void:
+	if not _active or not Multiplayer.is_playing():
+		return
+	var net_id := str(data.get("id", ""))
+	var zone := str(data.get("zone", "board"))
+	if net_id.empty() or not zone in ["board", "scenario"]:
+		return
+	var card: Card = null
+	for candidate in get_tree().get_nodes_in_group("cards"):
+		if candidate is Card and is_instance_valid(candidate) \
+				and not candidate.network_mirror \
+				and Multiplayer.ensure_card_id(candidate) == net_id:
+			card = candidate
+			break
+	if not card or _zone_for_card(card) != zone:
+		return
 	var board: Control = cfc.NMAP.board
-	var visual: Control = board.get_node("OpponentFieldVisual")
-	var scene: ColorRect = visual.get_node("OpponentScene")
-	var grid: Control = board.get_node("PlacementGridDemo")
-	var local_origin := grid.rect_global_position
-	var local_size := grid.rect_size
-	var rel := Vector2.ZERO
-	if local_size.x > 0 and local_size.y > 0:
-		rel = Vector2(
-				clamp((local_pos.x - local_origin.x) / local_size.x, 0.0, 1.0),
-				clamp((local_pos.y - local_origin.y) / local_size.y, 0.0, 1.0)
-		)
-	return scene.rect_global_position + Vector2(rel.x * scene.rect_size.x, rel.y * scene.rect_size.y)
+	var slot: BoardPlacementSlot = null
+	if zone == "board":
+		var grid: BoardPlacementGrid = board.get_node_or_null(
+				"PlacementGridDemo")
+		if grid:
+			var travel := Vector2(
+					clamp(float(data.get("x", 0.5)), 0.0, 1.0),
+					clamp(float(data.get("y", 0.5)), 0.0, 1.0))
+			var target := grid.rect_global_position \
+					+ Vector2(travel.x * grid.rect_size.x,
+							travel.y * grid.rect_size.y)
+			var best_distance := INF
+			for candidate_slot in grid.get_all_slots():
+				if candidate_slot.occupying_card \
+						and candidate_slot.occupying_card != card:
+					continue
+				var center: Vector2 = candidate_slot.rect_global_position \
+						+ candidate_slot.rect_size * 0.5
+				var distance := center.distance_to(target)
+				if distance < best_distance:
+					best_distance = distance
+					slot = candidate_slot
+	else:
+		var scenario_grid: BoardPlacementGrid = board.get_node_or_null(
+				"ModifiedLabelGrid")
+		if scenario_grid and scenario_grid.get_slot_count() > 0:
+			var scenario_slot := scenario_grid.get_slot(0)
+			if not scenario_slot.occupying_card \
+					or scenario_slot.occupying_card == card:
+				slot = scenario_slot
+	if not slot:
+		_send_card_state(card, zone)
+		return
+	if card._placement_slot and card._placement_slot != slot:
+		card._placement_slot.occupying_card = null
+	slot.occupying_card = card
+	card._placement_slot = slot
+	card.global_position = slot.rect_global_position
+	card._target_position = card.global_position
+	_send_card_state(card, zone)
 
 
-func _hand_slot_position(net_id: String) -> Vector2:
-	var visual: Control = cfc.NMAP.board.get_node("OpponentFieldVisual")
-	var hand_bg: ColorRect = visual.get_node("OpponentHandBackground")
-	var index := _hand_order.find(net_id)
-	if index < 0:
-		index = _hand_order.size()
-	return hand_bg.rect_global_position + Vector2(12 + index * 42, 28)
+func _connect_view_button(node_name: String, zone: String) -> void:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return
+	var button: Button = board.get_node_or_null(
+			"OpponentFieldVisual/" + node_name)
+	if button and not button.is_connected(
+			"pressed", self, "_show_remote_zone_cards"):
+		button.connect("pressed", self, "_show_remote_zone_cards", [zone])
 
 
-func _layout_remote_hand() -> void:
-	var valid := []
-	for net_id in _hand_order:
-		if _remote_cards.has(net_id) and is_instance_valid(_remote_cards[net_id]):
-			valid.append(net_id)
-	_hand_order = valid
-	for net_id in _hand_order:
-		var card: Card = _remote_cards[net_id]
-		card.global_position = _hand_slot_position(net_id)
+func _show_remote_zone_cards(zone: String) -> void:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return
+	var names := []
+	for net_id in _remote_meta:
+		var meta = _remote_meta[net_id]
+		if typeof(meta) != TYPE_DICTIONARY:
+			continue
+		if str(meta.get("zone", "")) != zone:
+			continue
+		var card_name := str(meta.get("name", ""))
+		if cfc.card_definitions.has(card_name):
+			names.append(card_name)
+	if names.empty():
+		if board.has_method("show_resource_message"):
+			board.show_resource_message(
+					"O oponente não tem cartas nesta área.")
+		return
+	var window = SELECTION_WINDOW_SCENE.instance()
+	board.add_child(window)
+	window.connect("confirmed", window, "queue_free")
+	window.initiate_selection(names, 0, "display", false)
+	window.window_title = "Prêmios do oponente" if zone == "prizes" \
+			else "Recursos do oponente"
 
 
-func _clear_remote_cards() -> void:
-	for card in _remote_cards.values():
+func _update_remote_zone_labels() -> void:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return
+	var total_energy := 0
+	for net_id in _remote_meta:
+		var meta = _remote_meta[net_id]
+		if typeof(meta) != TYPE_DICTIONARY:
+			continue
+		if str(meta.get("zone", "")) != "prizes":
+			continue
+		var card = _remote_cards.get(net_id)
 		if is_instance_valid(card):
-			card.queue_free()
-	_remote_cards.clear()
-	_hand_order.clear()
+			total_energy += str(
+					card.properties.get("ENERGIA", "0")).to_int()
+	var energy_label: Label = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentPrizesEnergy")
+	if energy_label:
+		energy_label.text = "Energia: " + str(total_energy)
+	var resources_label: Label = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentResourcesLabel")
+	if resources_label:
+		resources_label.text = "Recursos / Descarte (" \
+				+ str(_remote_zone_order["resources"].size()) + ")"
 
 
-func _sort_hosts_first(card_a: Card, card_b: Card) -> bool:
-	if card_a.current_host_card and not card_b.current_host_card:
-		return false
-	if not card_a.current_host_card and card_b.current_host_card:
+func _remember_remote_meta(
+		net_id: String,
+		zone: String,
+		card_name: String,
+		travel: Vector2,
+		rotation: int,
+		face: bool,
+		host_id: String,
+		claim := 0) -> void:
+	var previous = _remote_meta.get(net_id, {})
+	if typeof(previous) == TYPE_DICTIONARY:
+		var old_zone := str(previous.get("zone", ""))
+		if old_zone in _remote_zone_order and old_zone != zone:
+			_remote_zone_order[old_zone].erase(net_id)
+	_remote_meta[net_id] = {
+		"zone": zone,
+		"name": card_name,
+		"x": travel.x,
+		"y": travel.y,
+		"rot": rotation,
+		"face": 1 if face else 0,
+		"host": host_id,
+		"claim": claim,
+	}
+	if zone in _remote_zone_order \
+			and not net_id in _remote_zone_order[zone]:
+		_remote_zone_order[zone].append(net_id)
+
+
+func _apply_remote_counts(data: Dictionary) -> void:
+	var hand := int(data.get("hand", 0))
+	var deck := int(data.get("deck", 0))
+	if hand < 0 or deck < 0:
+		return
+	Multiplayer.set_opponent_counts({"hand": hand, "deck": deck})
+
+
+func _apply_remote_cursor(data: Dictionary) -> void:
+	if not _active or not is_instance_valid(_cursor):
+		return
+	if int(data.get("v", 1)) != 1:
+		_cursor.visible = false
+		return
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return
+	var x := clamp(float(data.get("x", 0.5)), 0.0, 1.0)
+	var y := clamp(float(data.get("y", 0.5)), 0.0, 1.0)
+	_cursor.rect_position = mirror_remote_point(
+			Vector2(x, y), board.rect_size)
+	_cursor.visible = true
+	_cursor.raise()
+	_cursor_hide_timer = 0.0
+
+
+# The board is seen from the opposite side, so the opponent pointer is rotated
+# 180 degrees onto the top half instead of appearing on top of the local field.
+func mirror_remote_point(normalized: Vector2, board_size: Vector2) -> Vector2:
+	return Vector2(
+			(1.0 - normalized.x) * board_size.x,
+			(1.0 - normalized.y) * board_size.y)
+
+
+func _update_cursor_receiver(delta: float) -> void:
+	if not is_instance_valid(_cursor) or not _cursor.visible:
+		return
+	_cursor_hide_timer += delta
+	if _cursor_hide_timer >= CURSOR_HIDE_AFTER:
+		_cursor.visible = false
+
+
+func _send_cursor(delta: float) -> void:
+	_cursor_send_timer += delta
+	if _cursor_send_timer < CURSOR_SEND_INTERVAL:
+		return
+	_cursor_send_timer = 0.0
+	var board: Control = cfc.NMAP.board
+	if not board or board.rect_size.x <= 0 or board.rect_size.y <= 0:
+		return
+	var local_mouse := board.get_global_mouse_position() \
+			- board.rect_global_position
+	var normalized := Vector2(
+			local_mouse.x / board.rect_size.x,
+			local_mouse.y / board.rect_size.y)
+	var inside := normalized.x >= 0.0 and normalized.x <= 1.0 \
+			and normalized.y >= 0.0 and normalized.y <= 1.0
+	Rede.send_message({
+		"t": "mp_cursor",
+		"x": clamp(normalized.x, 0.0, 1.0),
+		"y": clamp(normalized.y, 0.0, 1.0),
+		"v": 1 if inside else 0,
+	})
+
+
+#-----------------------------------------------------------------------------
+# Public snapshot for checkpoints and restoration
+#-----------------------------------------------------------------------------
+
+func build_public_card_entries(my_slot: int, opponent_slot: int) -> Dictionary:
+	var cards := []
+	var definitions := {}
+	for card in get_tree().get_nodes_in_group("cards"):
+		if not (card is Card) or not is_instance_valid(card) \
+				or not card.is_inside_tree() or card.network_mirror:
+			continue
+		var zone := _zone_for_card(card)
+		if zone in HIDDEN_ZONES:
+			continue
+		cards.append(_local_entry(card, zone, my_slot))
+		_add_definition(definitions, card.canonical_name)
+	for net_id in _remote_cards:
+		var card = _remote_cards[net_id]
+		if not is_instance_valid(card):
+			continue
+		var meta = _remote_meta.get(net_id, {})
+		if typeof(meta) != TYPE_DICTIONARY:
+			continue
+		var zone := str(meta.get("zone", "board"))
+		if zone in HIDDEN_ZONES:
+			continue
+		var card_name := str(meta.get("name", card.canonical_name))
+		cards.append({
+			"id": net_id,
+			"owner": opponent_slot,
+			"zone": zone,
+			"name": card_name,
+			"x": float(meta.get("x", 0.5)),
+			"y": float(meta.get("y", 0.5)),
+			"rot": int(meta.get("rot", 0)),
+			"face": int(meta.get("face", 1)),
+			"host": str(meta.get("host", "")),
+			"claim": int(meta.get("claim", 0)),
+		})
+		_add_definition(definitions, card_name)
+	return {"cards": cards, "definitions": definitions}
+
+
+func apply_public_snapshot(public_state: Dictionary, opponent_slot: int) -> void:
+	_clear_remote_cards()
+	_clear_hand_placeholders()
+	_apply_definitions(public_state.get("definitions", {}))
+	var cards = public_state.get("cards", [])
+	if typeof(cards) == TYPE_ARRAY:
+		for entry in cards:
+			if typeof(entry) != TYPE_DICTIONARY:
+				continue
+			if int(entry.get("owner", 0)) != opponent_slot:
+				continue
+			_apply_remote_card(_entry_as_message(entry))
+	var hidden = public_state.get("hidden", {})
+	var counts = {}
+	if typeof(hidden) == TYPE_DICTIONARY:
+		counts = hidden.get(str(opponent_slot), {})
+	if typeof(counts) != TYPE_DICTIONARY:
+		counts = {}
+	set_hidden_counts(int(counts.get("hand", 0)), int(counts.get("deck", 0)), true)
+
+
+func find_remote_card(net_id: String) -> Card:
+	var card = _remote_cards.get(net_id)
+	if is_instance_valid(card):
+		return card
+	return null
+
+
+func set_hidden_counts(hand_count: int, deck_count: int, force := false) -> void:
+	hand_count = max(0, hand_count)
+	deck_count = max(0, deck_count)
+	if not force \
+			and hand_count == int(_last_hidden_counts["hand"]) \
+			and deck_count == int(_last_hidden_counts["deck"]):
+		return
+	_last_hidden_counts = {"hand": hand_count, "deck": deck_count}
+	_refresh_hand_placeholders(hand_count)
+	_update_opponent_labels(hand_count, deck_count)
+
+
+#-----------------------------------------------------------------------------
+# Local signal hooks
+#-----------------------------------------------------------------------------
+
+func _on_new_card(card) -> void:
+	if cfc.ut or _spawning_remote or not (card is Card):
+		return
+	if card.network_mirror or not Multiplayer.is_session_active():
+		return
+	Multiplayer.ensure_card_id(card)
+
+
+func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
+	if not _can_send() or not (card is Card) \
+			or not is_instance_valid(card) or card.network_mirror:
+		return
+	var tags = details.get("tags", [])
+	if typeof(tags) == TYPE_ARRAY and "net" in tags:
+		return
+	_counts_dirty = true
+	match trigger:
+		"card_moved_to_hand":
+			_send_hidden_card(card)
+		"card_moved_to_pile":
+			var zone := _pile_zone(str(details.get("destination", "")))
+			if zone in HIDDEN_ZONES:
+				_send_hidden_card(card)
+			else:
+				_send_card_state_soon(card)
+		"card_moved_to_board":
+			if _zone_for_card(card) == "scenario":
+				_register_local_scenario(card)
+			_send_card_state_soon(card)
+		"card_rotated", "card_flipped", "card_attached", "card_unattached":
+			var visible_zone := _zone_for_card(card)
+			if visible_zone in HIDDEN_ZONES:
+				_send_hidden_card(card)
+			else:
+				_send_card_state(card, visible_zone)
+
+
+func _on_peer_disconnected() -> void:
+	if _cursor and is_instance_valid(_cursor):
+		_cursor.visible = false
+
+
+func _on_session_ended(_message: String) -> void:
+	stop_mirroring()
+
+
+#-----------------------------------------------------------------------------
+# Scenario uniqueness
+#-----------------------------------------------------------------------------
+
+# Returns true when a scenario claim beats the scenario currently on the local
+# field. Equal claims happen when both players play at nearly the same time;
+# the host keeps the active scenario in that case.
+func scenario_claim_wins(
+		claim: int,
+		local_claim: int,
+		remote_is_host: bool) -> bool:
+	if claim != local_claim:
+		return claim > local_claim
+	return remote_is_host
+
+
+func _register_local_scenario(card: Card) -> void:
+	var net_id := Multiplayer.ensure_card_id(card)
+	if net_id.empty():
+		return
+	_scenario_clock = max(_scenario_clock, _active_remote_scenario_claim()) + 1
+	_scenario_claims[net_id] = _scenario_clock
+	# A newly played scenario always has a newer claim than the mirrored one,
+	# so the opponent's scenario goes to its owner's discard.
+	var remote := _active_remote_scenario()
+	if remote:
+		_move_remote_scenario_to_resources(str(remote.network_id))
+
+
+func _accept_remote_scenario(net_id: String, claim: int) -> bool:
+	_scenario_clock = max(_scenario_clock, claim)
+	var meta = _remote_meta.get(net_id, {})
+	if typeof(meta) == TYPE_DICTIONARY \
+			and str(meta.get("zone", "")) == "scenario":
 		return true
+	var local := _local_active_scenario()
+	if not local:
+		_drop_other_remote_scenarios(net_id)
+		return true
+	var local_claim := int(_scenario_claims.get(str(local.network_id), 0))
+	var remote_is_host := Multiplayer.my_slot != 1
+	if not scenario_claim_wins(claim, local_claim, remote_is_host):
+		return false
+	# The opponent's scenario wins: ours goes to its owner's discard (ours).
+	_discard_local_scenario(local)
+	_drop_other_remote_scenarios(net_id)
 	return true
 
 
-func _ensure_id(card: Card) -> void:
-	if card.network_id.empty():
-		_local_seq += 1
-		card.network_id = Rede.peer_tag + "_" + str(_local_seq)
+func _drop_other_remote_scenarios(keep_id: String) -> void:
+	for net_id in _remote_meta.keys():
+		var meta = _remote_meta[net_id]
+		if typeof(meta) != TYPE_DICTIONARY:
+			continue
+		if str(meta.get("zone", "")) != "scenario" or str(net_id) == keep_id:
+			continue
+		_discard_remote_card(str(net_id))
 
+
+func _discard_local_scenario(card: Card) -> void:
+	if not is_instance_valid(card) or card.network_mirror:
+		return
+	_scenario_claims.erase(str(card.network_id))
+	card.move_to(cfc.NMAP.discard)
+
+
+# The losing scenario goes to its owner's discard. The owner confirms the move
+# with a normal zone update; moving the mirror immediately keeps checkpoints
+# from briefly losing the card while that update travels.
+func _move_remote_scenario_to_resources(net_id: String) -> void:
+	var card = _remote_cards.get(net_id)
+	if not is_instance_valid(card):
+		return
+	_apply_remote_card({
+		"t": "mp_card",
+		"id": net_id,
+		"zone": "resources",
+		"name": card.canonical_name,
+		"x": 0.5,
+		"y": 0.5,
+		"rot": int(card.card_rotation),
+		"face": 1 if card.is_faceup else 0,
+		"host": "",
+		"claim": 0,
+	})
+
+
+func _local_active_scenario() -> Card:
+	var tree := get_tree()
+	if not tree or not cfc.NMAP.has("board"):
+		return null
+	for card in tree.get_nodes_in_group("cards"):
+		if not (card is Card) or not is_instance_valid(card) \
+				or card.network_mirror:
+			continue
+		if card.get_parent() == cfc.NMAP.board \
+				and _zone_for_card(card) == "scenario":
+			return card
+	return null
+
+
+func _active_remote_scenario() -> Card:
+	for net_id in _remote_meta.keys():
+		var meta = _remote_meta[net_id]
+		if typeof(meta) != TYPE_DICTIONARY:
+			continue
+		if str(meta.get("zone", "")) != "scenario":
+			continue
+		var card = _remote_cards.get(net_id)
+		if is_instance_valid(card):
+			return card
+	return null
+
+
+func _active_remote_scenario_claim() -> int:
+	var card = _active_remote_scenario()
+	if not card:
+		return 0
+	var meta = _remote_meta.get(str(card.network_id), {})
+	if typeof(meta) != TYPE_DICTIONARY:
+		return 0
+	return int(meta.get("claim", 0))
+
+
+# Reapplies the single-scenario rule after a checkpoint restore, where the
+# opponent snapshot is applied before the local cards exist.
+func reconcile_scenarios(public_state: Dictionary) -> void:
+	if cfc.ut or not Multiplayer.is_session_active():
+		return
+	var cards = public_state.get("cards", [])
+	if typeof(cards) != TYPE_ARRAY:
+		cards = []
+	var local_claim := 0
+	var local := _local_active_scenario()
+	if local:
+		var local_id := str(local.network_id)
+		local_claim = int(_scenario_claims.get(local_id, 0))
+		for entry in cards:
+			if typeof(entry) != TYPE_DICTIONARY:
+				continue
+			if int(entry.get("owner", 0)) != Multiplayer.my_slot:
+				continue
+			if str(entry.get("id", "")) != local_id:
+				continue
+			local_claim = int(entry.get("claim", local_claim))
+			break
+		_scenario_claims[local_id] = local_claim
+		_scenario_clock = max(_scenario_clock, local_claim)
+	var remote := _active_remote_scenario()
+	if remote:
+		_scenario_clock = max(_scenario_clock, _active_remote_scenario_claim())
+	if not local or not remote:
+		return
+	var remote_claim := _active_remote_scenario_claim()
+	var remote_is_host := Multiplayer.my_slot != 1
+	if scenario_claim_wins(remote_claim, local_claim, remote_is_host):
+		_discard_local_scenario(local)
+	else:
+		_move_remote_scenario_to_resources(str(remote.network_id))
+
+
+#-----------------------------------------------------------------------------
+# Zone / position helpers
+#-----------------------------------------------------------------------------
 
 func _zone_for_card(card: Card) -> String:
 	var parent = card.get_parent()
+	if not parent:
+		return "board"
+	if "CardPopUpSlot" in str(parent.name):
+		var pile := _pile_ancestor(parent)
+		if pile:
+			return _pile_zone(str(pile.name))
 	if parent == cfc.NMAP.board:
 		if str(card.properties.get("_tipo", "")) == "Cenário":
 			return "scenario"
@@ -377,34 +977,429 @@ func _zone_for_card(card: Card) -> String:
 		return "resources"
 	if str(parent.name) == "Prêmios":
 		return "prizes"
+	if parent is Pile:
+		return _pile_zone(str(parent.name))
 	return "board"
 
 
-func _pile_zone(destination_name: String) -> String:
-	var lowered := destination_name.to_lower()
+func _pile_ancestor(node) -> Pile:
+	var current = node
+	for _i in range(8):
+		if current == null or not is_instance_valid(current):
+			return null
+		if current is Pile:
+			return current
+		current = current.get_parent()
+	return null
+
+
+func _pile_zone(pile_name: String) -> String:
+	var lowered := pile_name.to_lower()
 	if "prêm" in lowered or "prem" in lowered:
 		return "prizes"
 	if "deck" in lowered:
 		return "deck"
+	if "mão" in lowered or "mao" in lowered:
+		return "hand"
 	return "resources"
 
 
-func _hidden_for_pile(zone: String, source: String) -> String:
-	if zone == "resources":
-		if source.to_lower() == "hand":
-			return "Baixou recurso"
-		return "Enviou carta a Recursos/Descarte"
-	if zone == "deck":
-		return "Moveu carta ao Deck"
-	if zone == "prizes":
+func _normalize_board_position(global_pos: Vector2) -> Vector2:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return Vector2(0.5, 0.5)
+	var grid: Control = board.get_node_or_null("PlacementGridDemo")
+	if not grid or grid.rect_size.x <= 0 or grid.rect_size.y <= 0:
+		return Vector2(
+				clamp(global_pos.x / board.rect_size.x, 0.0, 1.0),
+				clamp(global_pos.y / board.rect_size.y, 0.0, 1.0))
+	var relative: Vector2 = (global_pos - grid.rect_global_position) \
+			/ grid.rect_size
+	return Vector2(clamp(relative.x, 0.0, 1.0), clamp(relative.y, 0.0, 1.0))
+
+
+func _position_for_remote(zone: String, travel: Vector2, net_id: String) -> Vector2:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return Vector2.ZERO
+	var visual: Control = board.get_node_or_null("OpponentFieldVisual")
+	if not visual:
+		return board.rect_global_position
+	match zone:
+		"resources":
+			var resources: Control = visual.get_node_or_null(
+					"OpponentResourcesBackground")
+			if resources:
+				return _stack_position(resources, "resources", net_id)
+		"prizes":
+			var prizes: Control = visual.get_node_or_null("OpponentPrizes")
+			if prizes:
+				return _stack_position(prizes, "prizes", net_id)
+		"scenario":
+			var scenario: Control = visual.get_node_or_null("OpponentScenario")
+			if scenario:
+				return _center_zone_position(
+						scenario, 0, CFConst.CARD_SIZE * SCENARIO_SCALE)
+		_:
+			var scene: Control = visual.get_node_or_null("OpponentScene")
+			if scene:
+				return _map_zone_position(scene, travel, 0, 0,
+						CFConst.CARD_SIZE * BOARD_SCALE)
+	return board.rect_global_position
+
+
+# The remote field is the opponent board rotated 180 degrees, so the travel
+# coordinate is reversed on both axes. The card display size is reserved so
+# the mirror never spills into the local player's half of the board.
+func _map_zone_position(
+		area: Control,
+		travel: Vector2,
+		margin_x: float,
+		margin_top: float,
+		display_size: Vector2) -> Vector2:
+	var usable := Vector2(
+			max(1.0, area.rect_size.x - margin_x * 2.0 - display_size.x),
+			max(1.0, area.rect_size.y - margin_top - display_size.y))
+	return area.rect_global_position + Vector2(margin_x, margin_top) \
+			+ Vector2((1.0 - travel.x) * usable.x,
+					(1.0 - travel.y) * usable.y)
+
+
+func _center_zone_position(
+		area: Control,
+		top_margin: float,
+		display_size: Vector2) -> Vector2:
+	var available_y := max(
+			0.0, area.rect_size.y - top_margin - display_size.y)
+	return area.rect_global_position + Vector2(
+			max(0.0, (area.rect_size.x - display_size.x) * 0.5),
+			top_margin + available_y * 0.5)
+
+
+func _stack_position(area: Control, zone: String, net_id: String) -> Vector2:
+	var order: Array = _remote_zone_order.get(zone, [])
+	var index := order.find(net_id)
+	if index < 0:
+		index = 0
+	var columns := 2 if zone == "prizes" else 3
+	var row_height := 24 if zone == "prizes" else 18
+	var column := index % columns
+	var row := int(index / columns)
+	return area.rect_global_position + Vector2(
+			10 + column * 34, 30 + row * row_height)
+
+
+func _scale_for_zone(zone: String) -> float:
+	match zone:
+		"resources", "prizes":
+			return PILE_SCALE
+		"scenario":
+			return SCENARIO_SCALE
+		_:
+			return BOARD_SCALE
+
+
+#-----------------------------------------------------------------------------
+# Remote card lifecycle
+#-----------------------------------------------------------------------------
+
+func _instance_named_card(net_id: String, card_name: String) -> Card:
+	if not cfc.card_definitions.has(card_name):
+		return null
+	if not cfc.NMAP.has("board"):
+		return null
+	_spawning_remote = true
+	var card = cfc.instance_card(card_name)
+	_spawning_remote = false
+	if not card:
+		return null
+	card.network_id = net_id
+	cfc.NMAP.board.add_child(card)
+	_configure_remote_card(card)
+	_remote_cards[net_id] = card
+	return card
+
+
+func _configure_remote_card(card: Card) -> void:
+	card.network_mirror = true
+	if card.is_in_group("cards"):
+		card.remove_from_group("cards")
+	if not card.is_in_group("remote_cards"):
+		card.add_to_group("remote_cards")
+	card.monitoring = false
+	card.monitorable = false
+	card.set_control_mouse_filters(false)
+	if card.buttons:
+		card.buttons.set_active(false)
+
+
+func _discard_remote_card(net_id: String) -> void:
+	var card = _remote_cards.get(net_id)
+	if is_instance_valid(card):
+		card.queue_free()
+	_remote_cards.erase(net_id)
+	_remote_meta.erase(net_id)
+	for zone in _remote_zone_order:
+		_remote_zone_order[zone].erase(net_id)
+	_sent_visible.erase(net_id)
+	if _remote_drag_card == card:
+		_remote_drag_card = null
+	_update_remote_zone_labels()
+
+
+func _remove_remote_card(net_id: String) -> void:
+	if net_id.empty():
+		return
+	_discard_remote_card(net_id)
+
+
+func _clear_remote_cards() -> void:
+	for net_id in _remote_cards.keys():
+		_discard_remote_card(net_id)
+	_remote_cards.clear()
+	_remote_meta.clear()
+	_remote_zone_order = {"resources": [], "prizes": []}
+	_update_remote_zone_labels()
+
+
+#-----------------------------------------------------------------------------
+# Hand / deck placeholders
+#-----------------------------------------------------------------------------
+
+func _refresh_hand_placeholders(hand_count: int) -> void:
+	var target := min(hand_count, MAX_HAND_PLACEHOLDERS)
+	while _hand_placeholders.size() > target:
+		var card = _hand_placeholders.pop_back()
+		if is_instance_valid(card):
+			card.queue_free()
+	while _hand_placeholders.size() < target:
+		var card = _create_hand_placeholder()
+		if not card:
+			break
+		_hand_placeholders.append(card)
+	_layout_hand_placeholders()
+
+
+func _create_hand_placeholder() -> Card:
+	var dummy_name := _dummy_card_name()
+	if dummy_name.empty() or not cfc.NMAP.has("board"):
+		return null
+	_spawning_remote = true
+	var card = cfc.instance_card(dummy_name)
+	_spawning_remote = false
+	if not card:
+		return null
+	card.network_mirror = true
+	if card.is_in_group("cards"):
+		card.remove_from_group("cards")
+	card.add_to_group("remote_cards")
+	card.monitoring = false
+	card.monitorable = false
+	card.set_control_mouse_filters(false)
+	if card.buttons:
+		card.buttons.set_active(false)
+	cfc.NMAP.board.add_child(card)
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+	# warning-ignore:return_value_discarded
+	card.set_is_faceup(false, true, false, ["net"])
+	card.scale = Vector2(1, 1) * HAND_SCALE
+	card.z_index = 1
+	return card
+
+
+func _layout_hand_placeholders() -> void:
+	var board: Control = cfc.NMAP.board
+	if not board or _hand_placeholders.empty():
+		return
+	var background: Control = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentHandBackground")
+	if not background:
+		return
+	var count := _hand_placeholders.size()
+	var available := max(1.0, background.rect_size.x - 30.0)
+	var spacing := 34.0
+	if count > 1:
+		spacing = min(34.0, available / float(count - 1))
+	var origin := background.rect_global_position + Vector2(15, 18)
+	for index in range(count):
+		var card = _hand_placeholders[index]
+		if is_instance_valid(card):
+			card.global_position = origin + Vector2(index * spacing, 0)
+
+
+func _clear_hand_placeholders() -> void:
+	for card in _hand_placeholders:
+		if is_instance_valid(card):
+			card.queue_free()
+	_hand_placeholders.clear()
+
+
+func _update_opponent_labels(hand_count: int, deck_count: int) -> void:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return
+	var hand_label: Label = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentHandLabel")
+	if hand_label:
+		hand_label.text = "Mão do Oponente (" + str(hand_count) + ")"
+	var deck_label: Label = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentDeckLabel")
+	if deck_label:
+		deck_label.text = "Deck (" + str(deck_count) + ")"
+	var visual: Control = board.get_node_or_null("OpponentFieldVisual")
+	if visual:
+		var field_label: Label = visual.get_node_or_null("OpponentFieldLabel")
+		if field_label:
+			var opponent := Multiplayer.get_opponent_username()
+			if opponent.empty():
+				opponent = "VISUAL"
+			field_label.text = "CAMPO DO OPONENTE - " + opponent
+
+
+#-----------------------------------------------------------------------------
+# Definitions
+#-----------------------------------------------------------------------------
+
+func _add_definition(definitions: Dictionary, card_name: String) -> void:
+	var definition = cfc.card_definitions.get(card_name, {})
+	if typeof(definition) == TYPE_DICTIONARY and not definition.empty():
+		definitions[card_name] = definition
+
+
+func _apply_definitions(definitions) -> void:
+	if typeof(definitions) != TYPE_DICTIONARY:
+		return
+	for card_name in definitions:
+		if typeof(definitions[card_name]) == TYPE_DICTIONARY:
+			cfc.card_definitions[str(card_name)] = definitions[card_name]
+
+
+func _send_definition(card_name: String) -> void:
+	if card_name.empty():
+		return
+	var definition = cfc.card_definitions.get(card_name, {})
+	if typeof(definition) != TYPE_DICTIONARY or definition.empty():
+		return
+	Rede.send_message({
+		"t": "mp_defs",
+		"definitions": {card_name: definition},
+	})
+
+
+func _apply_remote_defs_waiting() -> void:
+	for card_name in _pending_cards.keys():
+		var pending = _pending_cards[card_name]
+		_pending_cards.erase(card_name)
+		if typeof(pending) != TYPE_ARRAY:
+			continue
+		for data in pending:
+			if typeof(data) == TYPE_DICTIONARY:
+				_apply_remote_card(data)
+
+
+#-----------------------------------------------------------------------------
+# Entries / counts
+#-----------------------------------------------------------------------------
+
+func _local_entry(card: Card, zone: String, owner: int) -> Dictionary:
+	var net_id := Multiplayer.ensure_card_id(card)
+	var entry := {
+		"id": net_id,
+		"owner": owner,
+		"zone": zone,
+		"name": card.canonical_name,
+		"x": 0.5,
+		"y": 0.5,
+		"rot": int(card.card_rotation),
+		"face": 1 if card.is_faceup else 0,
+		"host": "",
+	}
+	if zone == "board":
+		var normalized := _normalize_board_position(card.global_position)
+		entry["x"] = normalized.x
+		entry["y"] = normalized.y
+	if zone == "scenario":
+		entry["claim"] = int(_scenario_claims.get(net_id, 0))
+	if card.current_host_card and is_instance_valid(card.current_host_card):
+		entry["host"] = Multiplayer.ensure_card_id(card.current_host_card)
+	return entry
+
+
+func _entry_as_message(entry: Dictionary) -> Dictionary:
+	return {
+		"t": "mp_card",
+		"id": str(entry.get("id", "")),
+		"zone": str(entry.get("zone", "board")),
+		"name": str(entry.get("name", "")),
+		"x": float(entry.get("x", 0.5)),
+		"y": float(entry.get("y", 0.5)),
+		"rot": int(entry.get("rot", 0)),
+		"face": int(entry.get("face", 1)),
+		"host": str(entry.get("host", "")),
+		"claim": int(entry.get("claim", 0)),
+	}
+
+
+func _local_hidden_counts() -> Dictionary:
+	return {
+		"hand": _container_count(cfc.NMAP.get("hand", null)),
+		"deck": _container_count(cfc.NMAP.get("deck", null)),
+	}
+
+
+func _container_count(container) -> int:
+	if not container or not is_instance_valid(container):
+		return 0
+	if container is Pile and container.is_popup_open:
+		var count := 0
+		for card in container.pre_sorted_order:
+			if is_instance_valid(card) and card is Card:
+				count += 1
+		return count
+	var total := 0
+	for child in container.get_children():
+		if child is Card and is_instance_valid(child):
+			total += 1
+	return total
+
+
+func _dummy_card_name() -> String:
+	if cfc.card_definitions.has("Test Card 1"):
+		return "Test Card 1"
+	var names := cfc.card_definitions.keys()
+	if names.empty():
 		return ""
-	return "Moveu uma carta oculta"
+	return str(names[0])
 
 
-func _log_action(text: String) -> void:
-	if _log:
-		_log.text = text
-	var opponent_label = cfc.NMAP.board.get_node_or_null(
-			"OpponentFieldVisual/OpponentFieldLabel") as Label
-	if opponent_label:
-		opponent_label.text = "CAMPO DO OPONENTE - " + text
+#-----------------------------------------------------------------------------
+# Cursor
+#-----------------------------------------------------------------------------
+
+func _build_cursor() -> void:
+	if not cfc.NMAP.has("board"):
+		return
+	_cursor = Control.new()
+	_cursor.name = "OpponentCursor"
+	_cursor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cursor.visible = false
+	var dot := ColorRect.new()
+	dot.rect_size = Vector2(10, 10)
+	dot.color = Color(1.0, 0.9, 0.2, 0.95)
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cursor.add_child(dot)
+	var outline := ColorRect.new()
+	outline.rect_position = Vector2(-2, -2)
+	outline.rect_size = Vector2(14, 14)
+	outline.color = Color(0, 0, 0, 0.6)
+	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cursor.add_child(outline)
+	_cursor.move_child(outline, 0)
+	var label := Label.new()
+	label.rect_position = Vector2(14, 8)
+	label.text = Multiplayer.get_opponent_username()
+	label.add_color_override("font_color", Color(1.0, 0.9, 0.2))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cursor.add_child(label)
+	cfc.NMAP.board.add_child(_cursor)
+	_cursor.raise()

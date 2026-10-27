@@ -1,0 +1,54 @@
+[gd_scene load_steps=2 format=2]
+
+[ext_resource path="res://src/custom/CheckpointList.gd" type="Script" id=1]
+
+[node name="CheckpointList" type="WindowDialog"]
+margin_right = 660.0
+margin_bottom = 470.0
+rect_min_size = Vector2( 660, 470 )
+resizable = true
+window_title = "Retomar Partida"
+script = ExtResource( 1 )
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 16.0
+margin_top = 12.0
+margin_right = -16.0
+margin_bottom = -16.0
+custom_constants/separation = 10
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="Description" type="Label" parent="VBox"]
+text = "Escolha uma partida salva para hospedar a retomada ou entre na sala criada pelo outro jogador."
+autowrap = true
+
+[node name="Games" type="ItemList" parent="VBox"]
+rect_min_size = Vector2( 0, 270 )
+size_flags_vertical = 3
+
+[node name="Status" type="Label" parent="VBox"]
+rect_min_size = Vector2( 0, 52 )
+autowrap = true
+
+[node name="Buttons" type="HBoxContainer" parent="VBox"]
+alignment = 2
+custom_constants/separation = 10
+
+[node name="Refresh" type="Button" parent="VBox/Buttons"]
+rect_min_size = Vector2( 110, 34 )
+text = "Atualizar"
+
+[node name="Host" type="Button" parent="VBox/Buttons"]
+rect_min_size = Vector2( 210, 34 )
+text = "Criar sala (anfitrião)"
+
+[node name="Join" type="Button" parent="VBox/Buttons"]
+rect_min_size = Vector2( 170, 34 )
+text = "Entrar em sala"

@@ -53,23 +53,23 @@ func _process(_delta) -> void:
 	if _current_focus_source and is_instance_valid(_current_focus_source)\
 			and _current_focus_source.get_state_exec() != "pile"\
 			and cfc.game_settings.focus_style == CFInt.FocusStyle.BOTH_INFO_PANELS_ONLY:
-		if get_global_mouse_position().y + focus_info.rect_size.y/2 > get_viewport().size.y:
-			$VBC.rect_position.y = get_viewport().size.y - focus_info.rect_size.y
+		if get_global_mouse_position().y + focus_info.rect_size.y/2 > get_viewport().get_visible_rect().size.y:
+			$VBC.rect_position.y = get_viewport().get_visible_rect().size.y - focus_info.rect_size.y
 		else:
 			$VBC.rect_position.y = get_global_mouse_position().y - focus_info.rect_size.y / 2
-		if get_global_mouse_position().x + focus_info.rect_size.x + 60 > get_viewport().size.x:
-			$VBC.rect_position.x = get_viewport().size.x - focus_info.rect_size.x
+		if get_global_mouse_position().x + focus_info.rect_size.x + 60 > get_viewport().get_visible_rect().size.x:
+			$VBC.rect_position.x = get_viewport().get_visible_rect().size.x - focus_info.rect_size.x
 			$VBC.rect_position.y = get_global_mouse_position().y - 500
 		else:
 			$VBC.rect_position.x = get_global_mouse_position().x + 60
 
 	elif _current_focus_source and is_instance_valid(_current_focus_source)\
-			and get_global_mouse_position().x > get_viewport().size.x - _current_focus_source.canonical_size.x*2.5\
+			and get_global_mouse_position().x > get_viewport().get_visible_rect().size.x - _current_focus_source.canonical_size.x*2.5\
 			and get_global_mouse_position().y < _current_focus_source.canonical_size.y*2:
 		$VBC.rect_position.x = 0
 		$VBC.rect_position.y = 0
 	elif _current_focus_source:
-		$VBC.rect_position.x = get_viewport().size.x - $VBC.rect_size.x
+		$VBC.rect_position.x = get_viewport().get_visible_rect().size.x - $VBC.rect_size.x
 		$VBC.rect_position.y = 0
 	# The below performs some garbage collection on previously focused cards.
 	for c in _previously_focused_cards:
@@ -228,7 +228,7 @@ func _input(event):
 # Takes care to resize the child viewport, when the main viewport is resized
 func _on_Viewport_size_changed() -> void:
 	if ProjectSettings.get("display/window/stretch/mode") == "disabled" and is_instance_valid(get_viewport()):
-		$ViewportContainer.rect_size = get_viewport().size
+		$ViewportContainer.rect_size = get_viewport().get_visible_rect().size
 #		for c in _previously_focused_cards.values().duplicate():
 #			c.queue_free()
 

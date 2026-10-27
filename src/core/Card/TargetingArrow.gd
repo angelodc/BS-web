@@ -115,14 +115,14 @@ func _draw_targeting_arrow() -> void:
 			- (position + card_half_size)
 	var curve = Curve2D.new()
 #		var middle_point = centerpos + (get_global_mouse_position() - centerpos)/2
-#		var middle_dir_to_vpcenter = middle_point.direction_to(get_viewport().size/2)
+#		var middle_dir_to_vpcenter = middle_point.direction_to(get_viewport().get_visible_rect().size/2)
 #		var offmid = middle_point + middle_dir_to_vpcenter * 50
 	# Our starting point has to be translated to the local position of the Line2D node
 	# The out control point is the direction to the screen center,
 	# with a magnitude that I found via trial and error to look good
 	curve.add_point(to_local(centerpos),
 			Vector2(0,0),
-			centerpos.direction_to(get_viewport().size/2) * 75)
+			centerpos.direction_to(get_viewport().get_visible_rect().size/2) * 75)
 #		curve.add_point($TargetLine.to_local(offmid), Vector2(0,0), Vector2(0,0))
 	# Our end point also has to be translated to the local position of the Line2D node
 	# The in control point is likewise the direction to the screen center

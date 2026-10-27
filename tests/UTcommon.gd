@@ -92,14 +92,28 @@ func unclick_card_anywhere(card: Card) -> void:
 
 
 func drag_card(card: Card, target_position: Vector2, interpolation_speed := "fast") -> void:
+	# Cards entering the hand animate to their resting scale and position. Wait
+	# for that tween so the simulated mouse targets the card's final position.
+	var card_tween: Tween = card.get_node("Tween")
+	if card_tween.is_active():
+		yield(yield_to(card_tween, "tween_all_completed", 1), YIELD)
 	var mouse_speed = MOUSE_SPEED[interpolation_speed][0]
 	var mouse_yield_wait = MOUSE_SPEED[interpolation_speed][1]
 	var extra_offset = Vector2(20,20)
 	if card.card_rotation in [90,270]:
 		extra_offset = Vector2(10,60)
-	board._UT_interpolate_mouse_move(card.global_position + extra_offset,
-			board._UT_mouse_position,mouse_speed)
-	yield(yield_for(mouse_yield_wait), YIELD)
+	# Moving the virtual mouse can make the hand focus and reorganize cards, so
+	# the target may shift away from the first position we aimed at. Retarget
+	# until the card under the pointer is the one we want to drag.
+	for _attempt in range(3):
+		board._UT_interpolate_mouse_move(card.global_position + extra_offset,
+				board._UT_mouse_position,mouse_speed)
+		yield(yield_for(mouse_yield_wait), YIELD)
+		if board.mouse_pointer.current_focused_card == card:
+			break
+		var retarget_tween: Tween = card.get_node("Tween")
+		if retarget_tween.is_active():
+			yield(yield_to(retarget_tween, "tween_all_completed", 1), YIELD)
 	click_card(card)
 	if interpolation_speed == "debug":
 		yield(yield_for(4), YIELD) # Allow for review

@@ -400,11 +400,15 @@ config/icon="res://icon.png"
 
 cfc="*res://src/core/CFControl.gd"
 Rede="*res://src/custom/Rede.gd"
+Multiplayer="*res://src/custom/Multiplayer.gd"
+LocalRelay="*res://src/custom/LocalRelay.gd"
+DisplayMode="*res://src/custom/DisplayMode.gd"
 
 [display]
 
 window/size/width=1280
 window/size/height=720
+window/stretch/mode="2d"
 window/stretch/aspect="keep"
 
 [editor_plugins]

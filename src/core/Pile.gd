@@ -21,6 +21,9 @@ export var faceup_cards := false
 # When true, when the cards are displayed in a popup, they will be sorted by name
 # and not in their actual order
 export var sorted_popup := false
+# Display scale for the stacked cards. Piles that should look like a single
+# board slot (such as the prize area) use CFConst.PLAY_AREA_SCALE here.
+export var card_display_scale := 1.0
 
 
 # The popup node
@@ -245,6 +248,7 @@ func reorganize_stack() -> void:
 #	while are_cards_still_animating():
 #		yield(get_tree().create_timer(0.3), "timeout")
 	for c in get_all_cards():
+		c.scale = Vector2(1, 1) * card_display_scale
 		if c.position != get_stack_position(c):
 			c.position = get_stack_position(c)
 	# The size of the panel has to be modified to be as large as the size
@@ -358,7 +362,7 @@ func shuffle_cards(animate = true) -> void:
 		# The following calculation figures out the direction
 		# towards the center of the viewport from the center of the card
 		var shuffle_direction = (global_position + $Control.rect_size/2)\
-				.direction_to(get_viewport().size / 2)
+				.direction_to(get_viewport().get_visible_rect().size / 2)
 		# We increase the intensity of the y direction, to make the shuffle
 		# position move higher up or down respective to its position.
 		shuffle_direction.y *= 2

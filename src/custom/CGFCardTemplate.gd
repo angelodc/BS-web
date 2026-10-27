@@ -28,6 +28,14 @@ func is_battle_scenes_character() -> bool:
 	return properties.get("_tipo", "") == "Personagem"
 
 
+func is_battle_scenes_support() -> bool:
+	return properties.get("_tipo", "") == "Suporte"
+
+
+func is_battle_scenes_ability() -> bool:
+	return properties.get("_tipo", "") == "Habilidade"
+
+
 func is_battle_scenes_scenario() -> bool:
 	return properties.get("_tipo", "") == "Cenário"
 
@@ -75,7 +83,9 @@ func move_to(targetHost: Node,
 			!= Card.AttachmentMode.DO_NOT_ATTACH \
 			and typeof(board_position) == TYPE_VECTOR2
 	if targetHost == cfc.NMAP.board and not is_attachment_move:
-		var placement_slot: BoardPlacementSlot = get_potential_placement_slot()
+		var placement_slot: BoardPlacementSlot = board_position \
+				if board_position is BoardPlacementSlot \
+				else get_potential_placement_slot()
 		var is_scenario_slot := false
 		if placement_slot:
 			is_scenario_slot = \
@@ -181,17 +191,26 @@ func set_card_rotation(
 func _on_Card_gui_input(event) -> void:
 	if network_mirror:
 		return
+	if event is InputEventMouseButton and cfc.NMAP.has("board"):
+		if cfc.NMAP.board.mouse_pointer.current_focused_card \
+				and cfc.NMAP.board.mouse_pointer.current_focused_card != self:
+			cfc.NMAP.board.mouse_pointer.current_focused_card\
+					._on_Card_gui_input(event)
+			return
 	if event is InputEventMouseButton \
-			and event.is_pressed() \
 			and event.get_button_index() == BUTTON_LEFT \
-			and event.doubleclick \
+			and not event.is_pressed() \
 			and cfc.NMAP.has("hand") \
 			and get_parent() == cfc.NMAP.hand \
 			and state in [CardState.IN_HAND, CardState.FOCUSED_IN_HAND] \
 			and not buttons.are_hovered() \
 			and not tokens.are_hovered():
+		var control: Control = get_node("Control")
+		var left_half: bool = event.position.x < control.rect_size.x * 0.5
 		cfc.card_drag_ongoing = null
-		move_to(cfc.NMAP.discard)
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		control.set_default_cursor_shape(Input.CURSOR_ARROW)
+		_handle_hand_half_click(left_half)
 		return
 	if event is InputEventMouseButton \
 			and not event.is_pressed() \
@@ -217,3 +236,53 @@ func _on_Card_gui_input(event) -> void:
 			targeting_arrow.initiate_targeting()
 		elif not event.is_pressed() and event.get_button_index() == 2:
 			targeting_arrow.complete_targeting()
+
+
+# Left half sends the card to Resources, right half plays it according to its
+# type. The click only acts when no drag started.
+func _handle_hand_half_click(left_half: bool) -> void:
+	if left_half:
+		move_to(cfc.NMAP.discard)
+		return
+	var category := str(properties.get("_tipo", "")).strip_edges()
+	match category:
+		"Personagem", "Suporte":
+			_play_card_to_scene()
+		"Cenário":
+			_play_card_to_scenario_area()
+		"Habilidade":
+			move_to(cfc.NMAP.discard)
+		_:
+			if cfc.NMAP.board.has_method("show_resource_message"):
+				cfc.NMAP.board.show_resource_message(
+						"Tipo de carta desconhecido: " + canonical_name)
+
+
+func _play_card_to_scene() -> void:
+	var grid: BoardPlacementGrid = cfc.NMAP.board.get_node_or_null(
+			"PlacementGridDemo")
+	if not grid:
+		return
+	var slot: BoardPlacementSlot = grid.get_auto_placement_slot(self)
+	if not slot:
+		cfc.NMAP.board.show_resource_message("A Cena está cheia.")
+		return
+	move_to(cfc.NMAP.board, -1, slot)
+
+
+func _play_card_to_scenario_area() -> void:
+	var grid: BoardPlacementGrid = cfc.NMAP.board.get_node_or_null(
+			"ModifiedLabelGrid")
+	if not grid or grid.get_slot_count() == 0:
+		return
+	move_to(cfc.NMAP.board, -1, grid.get_slot(0))
+
+
+func send_to_opponent_prizes() -> void:
+	if cfc.NMAP.has("board"):
+		cfc.NMAP.board.send_character_to_opponent_prizes(self)
+
+
+func knockout() -> void:
+	if cfc.NMAP.has("board"):
+		cfc.NMAP.board.knockout_support(self)

@@ -7,6 +7,10 @@ extends Control
 # to the Card object
 # and no other card can be placed in this slot
 var occupying_card = null
+# Set by a dynamic grid to mark the slot chosen by automatic placement.
+# The whole grid is highlighted instead of this slot, so this flag lets
+# get_potential_placement_slot() find the real drop target.
+var auto_highlighted := false
 
 # Stores a reference to the owning BoardPlacementGrid object
 onready var owner_grid = get_parent().get_parent()
@@ -31,6 +35,11 @@ func set_highlight(requested: bool,
 	$Highlight.visible = requested
 	if requested:
 		$Highlight.modulate = hoverColour
+
+
+# Marks or clears this slot as the automatic placement target.
+func set_auto_highlight(requested: bool) -> void:
+	auto_highlighted = requested
 
 
 # Returns the name of the grid which is hosting this slot.

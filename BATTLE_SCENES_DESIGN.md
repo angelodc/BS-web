@@ -13,7 +13,9 @@
 *   Nesta etapa, as zonas do oponente (Mão, Recursos/Descarte, Deck, Cena, Cenário e Prêmios) são apenas visuais e não aceitam cartas nem interação.
 *   Recursos/Descarte ficam visíveis para todos. A pilha não se expande por clique; durante a entrada de um Personagem/Suporte que exige anexos, ela abre automaticamente como uma segunda mão para seleção. A mão normal continua sendo a zona separada de cartas na mão.
 *   A Cena contém Personagens/Suportes e um único espaço de Cenário ativo. Ao colocar um Cenário novo, o Cenário ativo anterior vai para Recursos/Descarte.
-*   A zona de Prêmios é neutra nesta versão. O marcador sobre ela soma o campo `ENERGIA` das cartas que ainda pertencem à pilha; `ENERGIA_EXTRA` não entra no cálculo.
+*   Existe apenas um Cenário ativo por partida, mesmo com os dois campos visuais na mesa. Quando um jogador coloca um Cenário, o Cenário ativo do oponente vai para o Recursos/Descarte do dono. Não há limite de Cenários jogados ao longo da partida: cada novo Cenário substitui o anterior. Na rede, a jogada carrega uma marca de ordem para que a jogada mais recente vença; em empate, o Cenário do anfitrião permanece.
+*   O slot de Cenário do jogador tem exatamente o tamanho da carta em campo (`150x240` na escala `0.8`, ou seja, `120x192`), sem a borda extra usada pelas grades comuns.
+*   Cada jogador tem sua própria área de Prêmios, do tamanho de uma carta, com o mesmo empilhamento de Recursos e apenas o botão **Ver**. O contador mostra a soma do campo `ENERGIA` dos personagens derrotados ali, não a quantidade de cartas; `ENERGIA_EXTRA` não entra no cálculo. Os Prêmios são formados pelas cartas de personagem do adversário: quando um personagem é nocauteado, a carta vai para a área de Prêmios do oponente, não para a do dono.
 *   Recursos e descarte permanecem juntos; não criar um Limbo separado neste momento.
 *   A disposição em duas metades, a reserva visual do oponente e a seleção automática de anexos estão implementadas. A interface e as interações ainda precisam de validação visual no Godot.
 
@@ -35,7 +37,7 @@ No Battle Scenes físico, as cartas inclinam para indicar uso. No jogo, a capaci
 *   Não há botão dedicado para remover vida no Personagem: os Recursos anexados podem ser retirados manualmente. A pilha Recursos/Descarte tem um botão **Trocar**; ao acioná-lo, o jogador escolhe uma carta disponível da pilha e depois o anexo de um Personagem em Cena que será substituído. O anexo substituído volta para Recursos/Descarte como carta disponível. Os botões genéricos de visualizar, ordenar e embaralhar ficam ocultos nessa pilha, que não abre por clique; a seleção automática de anexos durante a entrada em Cena permanece disponível.
 *   Anexos não devem girar 90° junto com a carta principal quando esta for capacitada/incapacitada; a rotação de cartas anexadas é bloqueada.
 *   A quantidade de cartas anexadas representa a energia carregada/vida atual do Personagem.
-*   **Cálculo de Dano:** quando um herói recebe dano, remover a quantidade correspondente de cartas anexadas e enviá-las a Recursos/Descarte. A regra detalhada de ordem de remoção e nocaute permanece para implementação posterior.
+*   **Cálculo de Dano:** quando um herói recebe dano, remover a quantidade correspondente de cartas anexadas e enviá-las ao Recursos/Descarte do dono. **Nocaute:** quando as energias anexadas zerarem, todas as cartas anexadas voltam ao descarte do dono e a carta do personagem vai para a área de Prêmios do adversário. A carta mantém o jogador de origem como dono, mas passa a ser mantida pelo adversário; a soma de `ENERGIA` dessa área usa a energia impressa do personagem, não os anexos. A ordem detalhada de remoção de dano e a implementação do nocaute permanecem pendentes.
 *   A regra de entrada e a disposição visual ainda precisam de validação no Godot.
 
 ### 3. Deck e Mão

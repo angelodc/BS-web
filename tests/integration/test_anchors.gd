@@ -15,24 +15,24 @@ func before_each():
 func test_anchor_positioning_and_groups():
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
-	assert_almost_eq(deck.position, Vector2(0,480), Vector2(5,5),
+	assert_almost_eq(deck.position, Vector2(0,510), Vector2(5,5),
 			"Bottom left anchor placement works")
 	assert_true("bottom" in deck.get_groups(), "bottom Position group assigned")
 	assert_true("left" in deck.get_groups(), "left Position group assigned")
-	assert_almost_eq(discard.position, Vector2(1130,480), Vector2(5,5),
+	assert_almost_eq(discard.position, Vector2(1130,510), Vector2(5,5),
 			"Bottom right anchor placement works")
 	assert_true("bottom" in discard.get_groups(), "bottom Position group assigned")
 	assert_true("right" in discard.get_groups(), "right Position group assigned")
 	yield(yield_for(0.1), YIELD)
-	assert_almost_eq(hand.position, Vector2(160.5,600), Vector2(5,5),
+	assert_almost_eq(hand.position, Vector2(160.5,615), Vector2(5,5),
 			"Bottom middle anchor placement works")
-	assert_almost_eq(hand.control.rect_size, Vector2(966.5,240), Vector2(5,5),
+	assert_almost_eq(hand.control.rect_size, Vector2(966.5,210), Vector2(5,5),
 			"Hand correct size not to overlap with piles")
 	assert_almost_eq(hand.get_node("CollisionShape2D").shape.extents,
-			Vector2(483.25,120), Vector2(5,5),
+			Vector2(483.25,105), Vector2(5,5),
 			"Hand collision shape correct size to not overlap with piles")
 	assert_almost_eq(hand.get_node("CollisionShape2D").position,
-			Vector2(483.25,120), Vector2(5,5),
+			Vector2(483.25,105), Vector2(5,5),
 			"Hand collision shape correct position to not overlap with piles")
 	assert_true("bottom" in hand.get_groups(), "bottom Position group assigned")
 	board.add_child(deck2)
@@ -55,12 +55,12 @@ func test_anchor_positioning_and_groups():
 	assert_true("top" in deck2.get_groups(), "top Position group assigned")
 	deck2.placement = CardContainer.Anchors.RIGHT_MIDDLE
 	deck2.re_place()
-	assert_almost_eq(deck2.position, Vector2(1127,237), Vector2(5,5),
+	assert_almost_eq(deck2.position, Vector2(1127,255), Vector2(5,5),
 			"Right Middle anchor placement works")
 	assert_true("right" in deck2.get_groups(), "right Position group assigned")
 	deck2.placement = CardContainer.Anchors.LEFT_MIDDLE
 	deck2.re_place()
-	assert_almost_eq(deck2.position, Vector2(0,237), Vector2(5,5),
+	assert_almost_eq(deck2.position, Vector2(0,255), Vector2(5,5),
 			"Left Middle anchor placement works")
 	assert_true("left" in deck2.get_groups(), "left Position group assigned")
 
@@ -71,19 +71,19 @@ func test_overlap_shift_up():
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
 	yield(yield_for(0.1), YIELD)
-	assert_almost_eq(deck2.position, Vector2(0,219), Vector2(5,5),
+	assert_almost_eq(deck2.position, Vector2(0,277.6), Vector2(5,5),
 			"overlapping deck2 shifted up")
-	assert_almost_eq(deck.position, Vector2(0,480), Vector2(5,5),
+	assert_almost_eq(deck.position, Vector2(0,510), Vector2(5,5),
 			"OverlapShiftDirection == NONE allowed the deck to stay where it is")
-	assert_almost_eq(hand.position, Vector2(160.5,600), Vector2(5,5),
+	assert_almost_eq(hand.position, Vector2(160.5,615), Vector2(5,5),
 			"Hand didn't shift when overlap was displaced upwards")
-	assert_almost_eq(hand.control.rect_size, Vector2(966.5,240), Vector2(5,5),
+	assert_almost_eq(hand.control.rect_size, Vector2(966.5,210), Vector2(5,5),
 			"Hand not shrunk when overlap was displaced upwards")
 	assert_almost_eq(hand.get_node("CollisionShape2D").shape.extents,
-			Vector2(483.25,120), Vector2(5,5),
+			Vector2(483.25,105), Vector2(5,5),
 			"Hand collision size not shrunk when overlap was displaced upwards")
 	assert_almost_eq(hand.get_node("CollisionShape2D").position,
-			Vector2(483.25,120), Vector2(5,5),
+			Vector2(483.25,105), Vector2(5,5),
 			"Hand collision position not shrunk when overlap was displaced upwards")
 
 func test_overlap_shift_left():
@@ -94,19 +94,19 @@ func test_overlap_shift_left():
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
 	yield(yield_for(0.1), YIELD)
-	assert_almost_eq(deck2.position, Vector2(977,480), Vector2(5,5),
+	assert_almost_eq(deck2.position, Vector2(977,510), Vector2(5,5),
 			"overlapping deck2 shifted left")
-	assert_almost_eq(discard.position, Vector2(1130,480), Vector2(5,5),
+	assert_almost_eq(discard.position, Vector2(1130,510), Vector2(5,5),
 			"OverlapShiftDirection == NONE allowed the discard to stay where it is")
-	assert_almost_eq(hand.position, Vector2(160.5,600), Vector2(5,5),
+	assert_almost_eq(hand.position, Vector2(160.5,615), Vector2(5,5),
 			"Hand didn't shift when right containers shifted")
-	assert_almost_eq(hand.control.rect_size, Vector2(813.5,240), Vector2(5,5),
+	assert_almost_eq(hand.control.rect_size, Vector2(813.5,210), Vector2(5,5),
 			"Hand shrunk when overlap was displaced left")
 	assert_almost_eq(hand.get_node("CollisionShape2D").shape.extents,
-			Vector2(406.25,120), Vector2(5,5),
+			Vector2(406.25,105), Vector2(5,5),
 			"Hand collision size shrunk when overlap was displaced left")
 	assert_almost_eq(hand.get_node("CollisionShape2D").position,
-			Vector2(406.25,120), Vector2(5,5),
+			Vector2(406.25,105), Vector2(5,5),
 			"Hand collision position shrunk when overlap was displaced left")
 
 func test_overlap_shift_right():
@@ -117,37 +117,30 @@ func test_overlap_shift_right():
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
 	yield(yield_for(0.1), YIELD)
-	assert_almost_eq(deck2.position, Vector2(160.5,480), Vector2(5,5),
+	assert_almost_eq(deck2.position, Vector2(160.5,510), Vector2(5,5),
 			"overlapping deck2 shifted left")
-	assert_almost_eq(deck.position, Vector2(0,480), Vector2(5,5),
+	assert_almost_eq(deck.position, Vector2(0,510), Vector2(5,5),
 			"OverlapShiftDirection == NONE allowed the discard to stay where it is")
-	assert_almost_eq(hand.position, Vector2(306,600), Vector2(5,5),
+	assert_almost_eq(hand.position, Vector2(306,615), Vector2(5,5),
 			"Hand didn't shift when right containers shifted")
-	assert_almost_eq(hand.control.rect_size, Vector2(813.5,240), Vector2(5,5),
+	assert_almost_eq(hand.control.rect_size, Vector2(813.5,210), Vector2(5,5),
 			"Hand shrunk when overlap was displaced left")
 	assert_almost_eq(hand.get_node("CollisionShape2D").shape.extents,
-			Vector2(406.25,120), Vector2(5,5),
+			Vector2(406.25,105), Vector2(5,5),
 			"Hand collision size shrunk when overlap was displaced left")
 	assert_almost_eq(hand.get_node("CollisionShape2D").position,
-			Vector2(406.25,120), Vector2(5,5),
+			Vector2(406.25,105), Vector2(5,5),
 			"Hand collision position shrunk when overlap was displaced left")
 
-func test_changing_viewport_size():
+func test_viewport_size_does_not_change_logical_layout():
 	get_viewport().size = Vector2(1920, 1080)
 	yield(yield_for(0.1), YIELD)
-	assert_almost_eq(deck.position, Vector2(0,840), Vector2(5,5),
-			"Bottom left anchor placement works")
-	assert_almost_eq(discard.position, Vector2(1770,840), Vector2(5,5),
-			"Bottom right anchor placement works")
-	assert_almost_eq(hand.position, Vector2(160.5,960), Vector2(5,5),
-			"Bottom middle anchor placement works")
-	assert_almost_eq(hand.control.rect_size, Vector2(1606.5,240), Vector2(5,5),
-			"Hand correct size not to overlap with piles")
-	assert_almost_eq(hand.get_node("CollisionShape2D").shape.extents,
-			Vector2(803.25,120), Vector2(5,5),
-			"Hand collision shape correct size to not overlap with piles")
-	assert_almost_eq(hand.get_node("CollisionShape2D").position,
-			Vector2(803.25,120), Vector2(5,5),
-			"Hand collision shape correct position to not overlap with piles")
-	assert_true("bottom" in hand.get_groups(), "bottom Position group assigned")
+	for container in get_tree().get_nodes_in_group("card_containers"):
+		container.re_place()
+	assert_eq(get_viewport().get_visible_rect().size, Vector2(1280, 720),
+			"2D stretch keeps the 1280x720 logical area")
+	assert_almost_eq(deck.position, Vector2(0,510), Vector2(5,5),
+			"Bottom left anchor stays in the logical area")
+	assert_almost_eq(discard.position, Vector2(1130,510), Vector2(5,5),
+			"Bottom right anchor stays in the logical area")
 	get_viewport().size = Vector2(1280, 720)

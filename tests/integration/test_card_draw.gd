@@ -15,7 +15,7 @@ func test_single_card_draw_use_rectangle():
 			"Cards drawn is visible")
 	yield(yield_to(card0.get_node('Tween'), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card0.get_node('Tween'), "tween_all_completed", 1), YIELD)
-	assert_almost_eq(412.0,card0.recalculate_position().x,5.0,
+	assert_almost_eq(449.5,card0.recalculate_position().x,5.0,
 			"Card position x is recalculated correctly")
 	assert_almost_eq(0.0,card0.recalculate_position().y,5.0,
 			"Card position y is recalculated correctly")
@@ -36,9 +36,9 @@ func test_single_card_draw_use_oval():
 			"Cards drawn is visible")
 	yield(yield_to(card0.get_node('Tween'), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card0.get_node('Tween'), "tween_all_completed", 1), YIELD)
-	assert_almost_eq(412.0,card0.recalculate_position().x,5.0,
+	assert_almost_eq(449.5,card0.recalculate_position().x,5.0,
 			"Card position x is recalculated correctly")
-	assert_almost_eq(-60.0,card0.recalculate_position().y,5.0,
+	assert_almost_eq(-52.5,card0.recalculate_position().y,5.0,
 			"Card position y is recalculated correctly")
 	assert_almost_eq(hand.to_global(card0.recalculate_position()),
 			card0.global_position,Vector2(2,2),
@@ -63,15 +63,15 @@ func test_draw_multiple_cards_slow_use_rectangle():
 	var card2: Card = hand.draw_card()
 	yield(yield_to(card2.get_node('Tween'), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card2.get_node('Tween'), "tween_all_completed", 1), YIELD)
-	assert_almost_eq(250.0,card0.recalculate_position().x,5.0,
+	assert_almost_eq(367.0,card0.recalculate_position().x,5.0,
 			"Index 0 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card0.recalculate_position().y,5.0,
 			"Index 0 card position y is recalculated correctly")
-	assert_almost_eq(415.0,card1.recalculate_position().x,5.0,
+	assert_almost_eq(449.5,card1.recalculate_position().x,5.0,
 			"Index 1 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card1.recalculate_position().y,5.0,
 			"Index 1 card position y is recalculated correctly")
-	assert_almost_eq(580.0,card2.recalculate_position().x,5.0,
+	assert_almost_eq(532.0,card2.recalculate_position().x,5.0,
 			"Index 2 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card2.recalculate_position().y,5.0,
 			"Index 2 card position y is recalculated correctly")
@@ -99,17 +99,17 @@ func test_draw_multiple_cards_slow_use_oval():
 	var card2: Card = hand.draw_card()
 	yield(yield_to(card2.get_node('Tween'), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card2.get_node('Tween'), "tween_all_completed", 1), YIELD)
-	assert_almost_eq(238.0,card0.recalculate_position().x,5.0,
+	assert_almost_eq(266.46,card0.recalculate_position().x,5.0,
 			"Index 0 card position x is recalculated correctly")
-	assert_almost_eq(-48.754,card0.recalculate_position().y,5.0,
+	assert_almost_eq(-42.1136,card0.recalculate_position().y,5.0,
 			"Index 0 card position y is recalculated correctly")
-	assert_almost_eq(412.0,card1.recalculate_position().x,5.0,
+	assert_almost_eq(449.5,card1.recalculate_position().x,5.0,
 			"Index 1 card position x is recalculated correctly")
-	assert_almost_eq(-60.0,card1.recalculate_position().y,5.0,
+	assert_almost_eq(-52.5,card1.recalculate_position().y,5.0,
 			"Index 1 card position y is recalculated correctly")
-	assert_almost_eq(585.0,card2.recalculate_position().x,5.0,
+	assert_almost_eq(632.54,card2.recalculate_position().x,5.0,
 			"Index 2 card position x is recalculated correctly")
-	assert_almost_eq(-48.754,card2.recalculate_position().y,5.0,
+	assert_almost_eq(-42.1136,card2.recalculate_position().y,5.0,
 			"Index 2 card position y is recalculated correctly")
 	assert_almost_eq(card0.recalculate_position(),card0.position,Vector2(2,2),
 			"Card at index 0 placed in correct position")
@@ -189,34 +189,38 @@ func test_card_not_draggable_without_focus_first():
 			"Card state is still InHand because it wasn't focused first")
 
 
-func test_double_clicking_card_in_hand_moves_it_to_resources():
+func test_left_half_click_sends_card_to_resources():
 	var card: Card = hand.draw_card()
 	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
-	card.properties["_tipo"] = "Personagem"
+	card.properties["_tipo"] = "Suporte"
 	card.set_state(Card.CardState.FOCUSED_IN_HAND)
-	var double_click := InputEventMouseButton.new()
-	double_click.button_index = BUTTON_LEFT
-	double_click.pressed = true
-	double_click.doubleclick = true
+	var click := InputEventMouseButton.new()
+	click.button_index = BUTTON_LEFT
+	click.pressed = false
+	click.position = Vector2(10, 50)
 
-	card._on_Card_gui_input(double_click)
+	card._on_Card_gui_input(click)
 
 	assert_eq(card.get_parent(), discard,
-			"Double-clicking a card in hand sends it to resources")
+			"Left half click sends a hand card to resources")
 
 
-func test_single_clicking_card_in_hand_does_not_move_it_to_resources():
+func test_right_half_click_discards_ability():
 	var card: Card = hand.draw_card()
+	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
+	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
+	card.properties["_tipo"] = "Habilidade"
 	card.set_state(Card.CardState.FOCUSED_IN_HAND)
-	var single_click := InputEventMouseButton.new()
-	single_click.button_index = BUTTON_LEFT
-	single_click.pressed = false
+	var click := InputEventMouseButton.new()
+	click.button_index = BUTTON_LEFT
+	click.pressed = false
+	click.position = Vector2(140, 50)
 
-	card._on_Card_gui_input(single_click)
+	card._on_Card_gui_input(click)
 
-	assert_eq(card.get_parent(), hand,
-			"A single click does not send a card to resources")
+	assert_eq(card.get_parent(), discard,
+			"Right half click discards an ability from the hand")
 
 
 func test_hand_counter_only_shows_card_count():

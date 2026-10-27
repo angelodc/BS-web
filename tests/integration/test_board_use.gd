@@ -58,10 +58,15 @@ class TestCardBoardDrop:
 		var card = cards[1]
 		yield(table_move(card, Vector2(100,200)), "completed")
 		card.card_rotation = 180
-		yield(drag_drop(card, Vector2(400,600)), 'completed')
+		yield(drag_drop(card, Vector2(400,650)), 'completed')
 		yield(yield_to(card._tween, "tween_all_completed", 0.5), YIELD)
 		yield(yield_to(card._tween, "tween_all_completed", 0.5), YIELD)
-		assert_almost_eq(12.461,card.get_node("Control").rect_rotation,2.0,
+		assert_eq(hand, card.get_parent(),
+				"Card dropped on the hand area returns to the hand")
+		assert_ne(180.0, card.get_node("Control").rect_rotation,
+				"Rotation no longer keeps the board angle in the hand")
+		assert_almost_eq(card._recalculate_rotation(),
+				card.get_node("Control").rect_rotation, 2.0,
 				"Rotation reset to a hand angle when card moved back to hand")
 		cfc.game_settings.hand_use_oval_shape = true
 
@@ -102,7 +107,7 @@ class TestBoardBorderBlock:
 		assert_almost_eq(Vector2(795, -5),card.global_position,Vector2(2,2),
 				"Dragged outside top viewport borders stays inside viewport")
 		yield(move_mouse(Vector2(500,800)), 'completed')
-		assert_almost_eq(Vector2(495, 619),card.global_position,Vector2(2,2),
+		assert_almost_eq(Vector2(495, 631),card.global_position,Vector2(2,2),
 				"Dragged outside bottom viewport borders stays inside viewport")
 
 class TestBoardToBoardMove:

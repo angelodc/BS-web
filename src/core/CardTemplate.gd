@@ -209,6 +209,9 @@ var canonical_name : String setget set_card_name, get_card_name
 var network_id := ""
 # Remote copies of the opponent's cards must not accept input or fire scripts.
 var network_mirror := false
+# When true, the mirrored card still accepts pointer input so the local player
+# can drag it. The drop is handled by MultiplayerSync and sent to its owner.
+var remote_draggable := false
 # Ensures all nodes fit inside this rect.
 var card_size := canonical_size setget set_card_size
 # Starting state for each card
@@ -330,6 +333,10 @@ func _ready() -> void:
 	cfc.signal_propagator.connect_new_card(self)
 
 func _init_card_layout() -> void:
+	# Inherited card scenes can deliver the ready notification twice, which
+	# would duplicate the front and back nodes. Only build the layout once.
+	if is_instance_valid(card_front) or is_instance_valid(card_back):
+		return
 	# Because we duplicate the card when adding to the viewport focus
 	# It already has a CardBack node, so we don't want to replicate it
 	# so we only add a CardBack node, if we know it's not a dupe focus
@@ -1117,6 +1124,10 @@ func get_card_rotation() -> int:
 func get_potential_placement_slot() -> BoardPlacementSlot:
 	var placement_slot: BoardPlacementSlot = null
 	for ps in get_tree().get_nodes_in_group("placement_slot"):
+		# Dynamic grids highlight their whole area and mark the automatic
+		# target separately, so it takes priority over visible slot highlights.
+		if ps.auto_highlighted:
+			return ps
 		if ps.is_highlighted():
 			placement_slot = ps
 	return(placement_slot)
@@ -1367,7 +1378,7 @@ func move_to(targetHost: Node,
 				attach_to_host(potential_host)
 			# If we are an attachment and were moved elsewhere
 			# We reset the position.
-				set_state(CardState.ON_PLAY_BOARD)
+				set_state(CardState.DROPPING_TO_BOARD)
 			elif current_host_card:
 				var attach_index = current_host_card.attachments.find(self)
 				_target_position = (current_host_card.global_position
@@ -1376,7 +1387,9 @@ func move_to(targetHost: Node,
 						* CFConst.ATTACHMENT_OFFSET[attachment_offset].x,
 						(attach_index + 1)* card_size.y
 						* CFConst.ATTACHMENT_OFFSET[attachment_offset].y))
-				set_state(CardState.ON_PLAY_BOARD)
+				# This attachment was dropped away from its host. Tween it back
+				# to its slot instead of leaving it where the mouse released it.
+				set_state(CardState.DROPPING_TO_BOARD)
 			else:
 				# When we drop from board to board
 				# We need to ensure the card respects its
@@ -1600,11 +1613,14 @@ func attach_to_host(
 		# is being attached to this host, because its previous host
 		# also became an attachment here.
 		if current_host_card and not is_following_previous_host:
-			current_host_card.attachments.erase(self)
+			var previous_host := current_host_card
+			previous_host.attachments.erase(self)
 			emit_signal("card_unattached",
 					self,
 					"card_unattached",
 					{"host": current_host_card, "tags": tags})
+			# The attachments left behind close the gap left by this card.
+			previous_host._organize_attachments()
 		# If card was on a grid slot, we clear that occupation
 		if _placement_slot:
 			_placement_slot.occupying_card = null
@@ -1984,12 +2000,12 @@ func _organize_attachments() -> void:
 # Returns the adjusted global_mouse_position
 func _determine_board_position_from_mouse() -> Vector2:
 	var targetpos: Vector2 = cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos() - (_drag_offset * scale)
-	if targetpos.x + card_size.x * scale.x >= get_viewport().size.x:
-		targetpos.x = get_viewport().size.x - card_size.x * scale.x
+	if targetpos.x + card_size.x * scale.x >= get_viewport().get_visible_rect().size.x:
+		targetpos.x = get_viewport().get_visible_rect().size.x - card_size.x * scale.x
 	if targetpos.x < 0:
 		targetpos.x = 0
-	if targetpos.y + card_size.y * scale.y >= get_viewport().size.y:
-		targetpos.y = get_viewport().size.y - card_size.y * scale.y
+	if targetpos.y + card_size.y * scale.y >= get_viewport().get_visible_rect().size.y:
+		targetpos.y = get_viewport().get_visible_rect().size.y - card_size.y * scale.y
 	if targetpos.y < 0:
 		targetpos.y = 0
 	return targetpos
@@ -2003,13 +2019,13 @@ func _determine_target_position_from_mouse() -> void:
 
 	# The below ensures the card doesn't leave the viewport dimentions
 	if _target_position.x + card_size.x * play_area_scale \
-			> get_viewport().size.x:
-		_target_position.x = get_viewport().size.x \
+			> get_viewport().get_visible_rect().size.x:
+		_target_position.x = get_viewport().get_visible_rect().size.x \
 				- card_size.x \
 				* play_area_scale
 	if _target_position.y + card_size.y * play_area_scale \
-			> get_viewport().size.y:
-		_target_position.y = get_viewport().size.y \
+			> get_viewport().get_visible_rect().size.y:
+		_target_position.y = get_viewport().get_visible_rect().size.y \
 				- card_size.y \
 				* play_area_scale
 
@@ -2094,8 +2110,11 @@ func _clear_attachment_status(tags := ["Manual"]) -> void:
 				self,
 				"card_unattached",
 				{"host": current_host_card, "tags": tags})
-		current_host_card.attachments.erase(self)
+		var previous_host := current_host_card
+		previous_host.attachments.erase(self)
 		current_host_card = null
+		# The remaining attachments close the gap left behind by this card.
+		previous_host._organize_attachments()
 	for card in attachments:
 		card.current_host_card = null
 		# Attachments typically follow their parents to the same container
@@ -2239,6 +2258,33 @@ func _add_tween_scale(
 #
 # Makes sure that when a card is in a specific state while
 # its position, highlights, scaling and so on, stay as expected
+# Piles can render their cards scaled down (eg: the prize area). The idle
+# state must preserve that scale instead of forcing the cards back to 1:1.
+func _get_pile_display_scale() -> float:
+	if get_parent() == null or not get_parent().is_in_group("piles"):
+		return 1.0
+	var value = get_parent().get("card_display_scale")
+	if value == null:
+		return 1.0
+	return value
+
+
+# The hand can render its cards smaller than the table. This scale is used
+# both for the resting state and for the fan math, so cards keep their layout
+# when they leave and return from focus.
+func _get_hand_display_scale() -> float:
+	if get_parent() == null or not get_parent().is_in_group("hands"):
+		return 1.0
+	var value = get_parent().get("card_display_scale")
+	if value == null:
+		return 1.0
+	return value
+
+
+func _get_resting_scale() -> Vector2:
+	return Vector2(1, 1) * _get_hand_display_scale()
+
+
 func _process_card_state() -> void:
 	match state:
 		CardState.IN_HAND:
@@ -2250,6 +2296,13 @@ func _process_card_state() -> void:
 			buttons.set_active(false)
 			# warning-ignore:return_value_discarded
 			set_card_rotation(0)
+			# A card may return to the hand at the focused scale; bring it back
+			# to the hand's resting scale, which can be smaller than the table.
+			if not $Tween.is_active() \
+					and not scale.is_equal_approx(_get_resting_scale()):
+				_add_tween_scale(scale, _get_resting_scale(),
+					in_hand_tween_duration)
+				$Tween.start()
 			# warning-ignore:return_value_discarded
 			# When we have an oval shape, we ensure the cards stay
 			# in the rotation expected of their position
@@ -2304,7 +2357,7 @@ func _process_card_state() -> void:
 						c.interruptTweening()
 						c.reorganize_self()
 				_target_position = expected_position \
-						- Vector2(card_size.x \
+						- Vector2(card_size.x * _get_hand_display_scale() \
 						* 0.25,0)
 				# Enough with the fancy calculations. I'm just brute-forcing
 				# The card to stay at the fully within the viewport.
@@ -2312,13 +2365,13 @@ func _process_card_state() -> void:
 					while  get_parent().get_parent().rect_global_position.y\
 							+ get_parent().bottom_margin \
 							+ _target_position.y \
-							+ card_size.y * 1.5 > get_viewport().size.y:
+							+ card_size.y * 1.5 > get_viewport().get_visible_rect().size.y:
 						_target_position.y -= 1
 				else:
 					while get_parent().position.y \
 						+ get_parent().bottom_margin \
 						+ _target_position.y \
-						+ card_size.y > get_viewport().size.y:
+						+ card_size.y > get_viewport().get_visible_rect().size.y:
 						_target_position.y -= 1
 				# We need to bump up the y postion a bit based on the rotation
 				# We subtract 13 if there is no rotation
@@ -2351,8 +2404,10 @@ func _process_card_state() -> void:
 			# set_card_rotation(0,false,false)
 			if not $Tween.is_active():
 				var intermediate_position: Vector2
-				if not scale.is_equal_approx(Vector2(1,1)):
-					_add_tween_scale(scale, Vector2(1,1),to_container_tween_duration)
+				var resting_scale := _get_resting_scale()
+				if not scale.is_equal_approx(resting_scale):
+					_add_tween_scale(scale, resting_scale,
+						to_container_tween_duration)
 				if cfc.game_settings.fancy_movement:
 					# The below calculations figure out
 					# the intermediate position as a spot,
@@ -2370,9 +2425,9 @@ func _process_card_state() -> void:
 						# we offset towards the right/bottom (+offset)
 						# If we are to the right/bottom of viewport center,
 						# we offset towards the left/top (-offset)
-						if controlNode_center_position.x < get_viewport().size.x/2:
+						if controlNode_center_position.x < get_viewport().get_visible_rect().size.x/2:
 							direction_x = 1
-						if controlNode_center_position.y < get_viewport().size.y/2:
+						if controlNode_center_position.y < get_viewport().get_visible_rect().size.y/2:
 							direction_y = 1
 						# The offset amount if calculated by creating a multiplier
 						# based on the distance of our target container
@@ -2382,9 +2437,9 @@ func _process_card_state() -> void:
 						# We always offset by percentages of the card size to
 						# be consistent in case the card size changes
 						var offset_x = (abs(controlNode_center_position.x
-								- get_viewport().size.x/2)) / 250 * card_size.x
+								- get_viewport().get_visible_rect().size.x/2)) / 250 * card_size.x
 						var offset_y = (abs(controlNode_center_position.y
-								- get_viewport().size.y/2)) / 250 * card_size.y
+								- get_viewport().get_visible_rect().size.y/2)) / 250 * card_size.y
 						var inter_x = controlNode_center_position.x \
 								+ direction_x * offset_x
 						var inter_y = controlNode_center_position.y \
@@ -2398,7 +2453,7 @@ func _process_card_state() -> void:
 					# The board doesn't have a node2d host container.
 					# Instead we use directly the viewport coords.
 					else:
-						intermediate_position = get_viewport().size/2
+						intermediate_position = get_viewport().get_visible_rect().size/2
 					_add_tween_global_position(global_position, intermediate_position,
 						to_container_tween_duration)
 					$Tween.start()
@@ -2427,8 +2482,9 @@ func _process_card_state() -> void:
 			if not $Tween.is_active():
 				$Tween.remove(self,'position') #
 				_add_tween_position(position, _target_position, reorganization_tween_duration)
-				if not scale.is_equal_approx(Vector2(1,1)):
-					_add_tween_scale(scale, Vector2(1,1), reorganization_tween_duration)
+				if not scale.is_equal_approx(_get_resting_scale()):
+					_add_tween_scale(scale, _get_resting_scale(),
+						reorganization_tween_duration)
 				_add_tween_rotation($Control.rect_rotation,_target_rotation,
 					reorganization_tween_duration)
 				$Tween.start()
@@ -2447,8 +2503,9 @@ func _process_card_state() -> void:
 					pushed_aside_tween_duration, Tween.TRANS_QUART, Tween.EASE_IN)
 				_add_tween_rotation($Control.rect_rotation, _target_rotation,
 					pushed_aside_tween_duration)
-				if not scale.is_equal_approx(Vector2(1,1)):
-					_add_tween_scale(scale, Vector2(1,1), pushed_aside_tween_duration,
+				if not scale.is_equal_approx(_get_resting_scale()):
+					_add_tween_scale(scale, _get_resting_scale(),
+						pushed_aside_tween_duration,
 						Tween.TRANS_QUART, Tween.EASE_IN)
 				$Tween.start()
 				# We don't change state yet,
@@ -2480,7 +2537,7 @@ func _process_card_state() -> void:
 		CardState.ON_PLAY_BOARD:
 			if network_mirror:
 				set_focus(false)
-				set_control_mouse_filters(false)
+				set_control_mouse_filters(remote_draggable)
 				buttons.set_active(false)
 				return
 			if state_finalized:
@@ -2516,10 +2573,10 @@ func _process_card_state() -> void:
 				$Tween.remove(self,'position') # We make sure to remove other tweens of the same type to avoid a deadlock
 #				_target_position = _determine_board_position_from_mouse()
 #				# The below ensures the card doesn't leave the viewport dimentions
-#				if _target_position.x + card_size.x * play_area_scale.x > get_viewport().size.x:
-#					_target_position.x = get_viewport().size.x - card_size.x * play_area_scale.x
-#				if _target_position.y + card_size.y * play_area_scale.y > get_viewport().size.y:
-#					_target_position.y = get_viewport().size.y - card_size.y * play_area_scale.y
+#				if _target_position.x + card_size.x * play_area_scale.x > get_viewport().get_visible_rect().size.x:
+#					_target_position.x = get_viewport().get_visible_rect().size.x - card_size.x * play_area_scale.x
+#				if _target_position.y + card_size.y * play_area_scale.y > get_viewport().get_visible_rect().size.y:
+#					_target_position.y = get_viewport().get_visible_rect().size.y - card_size.y * play_area_scale.y
 				_add_tween_position(position, _target_position, to_board_tween_duration)
 				# The below ensures a card dropped from the hand will not
 				# retain a slight rotation.
@@ -2552,8 +2609,9 @@ func _process_card_state() -> void:
 			buttons.set_active(false)
 			# warning-ignore:return_value_discarded
 			set_card_rotation(0)
-			if scale != Vector2(1,1):
-				scale = Vector2(1,1)
+			var pile_scale := _get_pile_display_scale()
+			if not scale.is_equal_approx(Vector2(1,1) * pile_scale):
+				scale = Vector2(1,1) * pile_scale
 			if get_parent() in get_tree().get_nodes_in_group("piles"):
 				if card_front.resizing_labels.size() and not get_parent().faceup_cards:
 					return
@@ -2572,8 +2630,9 @@ func _process_card_state() -> void:
 			buttons.set_active(false)
 			# warning-ignore:return_value_discarded
 			set_card_rotation(0)
-			if scale != Vector2(1,1):
-				scale = Vector2(1,1)
+			var pile_scale := _get_pile_display_scale()
+			if not scale.is_equal_approx(Vector2(1,1) * pile_scale):
+				scale = Vector2(1,1) * pile_scale
 			if get_parent() in get_tree().get_nodes_in_group("piles"):
 				set_is_faceup(get_parent().faceup_cards, true)
 			if not $Tween.is_active():
@@ -2687,7 +2746,7 @@ func _process_card_state() -> void:
 			if not _tween.is_active()\
 					and not scale.is_equal_approx(Vector2(1,1)):
 				_add_tween_scale(scale, Vector2(1,1),0.75)
-				_add_tween_global_position(global_position, get_viewport().size/2 - CFConst.CARD_SIZE/2)
+				_add_tween_global_position(global_position, get_viewport().get_visible_rect().size/2 - CFConst.CARD_SIZE/2)
 				_tween.start()
 				yield(_tween, "tween_all_completed")
 				_tween_stuck_time = 0
@@ -2766,11 +2825,14 @@ func _recalculate_position_use_oval(index_diff = null)-> Vector2:
 	# Get the direction vector of a point on the oval
 	var oval_angle_vector = Vector2(hor_rad * cos(rad_angle),
 			- ver_rad * sin(rad_angle))
+	# The card may be rendered smaller than its canonical size in the hand,
+	# so its visual footprint drives the rotation offset.
+	var visual_size: Vector2 = card_size * _get_hand_display_scale()
 	# Take the center point of the card as the starting point, the coordinates
 	# of the top left corner of the card
-	var left_top = Vector2(- card_size.x/2, - card_size.y/2)
+	var left_top = Vector2(- visual_size.x/2, - visual_size.y/2)
 	# Place the top center of the card on the oval point
-	var center_top = Vector2(0, - card_size.y/2)
+	var center_top = Vector2(0, - visual_size.y/2)
 	# Get the angle of the card, which is different from the oval angle,
 	# the card angle is the normal angle of a certain point
 	var card_angle = _get_oval_angle_by_index(angle, null, hor_rad,ver_rad)
@@ -2799,19 +2861,21 @@ func _recalculate_position_use_rectangle(index_diff = null)-> Vector2:
 	# the node settings
 	var parent_control = get_parent().get_node('Control')
 	var max_hand_size_width: float = parent_control.rect_size.x
+	# The hand may display cards smaller than their canonical size.
+	var visual_width: float = card_size.x * _get_hand_display_scale()
 	# The maximum distance between cards
 	# We base it on the card width to allow it to work with any card-size.
-	var card_gap_max: float = card_size.x * 1.1
+	var card_gap_max: float = visual_width * 1.1
 	# The minimum distance between cards
 	# (less than card width means they start overlapping)
-	var card_gap_min: float = card_size.x/2
+	var card_gap_min: float = visual_width/2
 	# The current distance between cards.
 	# It is inversely proportional to the amount of cards in hand
 	var cards_gap: float = max(min((max_hand_size_width
-			- card_size.x/2)
+			- visual_width/2)
 			/ hand_size, card_gap_max), card_gap_min)
 	# The current width of all cards in hand together
-	var hand_width: float = (cards_gap * (hand_size-1)) + card_size.x
+	var hand_width: float = (cards_gap * (hand_size-1)) + visual_width
 	# The following just create the vector position to place this specific card
 	# in the playspace.
 	card_position_x = (max_hand_size_width/2
@@ -2823,7 +2887,7 @@ func _recalculate_position_use_rectangle(index_diff = null)-> Vector2:
 	card_position_y = 0
 	if index_diff!=null:
 		return(Vector2(card_position_x, card_position_y)
-				+ Vector2(card_size.x / index_diff * CFConst.NEIGHBOUR_PUSH, 0))
+				+ Vector2(visual_width / index_diff * CFConst.NEIGHBOUR_PUSH, 0))
 	else:
 		return(Vector2(card_position_x,card_position_y))
 

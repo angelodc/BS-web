@@ -175,6 +175,39 @@ func test_lan_relay_address_defaults_to_port_9080():
 			"wss://relay.example.test/socket")
 
 
+func test_web_url_uses_wss_except_for_local_relay():
+	assert_eq(
+			Rede._normalize_url_for_platform("relay.example.test", true),
+			"wss://relay.example.test")
+	assert_eq(
+			Rede._normalize_url_for_platform("relay.example.test:8443", true),
+			"wss://relay.example.test:8443")
+	assert_eq(
+			Rede._normalize_url_for_platform("127.0.0.1:9080", true),
+			"ws://127.0.0.1:9080")
+	assert_eq(
+			Rede._normalize_url_for_platform("192.168.1.20", false),
+			"ws://192.168.1.20:9080")
+	assert_eq(
+			Rede._normalize_url_for_platform("192.168.1.20/socket", false),
+			"ws://192.168.1.20:9080/socket")
+
+
+func test_join_room_requires_a_code():
+	Rede.disconnect_game()
+
+	assert_false(Rede.join_room("127.0.0.1:9080", "Alice", "  "))
+	assert_eq(Rede.get_status(), "Informe o codigo da sala.")
+
+
+func test_begin_join_requires_username_and_code():
+	var missing_name := Multiplayer.begin_join("127.0.0.1:9080", "", "ABC123")
+	assert_false(missing_name.get("ok", true))
+	var missing_code := Multiplayer.begin_join(
+			"127.0.0.1:9080", "Alice", "  ")
+	assert_false(missing_code.get("ok", true))
+
+
 func test_main_menu_contains_matchmaking_fields():
 	var menu: Control = load("res://src/custom/MainMenu.tscn").instance()
 
@@ -182,6 +215,10 @@ func test_main_menu_contains_matchmaking_fields():
 			"MainMenu/VBox/Center/VButtons/PlayerName"))
 	assert_true(menu.has_node(
 			"MainMenu/VBox/Center/VButtons/RelayAddress"))
+	assert_true(menu.has_node(
+			"MainMenu/VBox/Center/VButtons/JoinRow/RoomCode"))
+	assert_true(menu.has_node(
+			"MainMenu/VBox/Center/VButtons/JoinRow/JoinRoom"))
 	assert_true(menu.has_node(
 			"MainMenu/VBox/Center/VButtons/Multiplayer"))
 	assert_true(menu.has_node(

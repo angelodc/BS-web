@@ -55,7 +55,7 @@
   </header>
 
   <div class="actions">
-    <a class="button primary" href="/game/">Abrir o jogo</a>
+    <a class="button primary" id="open-game" href="/game/">Abrir o jogo</a>
     <button type="button" id="refresh">Atualizar</button>
   </div>
 
@@ -69,9 +69,22 @@
   const status = document.getElementById("status");
   const REFRESH_MS = 5000;
 
-  function roomUrl(code) {
-    return `/game/?room=${encodeURIComponent(code)}`;
+  // Em teste local o lobby pode receber ?relay=; repassa para o jogo para
+  // que ele nao caia no relay padrao de producao.
+  const relayParam = new URLSearchParams(location.search).get("relay");
+
+  function withRelay(url) {
+    if (!relayParam) return url;
+    const target = new URL(url, location.href);
+    target.searchParams.set("relay", relayParam);
+    return target.pathname + target.search;
   }
+
+  function roomUrl(code) {
+    return withRelay(`/game/?room=${encodeURIComponent(code)}`);
+  }
+
+  document.getElementById("open-game").href = withRelay("/game/");
 
   function render(rooms) {
     list.textContent = "";

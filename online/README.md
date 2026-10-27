@@ -16,10 +16,16 @@ online/
 ## Estado
 
 - A Function `/api/salas` e a página `/salas` estão prontas para uso local.
-- O export HTML5 está configurado, mas o build em `site/game/` ainda não foi
-  gerado nem publicado.
-- O cliente web ainda não tem `join_room` nem leitura de `?room=CODIGO`
-  (Fase 4 do [ONLINE_HOSTING.md](../ONLINE_HOSTING.md)).
+- O export HTML5 está configurado e o build local foi gerado em `site/game/`
+  (ignorado pelo Git); ele já foi validado com dois navegadores, mas ainda não
+  foi publicado.
+- O cliente web já tem `join_room` por código, entrada “Entrar com código” no
+  menu, leitura de `?room=CODIGO` e `?relay=HOST`, padrão `wss://` e
+  `LocalRelay` desativado no navegador. Falta publicar e validar em redes
+  diferentes.
+- O endereço web padrão é o placeholder `wss://relay.exemplo.com` em
+  [src/custom/Rede.gd](../src/custom/Rede.gd); troque-o pelo domínio publicado
+  ou use `?relay=` ao testar.
 
 ## Exportar o jogo
 
@@ -51,8 +57,11 @@ Jogo em `http://localhost:8888/game/` (depois do export) e lobby em
 A Function lê `RELAY_URL` **HTTP(S)** (sem barra final), por exemplo
 `https://relay.exemplo.com`. Não use `wss://` aqui: o proxy faz
 `fetch("${RELAY_URL}/rooms")`. O `wss://` é o endereço usado pelo cliente do
-jogo, que ainda será integrado na Fase 4. Sem a variável, `/api/salas` responde
-503 com `relay.online = false`.
+jogo. Sem a variável, `/api/salas` responde 503 com `relay.online = false`.
+
+Para testar o jogo web contra o relay local, abra
+`http://localhost:8888/game/?relay=127.0.0.1:9080` (endereços locais usam `ws://`);
+sem `?relay=`, o cliente usa o endereço público `wss://`.
 
 ## Publicar
 

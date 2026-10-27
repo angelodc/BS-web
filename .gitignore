@@ -19,3 +19,9 @@ online/site/game/
 # Relay Node.js
 relay/node_modules/
 relay/.env
+
+# Local Netlify folder
+.netlify
+
+# Skill bs-web-site (PIDs e logs locais)
+.qoder/skills/bs-web-site/.run/

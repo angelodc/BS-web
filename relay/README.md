@@ -17,9 +17,12 @@ no anfitrião (cliente Godot); ele não valida jogadas.
   estruturados. A suíte tem 21 testes com clientes `ws` reais.
 - Ainda não publicado em nenhum provedor. O `fly.toml` é um modelo com
   `app`/`primary_region` de exemplo.
-- Pendente (Fase 4): o cliente Godot ainda não envia `join_room` nem lê
-  `?room=CODIGO`. Até lá, o desktop continua usando o relay LAN embutido e o
-  `tools/ws_relay.py`.
+- O cliente Godot já envia `join_room` (menu “Entrar com código”), lê
+  `?room=CODIGO` no build web e usa `wss://` por padrão. O desktop continua
+  podendo usar o relay LAN embutido e o `tools/ws_relay.py`.
+- Pendente: publicar o relay com TLS, trocar o placeholder
+  `wss://relay.exemplo.com` em [Rede.gd](../src/custom/Rede.gd) pelo domínio real
+  e validar dois navegadores.
 - Uma instância basta para a v1. Escalar horizontalmente exigiria estado
   compartilhado (Redis) e não está no escopo.
 

@@ -2,6 +2,11 @@
   publish = "site"
   functions = "netlify/functions"
 
+[[redirects]]
+  from = "/api/salas"
+  to = "/.netlify/functions/salas"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]

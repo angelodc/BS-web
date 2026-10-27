@@ -79,14 +79,16 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - O relay é embutido no jogo ([src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd)) e inicia automaticamente quando o endereço configurado aponta para a própria máquina (por exemplo `127.0.0.1:9080`). Em rede local, a instância do anfitrião escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião. Não é necessário instalar Python para jogar na mesma máquina ou em LAN. Esse relay é um adaptador de desenvolvimento/LAN e não deve ser exposto à internet.
 - O relay [tools/ws_relay.py](./tools/ws_relay.py) continua disponível como alternativa externa. Se já houver um relay escutando na porta local, o jogo reutiliza esse relay em vez de abrir outra porta.
 - Para o modo online existe um relay dedicado em Node.js ([relay/](./relay/README.md)), com `join_room` por código, `protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`. Ele usa o mesmo protocolo JSON e ainda não foi publicado; o plano está em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
-- Ambos aceitam `create_room`, `find_match`, `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e `leave_room`, atribuem `H` (anfitrião/P1) a quem cria a sala e `C` (convidado/P2) a quem entra.
+- Ambos aceitam `create_room`, `join_room`, `find_match`, `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e `leave_room`, atribuem `H` (anfitrião/P1) a quem cria a sala e `C` (convidado/P2) a quem entra.
+- No build web o relay embutido não sobe (`LocalRelay` retorna cedo com `OS.has_feature("web")`). O cliente usa `wss://relay.exemplo.com` por padrão (placeholder de deploy), aceita `?relay=HOST` para testes e trata `localhost`/`127.0.0.1` como relay local via `ws://`.
 - Mensagens acima de 12.000 caracteres são divididas em partes `mp_chunk` pelo cliente e remontadas pelo destinatário; o relay externo aceita frames de até 4 MiB.
 - Uma sala com pelo menos um jogador conectado não expira, atendendo à espera sem limite. Quando os dois se desconectam, a sala fica disponível para `rejoin_room` por 120 segundos.
 - O relay não valida jogadas nem mantém estado oficial: ele apenas forma salas e encaminha mensagens.
 
 ### Menu, preparação e início
 
-- O menu permite informar username e endereço do relay (padrão `127.0.0.1:9080`), criar sala, procurar partida, cancelar e abrir **Iniciar jogo salvo**. Username e endereço ficam salvos entre execuções.
+- O menu permite informar username e endereço do relay (padrão desktop `127.0.0.1:9080`), criar sala, **entrar com código**, procurar partida, cancelar e abrir **Iniciar jogo salvo**. Username e endereço ficam salvos entre execuções no desktop.
+- No build web o campo de endereço do relay fica oculto e o padrão é `wss://`; `?room=CODIGO` preenche o campo **Entrar com código** e `?relay=HOST` sobrescreve o endereço do relay para testes locais. O código da sala do anfitrião aparece no HUD de preparação.
 - Os dois jogadores precisam de usernames diferentes. O relay recusa entrar na sala de um anfitrião com o mesmo username, comparando sem diferenciar maiúsculas e minúsculas. Erros de identidade e de sala aparecem em um diálogo com botão **OK** e também no status do menu.
 - O botão **Decks salvos** no menu principal lista os decks locais e inicia o jogo com o escolhido; a importação por link continua disponível como a última opção do menu.
 - A preparação mostra a biblioteca local de decks salvos e seleciona automaticamente o último deck usado. Se ainda não houver um último deck memorizado e existir apenas um deck salvo, ele é usado. Decks importados do BSDB ficam em cache e são reutilizados sem baixar novamente. O botão `INICIAR` só habilita quando os dois jogadores escolheram decks com exatamente 60 cartas; qualquer um dos dois pode iniciá-lo.
@@ -165,7 +167,7 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - Alterar o username reprotege apenas as cópias locais; as cópias do oponente continuam com o username antigo, então a retomada após renomear um jogador não é reconciliada automaticamente. Saves que não podem ser renomeados sem conflito continuam válidos apenas com o username anterior.
 - Se todos os checkpoints locais de uma partida estiverem ilegíveis, o jogador só pode entrar na sala de retomada do oponente, não hospedar.
 - O relay embutido só inicia para endereços locais; um endereço remoto continua exigindo um relay externo. Se outro processo já ocupa a porta, o jogo tenta usá-lo; se ele não falar este protocolo, a conexão falha com aviso no HUD.
-- O relay Node.js e o lobby do Netlify existem no repositório, mas ainda não foram publicados; o build HTML5 também não foi gerado. O cliente web ainda não tem `join_room` por código, link `?room=` nem as proteções de `LocalRelay` no navegador (Fase 4 de [ONLINE_HOSTING.md](./ONLINE_HOSTING.md)).
+- O relay Node.js e o lobby do Netlify existem no repositório, mas ainda não foram publicados; o build HTML5 local já foi gerado. A integração do cliente web (`join_room`, `?room=`, `?relay=`, padrão `wss://` e bloqueio do `LocalRelay` no navegador) está implementada e foi validada localmente com dois navegadores até o início da partida (Fase 4 de [ONLINE_HOSTING.md](./ONLINE_HOSTING.md)).
 - Não há transferência de anfitrião, reconexão automática, espectadores nem limite configurável da frequência do cursor (fixo em 10 Hz).
 
 ## Roadmap para o modo online
@@ -205,7 +207,7 @@ A v1 é LAN, mas o código deve ser tratado como a base de um jogo online; o rel
 
 ### O que já está alinhado
 
-- Cliente WebSocket configurável para `ws://` e `wss://`, sem URL fixa no código.
+- Cliente WebSocket configurável para `ws://` e `wss://`, sem URL fixa no código; no web o padrão é `wss://` e o `LocalRelay` não sobe.
 - Protocolo JSON separado do transporte e relay que apenas forma salas/encaminha mensagens.
 - `LocalRelay` só inicia para endereço local; um relay remoto continua sendo usado sem alterações.
 - Checkpoints locais e retomada já existem para o modo LAN/offline.
@@ -215,7 +217,7 @@ A v1 é LAN, mas o código deve ser tratado como a base de um jogo online; o rel
 ### O que precisa mudar antes de abrir para internet
 
 - Publicar o relay com TLS/`wss://` e validar dois navegadores em redes diferentes.
-- Gerar o build HTML5 e integrar no cliente web o `join_room` por código, o link `?room=` e as proteções de `LocalRelay` (Fase 4 de [ONLINE_HOSTING.md](./ONLINE_HOSTING.md)).
+- Publicar o build HTML5 já gerado e validar a integração (`join_room`, `?room=`, `?relay=`, `wss://` e bloqueio do `LocalRelay`) com navegadores em redes diferentes, além de publicar o relay e o lobby.
 - Autoridade no servidor: hoje o anfitrião continua autoritativo e as jogadas são validadas apenas estruturalmente no receptor.
 - Identidade verificada (username é público) e proteção real dos dados ocultos, não obfuscação.
 - Persistência de sessões/partidas para sobreviver a reinício do relay. O relay atual mantém as salas apenas em memória.

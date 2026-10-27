@@ -387,6 +387,23 @@ func begin_match(
 	return {"ok": true, "reason": ""}
 
 
+func begin_join(
+		address: String,
+		username: String,
+		room_code: String) -> Dictionary:
+	var cleaned := username.strip_edges()
+	if cleaned.empty():
+		return {"ok": false, "reason": "Digite seu username."}
+	if room_code.strip_edges().empty():
+		return {"ok": false, "reason": "Informe o codigo da sala."}
+	reset_session()
+	mode = Mode.MATCH
+	if not Rede.join_room(address, cleaned, room_code):
+		mode = Mode.NONE
+		return {"ok": false, "reason": Rede.get_status()}
+	return {"ok": true, "reason": ""}
+
+
 func begin_resume(
 		address: String,
 		username: String,

@@ -3,6 +3,8 @@ extends Node
 
 const DEFAULT_PORT := 9080
 const DEFAULT_ADDRESS := "127.0.0.1:9080"
+# Placeholder do relay publico; troque ao publicar o servico (Fase 4).
+const WEB_DEFAULT_ADDRESS := "wss://relay.exemplo.com"
 # Godot 3 caps WebSocket messages at 64 KiB; keep each chunk well below it.
 const MAX_MESSAGE_CHARS := 12000
 
@@ -113,6 +115,22 @@ func reconnect_room(address: String, username: String) -> bool:
 			"Reconectando a sala...")
 
 
+func join_room(address: String, username: String, room_code: String) -> bool:
+	var code := room_code.strip_edges().to_upper()
+	if code.empty():
+		_set_status("Informe o codigo da sala.")
+		return false
+	return _connect_for_action(
+			address,
+			username,
+			{
+				"t": "join_room",
+				"code": code,
+				"username": username.strip_edges(),
+			},
+			"Entrando na sala " + code + "...")
+
+
 func cancel_search() -> void:
 	if not is_searching and not is_connected:
 		return
@@ -166,6 +184,12 @@ func send_message(data: Dictionary) -> void:
 		})
 
 
+func get_default_address() -> String:
+	if OS.has_feature("web"):
+		return WEB_DEFAULT_ADDRESS
+	return DEFAULT_ADDRESS
+
+
 func get_status() -> String:
 	return _last_status
 
@@ -216,14 +240,57 @@ func _connect_for_action(
 
 
 func _normalize_url(address: String) -> String:
+	return _normalize_url_for_platform(address, OS.has_feature("web"))
+
+
+func _normalize_url_for_platform(address: String, web: bool) -> String:
 	var trimmed := address.strip_edges()
 	if trimmed.empty():
-		trimmed = DEFAULT_ADDRESS
+		trimmed = WEB_DEFAULT_ADDRESS if web else DEFAULT_ADDRESS
 	if trimmed.begins_with("ws://") or trimmed.begins_with("wss://"):
 		return trimmed
-	if not ":" in trimmed:
-		trimmed += ":" + str(DEFAULT_PORT)
-	return "ws://" + trimmed
+	# A pagina HTTPS nao pode abrir ws://, exceto no relay local de
+	# desenvolvimento (localhost e considerada origem segura pelo navegador).
+	var use_tls := web and not _is_loopback_address(trimmed)
+	var host_part := trimmed
+	var path := ""
+	var slash := trimmed.find("/")
+	if slash >= 0:
+		host_part = trimmed.substr(0, slash)
+		path = trimmed.substr(slash)
+	var url := ("wss://" if use_tls else "ws://") + host_part
+	if not _has_explicit_port(host_part) and not use_tls:
+		url += ":" + str(DEFAULT_PORT)
+	return url + path
+
+
+func _is_loopback_address(address: String) -> bool:
+	var host := address
+	var slash := host.find("/")
+	if slash >= 0:
+		host = host.substr(0, slash)
+	if host.begins_with("["):
+		var close := host.find("]")
+		if close > 0:
+			host = host.substr(1, close - 1)
+	else:
+		var colon := host.rfind(":")
+		if colon >= 0:
+			host = host.substr(0, colon)
+	host = host.strip_edges().to_lower()
+	return host == "localhost" or host == "127.0.0.1" or host == "::1"
+
+
+func _has_explicit_port(address: String) -> bool:
+	var host := address
+	var slash := host.find("/")
+	if slash >= 0:
+		host = host.substr(0, slash)
+	if host.begins_with("["):
+		var close := host.find("]")
+		return close >= 0 and host.length() > close + 1 \
+				and host.substr(close + 1, 1) == ":"
+	return ":" in host
 
 
 func _send_packet(data: Dictionary) -> void:
@@ -367,6 +434,9 @@ func _handle_packet(packet: PoolByteArray) -> void:
 			emit_signal("search_cancelled")
 		"error":
 			is_searching = false
+			if not is_connected:
+				_close_socket()
+				_reset_match()
 			_set_status(str(data.get("msg", "Erro no servico de partidas.")))
 			emit_signal("join_failed", _last_status)
 		_:

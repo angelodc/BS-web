@@ -88,7 +88,7 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 
 ### 🚀 Fase 4: Banco de Dados Completo & Deploy (Netlify)
 *   [ ] **Integrar Banco de Dados JSON:** A importação de deck já guarda `ENERGIA`, `PODERES`/`Tags`, `AFILIACAO`, `ESCUDO`, `ALINHAMENTO` e `ENERGIA_EXTRA` nas propriedades da carta. Falta o motor validar essas regras (poderes, afiliação, escudo) durante a partida.
-*   [ ] **Exportar para HTML5:** O preset HTML5 já existe em `export_presets.cfg` com saída em `online/site/game/index.html`, mas o build ainda não foi gerado e os templates de exportação do Godot 3.4.4 precisam ser instalados. Faltam também as guardas de web no cliente (`LocalRelay`, endereço `wss://`, link `?room=`).
+*   [ ] **Exportar para HTML5:** O preset HTML5 já existe em `export_presets.cfg` com saída em `online/site/game/index.html`; o build local foi gerado com os templates do Godot 3.4.4 e validado com dois navegadores até o início da partida e com importação de deck por link. A integração do cliente web já está feita: `LocalRelay` bloqueado no navegador, endereço padrão `wss://`, `join_room` por código, entrada “Entrar com código” no menu e leitura de `?room=CODIGO`/`?relay=HOST`. Falta publicar o build.
 *   [ ] **Hospedagem no Netlify:** A Function `GET /api/salas` e a página `/salas` estão implementadas em `online/` e rodam localmente com `netlify dev`; falta publicar o site e o relay (Node.js, em `relay/`). Ver [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
 
 ---
@@ -100,4 +100,4 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 | **Fase 1: Mecânicas Core (BS)** | 🛠️ Em andamento (falta dano/nocaute/vitória) | 75% |
 | **Fase 2: Interface & Imagens Web** | ✅ Implementada (falta validação visual) | 85% |
 | **Fase 3: Multiplayer (WebSockets)**| 🛠️ LAN implementada; relay online codificado | 75% |
-| **Fase 4: Deploy (Netlify)** | 🛠️ Lobby/preset prontos; falta build e deploy | 30% |
+| **Fase 4: Deploy (Netlify)** | 🛠️ Lobby/preset e cliente web prontos; falta build e deploy | 40% |

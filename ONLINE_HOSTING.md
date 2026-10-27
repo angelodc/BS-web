@@ -2,8 +2,9 @@
 
 Este documento planeja como publicar o Battle Scenes no navegador e oferecer
 descoberta de partidas pela internet. Ele registra decisões, limites, uma ordem
-de trabalho e o que já está implementado no repositório. Publicação e integração
-no cliente web continuam pendentes (ver “Estado atual do projeto”).
+de trabalho e o que já está implementado no repositório. A integração do cliente
+web e o build HTML5 local estão feitos e foram validados com dois navegadores; a
+publicação continua pendente (ver “Estado atual do projeto”).
 
 ## Resposta curta
 
@@ -46,15 +47,19 @@ estado em tempo real.
 ## Estado atual do projeto
 
 - O cliente Godot usa WebSocket com endereço configurável em
-  [src/custom/Rede.gd](./src/custom/Rede.gd); o padrão é `127.0.0.1:9080`.
+  [src/custom/Rede.gd](./src/custom/Rede.gd); o padrão desktop é
+  `127.0.0.1:9080` e o padrão web é `wss://relay.exemplo.com` (placeholder que
+  deve ser trocado ao publicar; `?relay=HOST` sobrepõe para testes locais).
 - O relay embutido ([src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd)) só
   sobe para endereços locais e serve para LAN/desenvolvimento. Ele não tem TLS,
-  autenticação nem persistência e não deve ser exposto à internet.
+  autenticação nem persistência, não deve ser exposto à internet e não é
+  acionado no build web (`OS.has_feature("web")`).
 - O relay externo ([tools/ws_relay.py](./tools/ws_relay.py)) implementa o mesmo
   protocolo de salas em Python puro (sockets + WebSocket manual), também sem TLS.
-- O protocolo já separa transporte e mensagens: `create_room`, `find_match`,
-  `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e
-  `leave_room`, além do encaminhamento de mensagens entre os dois jogadores.
+- O protocolo já separa transporte e mensagens: `create_room`, `join_room`,
+  `find_match`, `cancel_match`, `rejoin_room`, `create_resume_room`,
+  `join_resume_room` e `leave_room`, além do encaminhamento de mensagens entre
+  os dois jogadores.
 - O relay Node.js está implementado em [relay/](./relay/README.md): `join_room`
   por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites
   por IP/conexão e mensagem, heartbeat, allowlist de `Origin` e 21 testes com
@@ -68,10 +73,15 @@ estado em tempo real.
   valida jogadas. Essa limitação está descrita em [MULTIPLAYER.md](./MULTIPLAYER.md)
   e continua valendo no modo online.
 - Já existe um preset HTML5 em [export_presets.cfg](./export_presets.cfg), agora
-  com saída em `online/site/game/index.html`. O build ainda não foi gerado e os
-  templates de exportação do Godot 3.4.4 precisam ser instalados.
-- O cliente web ainda precisa da Fase 4: `join_room` por código, link `?room=`,
-  endereço padrão `wss://` e guardas para não subir o `LocalRelay` no navegador.
+  com saída em `online/site/game/index.html`. O build local foi gerado com os
+  templates do Godot 3.4.4 instalados (`online/site/game/` fica fora do Git).
+- A integração do cliente web está implementada: `Rede.join_room` por código,
+  leitura de `?room=CODIGO` e `?relay=HOST` no menu, endereço padrão `wss://`
+  (com exceção para relay local em desenvolvimento), campo de relay oculto no
+  navegador e `LocalRelay` desativado no web. O código da sala aparece no HUD de
+  preparação do anfitrião. Foi validada localmente com dois navegadores
+  (pareamento, decks 60/60, início e tabuleiro espelhado) e com a importação de
+  deck por link do BSDB.
 - O [TODO.md](./TODO.md) já prevê “Exportar para HTML5” e “Hospedagem no Netlify”
   na Fase 4.
 
@@ -224,17 +234,20 @@ decisão registrada neste documento.
 ### Fase 1 — Build web funcional (1–2 dias)
 
 - Verificar os templates de exportação do Godot 3.4.4 e gerar o build HTML5 em
-  `online/site/game/`.
-- Servir `online/site` em um servidor estático local antes do deploy.
-- Ajustes de web necessários no código:
-  - `WebSocketServer` não existe no HTML5. Proteger
-    `LocalRelay.ensure_for_address()` com `OS.has_feature("web")` para nunca
-    tentar subir o relay embutido no navegador.
-  - Criar um endereço padrão de web (`wss://relay.exemplo.com`) separado do
-    padrão LAN. Não persistir `127.0.0.1:9080` no IndexedDB do navegador como
-    padrão efetivo.
-  - Esconder/desabilitar o campo de endereço do relay no build web; mostrar
-    apenas o status do servidor.
+  `online/site/game/`. (feito localmente)
+- Servir `online/site` em um servidor estático local antes do deploy. (feito com
+  `netlify dev` e com um servidor estático de desenvolvimento)
+- Ajustes de web necessários no código (feitos):
+  - `WebSocketServer` não existe no HTML5. `LocalRelay.ensure_for_address()`
+    retorna sem fazer nada com `OS.has_feature("web")`, então o relay embutido
+    nunca sobe no navegador.
+  - Endereço padrão de web (`Rede.WEB_DEFAULT_ADDRESS`, placeholder
+    `wss://relay.exemplo.com`) separado do padrão LAN; `?relay=HOST` sobrepõe
+    para desenvolvimento. O padrão web não é persistido como
+    `127.0.0.1:9080` no IndexedDB.
+  - O campo de endereço do relay é oculto no build web; o valor interno vem do
+    deploy ou de `?relay=`. O status de servidor online/offline ainda não é
+    consultado pelo cliente.
   - `user://` no navegador vira IndexedDB: decks, configurações e checkpoints
     ficam presos àquele navegador/origem. Avisar o jogador e prever
     exportar/importar saves.
@@ -438,8 +451,8 @@ o link abre o jogo já com o código preenchido.
 
 **Status:** Function `GET /api/salas`, página `/salas` e `netlify.toml` estão
 implementados no repositório e funcionam localmente com `netlify dev` + relay.
-Falta publicar o site e o relay; o link `/game/?room=CODIGO` ainda não é lido
-pelo cliente Godot (Fase 4).
+O cliente Godot já lê `/game/?room=CODIGO` e preenche o código no menu, e o
+build HTML5 local já foi gerado. Falta publicar o site e o relay.
 
 ### Fase 4 — Integração no cliente (2–5 dias)
 
@@ -467,6 +480,17 @@ pelo cliente Godot (Fase 4).
 
 Critério de aceite: criar sala no navegador mostra código/link; outro navegador
 entra pelo link; uma partida completa funciona; desktop LAN continua intacto.
+
+**Status:** o essencial está implementado em 27/10/2026: `Rede.join_room`,
+`Multiplayer.begin_join`, campo “Entrar com codigo” no menu, leitura de
+`?room=CODIGO` e `?relay=HOST` via `JavaScript.eval`, padrão `wss://` no web
+(`ws://` apenas para loopback), `LocalRelay` bloqueado no navegador e campo de
+relay oculto. O código da sala já aparece no HUD de preparação. Faltam: status
+“Servidor: online/offline” no menu, “Salas públicas” consumindo `/api/salas`,
+link de convite copiável dentro do jogo e o aviso de saves no IndexedDB. O
+essencial foi validado localmente com dois navegadores: criar sala, entrar por
+código, decks 60/60, início da partida e tabuleiro espelhado. Falta validar em
+redes diferentes depois de publicar.
 
 ### Fase 5 — Persistência, operação e segurança (contínuo, opcional)
 
@@ -534,14 +558,15 @@ entra pelo link; uma partida completa funciona; desktop LAN continua intacto.
 
 ## Próximos passos concretos
 
-1. PR pequeno: guardas de web no `LocalRelay`, endereço padrão `wss://` e
-   esconder o campo de relay no build HTML5.
+1. Guardas de web no `LocalRelay`, endereço padrão `wss://` e campo de relay
+   oculto no build HTML5. (implementado)
 2. PR: export HTML5 para `online/site/game/` + primeira publicação do
    `netlify.toml` + página `/salas` lendo o proxy. (Function, página e
    `netlify.toml` já implementados; falta o build e o deploy)
 3. PR: relay público (Node/`ws`) com `join_room` por código, `/healthz` e
    `/rooms`, além dos testes de relay. (implementado em `relay/`; falta deploy)
-4. PR: link `?room=` e integração do código de sala e do lobby no menu do jogo.
+4. Link `?room=` e entrada por código no menu do jogo. (implementado; falta
+   “Salas públicas” no menu)
 5. Validação manual com dois navegadores e atualização do
    [MULTIPLAYER.md](./MULTIPLAYER.md) e do [TODO.md](./TODO.md).
 6. Só depois: Blobs/DB para histórico, se houver demanda.

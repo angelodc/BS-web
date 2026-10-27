@@ -16,6 +16,8 @@ onready var checkpoint_list := $CheckpointList
 onready var action_error := $ActionError
 onready var player_name_input := $MainMenu/VBox/Center/VButtons/PlayerName
 onready var relay_address_input := $MainMenu/VBox/Center/VButtons/RelayAddress
+onready var room_code_input := $MainMenu/VBox/Center/VButtons/JoinRow/RoomCode
+onready var join_room_button := $MainMenu/VBox/Center/VButtons/JoinRow/JoinRoom
 onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
 onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
 onready var single_player_button := $MainMenu/VBox/Center/VButtons/SinglePlayerDemo
@@ -35,6 +37,8 @@ func _ready() -> void:
 	for option_button in v_buttons.get_children():
 		if option_button.has_signal('pressed'):
 			option_button.connect('pressed', self, 'on_button_pressed', [option_button.name])
+	join_room_button.connect(
+			'pressed', self, 'on_button_pressed', ['JoinRoom'])
 #	settings_menu.rect_position.x = get_viewport().get_visible_rect().size.x
 	deck_builder.rect_position.x = -get_viewport().get_visible_rect().size.x
 	card_library.rect_position.x = -get_viewport().get_visible_rect().size.x
@@ -51,8 +55,8 @@ func _ready() -> void:
 	checkpoint_list.connect("resume_requested", self, "_on_resume_requested")
 	player_name_input.text = str(cfc.game_settings.get(
 			"multiplayer_username", ""))
-	relay_address_input.text = str(cfc.game_settings.get(
-			"multiplayer_relay_address", Rede.DEFAULT_ADDRESS))
+	_relay_setup()
+	room_code_input.text = _read_web_query("room").to_upper()
 	Rede.connect("status_changed", self, "_on_match_status_changed")
 	Rede.connect("join_failed", self, "_on_join_failed")
 	action_error.get_label().autowrap = true
@@ -102,6 +106,24 @@ func on_button_pressed(_button_name : String) -> void:
 				return
 			_set_lobby_busy(true)
 			match_status.text = Rede.get_status()
+		"JoinRoom":
+			if _lobby_busy:
+				return
+			var code: String = room_code_input.text.strip_edges().to_upper()
+			if code.empty():
+				match_status.text = "Digite o codigo da sala."
+				room_code_input.grab_focus()
+				return
+			var join_identity := _prepare_identity()
+			if not join_identity.get("ok", false):
+				return
+			var join_result := Multiplayer.begin_join(
+					join_identity["address"], join_identity["username"], code)
+			if not join_result.get("ok", false):
+				_show_action_error(str(join_result.get("reason", "")))
+				return
+			_set_lobby_busy(true)
+			match_status.text = Rede.get_status()
 		"ResumeGame":
 			if _lobby_busy:
 				return
@@ -127,6 +149,31 @@ func on_button_pressed(_button_name : String) -> void:
 			get_tree().quit()
 
 
+func _relay_setup() -> void:
+	if OS.has_feature("web"):
+		# No navegador o relay e o servico publico; o campo so existe para
+		# permitir ?relay= em testes locais.
+		relay_address_input.visible = false
+		var web_relay := _read_web_query("relay")
+		relay_address_input.text = web_relay if not web_relay.empty() \
+				else Rede.get_default_address()
+		return
+	var saved := str(cfc.game_settings.get("multiplayer_relay_address", ""))
+	relay_address_input.text = saved if not saved.empty() \
+			else Rede.get_default_address()
+
+
+func _read_web_query(key: String) -> String:
+	if not OS.has_feature("web"):
+		return ""
+	var value = JavaScript.eval(
+			"new URLSearchParams(window.location.search).get('%s') || ''" % key,
+			true)
+	if value == null:
+		return ""
+	return str(value).strip_edges()
+
+
 func _prepare_identity() -> Dictionary:
 	var username: String = player_name_input.text.strip_edges()
 	if username.empty():
@@ -139,9 +186,10 @@ func _prepare_identity() -> Dictionary:
 		return {"ok": false}
 	var address: String = relay_address_input.text.strip_edges()
 	if address.empty():
-		address = Rede.DEFAULT_ADDRESS
+		address = Rede.get_default_address()
 		relay_address_input.text = address
-	cfc.set_setting("multiplayer_relay_address", address)
+	if not OS.has_feature("web"):
+		cfc.set_setting("multiplayer_relay_address", address)
 	return {"ok": true, "username": username, "address": address}
 
 
@@ -149,10 +197,11 @@ func _set_lobby_busy(busy: bool) -> void:
 	_lobby_busy = busy
 	player_name_input.editable = not busy
 	relay_address_input.editable = not busy
+	room_code_input.editable = not busy
 	for button in [
-			single_player_button, create_match_button, resume_button,
-			saved_decks_button, deckbuilder_button, card_library_button,
-			gut_button]:
+			single_player_button, create_match_button, join_room_button,
+			resume_button, saved_decks_button, deckbuilder_button,
+			card_library_button, gut_button]:
 		button.disabled = busy
 	_update_lobby_controls()
 

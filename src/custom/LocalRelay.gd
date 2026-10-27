@@ -51,6 +51,10 @@ func _process(delta: float) -> void:
 
 
 func ensure_for_address(address: String) -> void:
+	# O navegador nao pode abrir um servidor WebSocket; o export web usa
+	# apenas o relay publico configurado em Rede.
+	if OS.has_feature("web"):
+		return
 	var parsed := _parse_local_address(address)
 	if parsed.empty():
 		return

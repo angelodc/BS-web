@@ -89,6 +89,11 @@ func _process(_delta) -> void:
 
 # Displays the card closeup in the Focus viewport
 func focus_card(card: Card, show_preview := true) -> void:
+	# A different card taking over (for instance a hand card after hovering a
+	# pile miniature) releases the current focus, otherwise the preview would
+	# stay stuck on the previous card until the mouse leaves everything.
+	if _current_focus_source and _current_focus_source != card:
+		_current_focus_source = null
 	# We check if we're already focused on this card, to avoid making duplicates
 	# the whole time
 	if not _current_focus_source:

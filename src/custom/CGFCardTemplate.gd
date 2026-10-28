@@ -62,6 +62,9 @@ func move_to(targetHost: Node,
 		board_position = null,
 		tags := ["Manual"]) -> void:
 	var board: Board = cfc.NMAP.board
+	# Only the active scenario is shown at full card size; anything else goes
+	# back to the regular board scale.
+	play_area_scale = CFConst.PLAY_AREA_SCALE
 	var from_hand: bool = get_parent() == cfc.NMAP.hand
 	var required_resources := 0
 	var needs_resources: bool = not cfc.ut \
@@ -102,6 +105,7 @@ func move_to(targetHost: Node,
 				var movement = previous_scenario.move_to(cfc.NMAP.discard)
 				if movement is GDScriptFunctionState:
 					yield(movement, "completed")
+			play_area_scale = 1.0
 			var scenario_movement = \
 					.move_to(targetHost, index, placement_slot, tags)
 			if scenario_movement is GDScriptFunctionState:

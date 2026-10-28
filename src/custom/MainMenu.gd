@@ -1,17 +1,7 @@
 extends Panel
 
-const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
-const IMPORT_DECK_ID := 1000
-
-# The time it takes to switch from one menu tab to another
-const menu_switch_time = 0.35
-
 onready var v_buttons := $MainMenu/VBox/Center/VButtons
 onready var main_menu := $MainMenu
-#onready var settings_menu := $SettingsMenu
-onready var deck_builder := $DeckBuilder
-onready var card_library := $CardLibrary
-onready var deck_import_dialog := $DeckImportDialog
 onready var checkpoint_list := $CheckpointList
 onready var action_error := $ActionError
 onready var player_name_input := $MainMenu/VBox/Center/VButtons/PlayerName
@@ -23,14 +13,9 @@ onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
 onready var single_player_button := $MainMenu/VBox/Center/VButtons/SinglePlayerDemo
 onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
 onready var resume_button := $MainMenu/VBox/Center/VButtons/ResumeGame
-onready var saved_decks_button := $MainMenu/VBox/Center/VButtons/SavedDecks
-onready var deckbuilder_button := $MainMenu/VBox/Center/VButtons/Deckbuilder
-onready var card_library_button := $MainMenu/VBox/Center/VButtons/CardLibrary
-onready var gut_button := $MainMenu/VBox/Center/VButtons/GUT
 
 var _lobby_busy := false
 var _entering_game := false
-var _saved_deck_list := []
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -39,19 +24,6 @@ func _ready() -> void:
 			option_button.connect('pressed', self, 'on_button_pressed', [option_button.name])
 	join_room_button.connect(
 			'pressed', self, 'on_button_pressed', ['JoinRoom'])
-#	settings_menu.rect_position.x = get_viewport().get_visible_rect().size.x
-	deck_builder.rect_position.x = -get_viewport().get_visible_rect().size.x
-	card_library.rect_position.x = -get_viewport().get_visible_rect().size.x
-#	settings_menu.back_button.connect("pressed", self, "_on_Setings_Back_pressed")
-#	settings_menu.recover_prebuilts.connect("pressed", self, "_on_PreBuilts_pressed")
-	deck_builder.back_button.connect("pressed", self, "_on_DeckBuilder_Back_pressed")
-	card_library.back_button.connect("pressed", self, "_on_CardLibrary_Back_pressed")
-	deck_import_dialog.connect("deck_loaded", self, "_on_deck_imported")
-	deck_import_dialog.get_node("VBox/Buttons/Cancel").connect(
-			"pressed", deck_import_dialog, "hide")
-	saved_decks_button.get_popup().connect(
-			"id_pressed", self, "_on_saved_deck_selected")
-	saved_decks_button.connect("about_to_show", self, "_populate_saved_decks")
 	checkpoint_list.connect("resume_requested", self, "_on_resume_requested")
 	player_name_input.text = str(cfc.game_settings.get(
 			"multiplayer_username", ""))
@@ -131,19 +103,6 @@ func on_button_pressed(_button_name : String) -> void:
 			if not resume_identity.get("ok", false):
 				return
 			checkpoint_list.open(resume_identity["username"])
-		"GUT":
-			if _lobby_busy:
-				return
-			# warning-ignore:return_value_discarded
-			get_tree().change_scene("res://tests/tests.tscn")
-		"Deckbuilder":
-			if _lobby_busy:
-				return
-			switch_to_tab(deck_builder)
-		"CardLibrary":
-			if _lobby_busy:
-				return
-			switch_to_tab(card_library)
 		"Exit":
 			Multiplayer.leave_session()
 			get_tree().quit()
@@ -200,8 +159,7 @@ func _set_lobby_busy(busy: bool) -> void:
 	room_code_input.editable = not busy
 	for button in [
 			single_player_button, create_match_button, join_room_button,
-			resume_button, saved_decks_button, deckbuilder_button,
-			card_library_button, gut_button]:
+			resume_button]:
 		button.disabled = busy
 	_update_lobby_controls()
 
@@ -221,50 +179,6 @@ func _enter_game() -> void:
 	cfc.current_deck = {}
 	# warning-ignore:return_value_discarded
 	get_tree().change_scene(CFConst.PATH_CUSTOM + "CGFMain.tscn")
-
-
-func _populate_saved_decks() -> void:
-	var popup: PopupMenu = saved_decks_button.get_popup()
-	popup.clear()
-	_saved_deck_list = DeckCatalog.list_decks()
-	if _saved_deck_list.empty():
-		popup.add_item("Nenhum deck salvo")
-		popup.set_item_disabled(0, true)
-	else:
-		for index in range(_saved_deck_list.size()):
-			var entry: Dictionary = _saved_deck_list[index]
-			popup.add_item("%s (%d cartas)" % [
-				str(entry["name"]), int(entry["count"])], index)
-	popup.add_separator()
-	popup.add_item("Importar deck por link...", IMPORT_DECK_ID)
-
-
-func _on_saved_deck_selected(id: int) -> void:
-	if _lobby_busy or _entering_game:
-		return
-	if id == IMPORT_DECK_ID:
-		deck_import_dialog.popup_centered(Vector2(560, 190))
-		return
-	if id < 0 or id >= _saved_deck_list.size():
-		return
-	var entry: Dictionary = _saved_deck_list[id]
-	DeckCatalog.remember_deck(str(entry["path"]))
-	_enter_game_with_deck(entry["deck"])
-
-
-func _enter_game_with_deck(deck: Dictionary) -> void:
-	if _entering_game:
-		return
-	_entering_game = true
-	Multiplayer.leave_session()
-	cfc.current_deck = deck
-	DeckCatalog.apply_definitions(deck)
-	# warning-ignore:return_value_discarded
-	get_tree().change_scene(CFConst.PATH_CUSTOM + "CGFMain.tscn")
-
-
-func _on_deck_imported(deck: Dictionary) -> void:
-	_enter_game_with_deck(deck)
 
 
 func _on_match_status_changed(text: String) -> void:
@@ -319,48 +233,5 @@ func _on_resume_requested(
 		match_status.text = "Entrando na sala de retomada do oponente..."
 
 
-func switch_to_tab(tab: Control) -> void:
-	var main_position_x : float
-	match tab:
-#		settings_menu:
-#			main_position_x = -get_viewport().get_visible_rect().size.x
-		deck_builder, card_library:
-			main_position_x = get_viewport().get_visible_rect().size.x
-	$MenuTween.interpolate_property(main_menu,'rect_position:x',
-			main_menu.rect_position.x, main_position_x, menu_switch_time,
-			Tween.TRANS_BACK, Tween.EASE_IN_OUT)
-	$MenuTween.interpolate_property(tab,'rect_position:x',
-			tab.rect_position.x, 0, menu_switch_time,
-			Tween.TRANS_BACK, Tween.EASE_IN_OUT)
-	$MenuTween.start()
-
-
-func switch_to_main_menu(tab: Control) -> void:
-	var tab_position_x : float
-	match tab:
-#		settings_menu:
-#			tab_position_x = get_viewport().get_visible_rect().size.x
-		deck_builder, card_library:
-			tab_position_x = -get_viewport().get_visible_rect().size.x
-	$MenuTween.interpolate_property(tab,'rect_position:x',
-			tab.rect_position.x, tab_position_x, menu_switch_time,
-			Tween.TRANS_BACK, Tween.EASE_IN_OUT)
-	$MenuTween.interpolate_property(main_menu,'rect_position:x',
-			main_menu.rect_position.x, 0, menu_switch_time,
-			Tween.TRANS_BACK, Tween.EASE_IN_OUT)
-	$MenuTween.start()
-
-func _on_DeckBuilder_Back_pressed() -> void:
-	switch_to_main_menu(deck_builder)
-	
-func _on_CardLibrary_Back_pressed() -> void:
-	switch_to_main_menu(card_library)
-	
 func _on_Menu_resized() -> void:
-	for tab in [main_menu, deck_builder, card_library]:
-		if is_instance_valid(tab):
-			tab.rect_size = get_viewport().get_visible_rect().size
-			if tab.rect_position.x < 0.0:
-					tab.rect_position.x = -get_viewport().get_visible_rect().size.x
-			elif tab.rect_position.x > 0.0:
-					tab.rect_position.x = get_viewport().get_visible_rect().size.x
+	main_menu.rect_size = get_viewport().get_visible_rect().size

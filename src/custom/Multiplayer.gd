@@ -1255,6 +1255,32 @@ func _try_save_checkpoint(seq: int) -> void:
 		emit_signal("checkpoint_error", str(result.get("reason", "")))
 
 
+# Manual save from the match menu. Both peers already exchange the private
+# envelopes of every sequence, so the current checkpoint can be written again
+# on demand without any extra network round.
+func save_current_game() -> Dictionary:
+	if sequence < 0 or not _public_states.has(sequence):
+		return {"ok": false,
+				"message": "Ainda não há estado da partida para salvar."}
+	var already_saved := _saved_sequences.has(sequence)
+	_saved_sequences.erase(sequence)
+	_try_save_checkpoint(sequence)
+	if _saved_sequences.has(sequence):
+		return {"ok": true, "message": "Jogo salvo: " + get_save_label() \
+				+ " · ponto #" + str(sequence) + "."}
+	if already_saved:
+		return {"ok": true, "message": "O jogo já está salvo no ponto #" \
+				+ str(sequence) + "."}
+	return {"ok": false,
+			"message": "Não foi possível salvar: aguardando dados do oponente."}
+
+
+func get_save_label() -> String:
+	if p1_username.empty() or p2_username.empty():
+		return "partida"
+	return p1_username + " vs " + p2_username
+
+
 #-----------------------------------------------------------------------------
 # Resume / live resync negotiation
 #-----------------------------------------------------------------------------

@@ -4,15 +4,19 @@ const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
 const LinkDeckScene = preload("res://src/custom/BSDBDeckImportDialog.tscn")
 
 const DECK_SIZE := 60
-const MAX_LOG_LINES := 4
+const MAX_LOG_LINES := 40
+const MENU_SAVE := 0
+const MENU_LEAVE := 1
 
 onready var _top_bar: PanelContainer = $TopBar
 onready var _phase_label: Label = $TopBar/Margin/VBox/PhaseLabel
 onready var _info_label: Label = $TopBar/Margin/VBox/InfoLabel
+onready var _match_menu: MenuButton = $MatchMenu
 onready var _advance_button: Button = $AdvanceButton
 onready var _checkpoint_label: Label = $CheckpointLabel
 onready var _log_panel: PanelContainer = $LogPanel
-onready var _log_label: Label = $LogPanel/Margin/LogLabel
+onready var _log_scroll: ScrollContainer = $LogPanel/Margin/LogScroll
+onready var _log_label: Label = $LogPanel/Margin/LogScroll/LogLabel
 onready var _prepare_panel: PanelContainer = $PreparePanel
 onready var _room_label: Label = $PreparePanel/Margin/VBox/RoomLabel
 onready var _deck_status: Label = $PreparePanel/Margin/VBox/DeckStatus
@@ -39,6 +43,11 @@ func _ready() -> void:
 	_saved_decks.get_popup().connect(
 			"index_pressed", self, "_on_saved_deck_pressed")
 	_saved_decks.connect("about_to_show", self, "_populate_saved_decks")
+	var match_popup := _match_menu.get_popup()
+	match_popup.clear()
+	match_popup.add_item("Salvar jogo", MENU_SAVE)
+	match_popup.add_item("Voltar ao menu", MENU_LEAVE)
+	match_popup.connect("id_pressed", self, "_on_match_menu_pressed")
 	_link_deck_button.connect("pressed", self, "_on_link_deck_pressed")
 	_start_button.connect("pressed", self, "_on_start_pressed")
 	_cancel_button.connect("pressed", self, "_on_leave_pressed")
@@ -148,6 +157,13 @@ func _on_advance_pressed() -> void:
 		_append_log("Não é possível avançar a fase agora.")
 
 
+func _on_match_menu_pressed(id: int) -> void:
+	if id == MENU_SAVE:
+		_append_log(str(Multiplayer.save_current_game().get("message", "")))
+	elif id == MENU_LEAVE:
+		_on_leave_pressed()
+
+
 func _on_checkpoint_saved(checkpoint_sequence, _path) -> void:
 	_append_log("Checkpoint #" + str(checkpoint_sequence) + " salvo.")
 	_refresh()
@@ -221,6 +237,7 @@ func _refresh() -> void:
 		return
 	var active := Multiplayer.is_session_active()
 	_log_panel.visible = active
+	_match_menu.visible = active and not Multiplayer.is_preparing()
 	_top_bar.visible = active and not Multiplayer.is_preparing() \
 			and not Multiplayer.is_starting()
 	_prepare_panel.visible = Multiplayer.is_preparing()
@@ -246,20 +263,17 @@ func _refresh_texts() -> void:
 		_phase_label.text = Multiplayer.get_phase_label().to_upper()
 		_phase_label.add_color_override(
 				"font_color", Multiplayer.get_phase_color())
-		var turn_line := "Rodada " + str(Multiplayer.round_number) \
-				+ " · Etapa " + str(Multiplayer.step_index + 1) + "/10" \
-				+ " · " + turn
+		var lines := ["R" + str(Multiplayer.round_number) + " · E" \
+				+ str(Multiplayer.step_index + 1) + "/10 · " + turn]
+		var extras := []
 		var starter := Multiplayer.get_slot_username(Multiplayer.starting_slot)
 		if not starter.empty():
-			turn_line += " · Começa: " + starter
-		var lines := [turn_line]
-		var counts: Dictionary = Multiplayer.opponent_counts
-		var third := "Mão do oponente: " + str(counts.get("hand", 0)) \
-				+ " · Deck: " + str(counts.get("deck", 0))
+			extras.append("Começa: " + starter)
 		var rolls := Multiplayer.get_rolls_text()
 		if not rolls.empty():
-			third += " · Dados: " + rolls
-		lines.append(third)
+			extras.append("Dados: " + rolls)
+		if not extras.empty():
+			lines.append(PoolStringArray(extras).join(" · "))
 		_info_label.text = PoolStringArray(lines).join("\n")
 
 
@@ -316,7 +330,8 @@ func _on_display_changed() -> void:
 	var summary := Multiplayer.get_display_summary()
 	if summary != _last_display_summary:
 		_last_display_summary = summary
-		_append_log(summary.replace("\n", " · "))
+		if Multiplayer.is_preparing():
+			_append_log(summary.replace("\n", " · "))
 	_refresh()
 
 
@@ -331,3 +346,10 @@ func _append_log(text: String) -> void:
 	while _logs.size() > MAX_LOG_LINES:
 		_logs.pop_front()
 	_log_label.text = PoolStringArray(_logs).join("\n")
+	_scroll_log_to_bottom()
+	call_deferred("_scroll_log_to_bottom")
+
+
+func _scroll_log_to_bottom() -> void:
+	var bar: VScrollBar = _log_scroll.get_v_scrollbar()
+	bar.value = bar.max_value

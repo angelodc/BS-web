@@ -2,6 +2,10 @@
 extends Board
 
 var _last_prize_energy := -1
+var _deck_position := Vector2.ZERO
+var _discard_position := Vector2.ZERO
+var _prizes_position := Vector2.ZERO
+var _deck_control_size := Vector2.ZERO
 var pending_resource_host: Card
 var pending_resource_swap_card: Card
 var pending_resource_count := 0
@@ -11,6 +15,9 @@ var _resource_selection_completed := false
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	counters = $Counters
+	# The sample credit/research counters are not part of the BS match and were
+	# covering the deck corner.
+	$Counters.visible = false
 	cfc.map_node(self)
 	# We use the below while to wait until all the nodes we need have been mapped
 	# "hand" should be one of them.
@@ -52,6 +59,9 @@ func _setup_multiplayer() -> void:
 			$FancyMovementToggle, $OvalHandToggle, $ScalingFocusOptions,
 			$EnableAttach, $DeckBuilder, $BackToMain, $Debug, $SeedLabel]:
 		control.visible = false
+	var hand_buttons := get_node_or_null("Hand/Control/ManipulationButtons")
+	if hand_buttons:
+		hand_buttons.visible = false
 	var hud := preload("res://src/custom/MatchHUD.tscn").instance()
 	hud.name = "MatchHUD"
 	add_child(hud)
@@ -68,7 +78,7 @@ func _apply_battle_scenes_layout() -> void:
 	var deck: Pile = get_node("Deck")
 	var discard: Pile = get_node("Discard")
 	var prizes: Pile = get_node("Prêmios")
-	var right_column_x: float = viewport_size.x - 141
+	var right_column_x: float = viewport_size.x - 156
 	var scene_grid: BoardPlacementGrid = get_node("PlacementGridDemo")
 	var left_column_width := 156.0
 
@@ -80,15 +90,30 @@ func _apply_battle_scenes_layout() -> void:
 	var player_field_y: float = opponent_strip_height + scene_size.y
 	var hand_band_y: float = player_field_y + scene_size.y
 
-	deck.position = Vector2(0, player_field_y)
-	discard.position = Vector2(0, player_field_y + 115)
-	prizes.position = Vector2(right_column_x, player_field_y + 180)
+	# The deck lies turned 270 degrees in the bottom-left corner of the local
+	# half; the discard pile sits above it with the same width as the lying
+	# deck, so the field column stays free.
+	deck.rotation_degrees = 270
+	_deck_position = Vector2(0, viewport_size.y + 2)
+	deck.position = _deck_position
+	_discard_position = Vector2(0, player_field_y + 6)
+	discard.position = _discard_position
+	deck.call_deferred("keep_children_upright")
+	# The right column holds one full-size card slot for the active scenario
+	# and the quarter-size prize minis right below it.
+	_prizes_position = Vector2(right_column_x, player_field_y + 218)
+	prizes.position = _prizes_position
 	scene_grid.rect_position = Vector2(
 			(viewport_size.x - scene_size.x) * 0.5, player_field_y)
-	get_node("ModifiedLabelGrid").rect_position = Vector2(
-			right_column_x, player_field_y)
+	var scene_caption: Label = get_node("ModifiedLabelGrid/Control/Label")
+	scene_caption.rect_position = Vector2(
+			right_column_x + 6, player_field_y - 24)
+	scene_caption.rect_size = Vector2(144, 20)
+	scene_caption.align = Label.ALIGN_RIGHT
 	$PrizeEnergyLabel.rect_position = Vector2(
-			right_column_x, viewport_size.y - 40)
+			right_column_x, _prizes_position.y + 126)
+	$PrizeEnergyLabel.rect_size = Vector2(156, 20)
+	_hide_opponent_field_extras()
 
 	# The hand cards are drawn above the hand node origin (the oval fan), so
 	# the margin is computed from the top of the hand band.
@@ -97,7 +122,7 @@ func _apply_battle_scenes_layout() -> void:
 			- (viewport_size.y - hand.card_size.y)
 	# warning-ignore:return_value_discarded
 	hand.re_place()
-	$ResourceSelectionLabel.rect_position = Vector2(165, hand_band_y + 2)
+	$ResourceSelectionLabel.rect_position = Vector2(262, hand_band_y + 2)
 	$HandLabel.rect_position = Vector2(610, hand_band_y + 2)
 
 	var opponent_scene: ColorRect = get_node(
@@ -107,8 +132,43 @@ func _apply_battle_scenes_layout() -> void:
 	opponent_scene.rect_size = scene_size
 	var opponent_scene_label: Label = get_node(
 			"OpponentFieldVisual/OpponentSceneLabel")
+	opponent_scene_label.rect_size = Vector2(120, 20)
 	opponent_scene_label.rect_position = opponent_scene.rect_position \
-			+ Vector2(10, 4)
+			+ Vector2(10, opponent_scene.rect_size.y - 24)
+
+
+# The mirrored field keeps only the boxes that carry information. The deck box,
+# the resources box and the "Ver" buttons overlapped the HUD and the right
+# column, and the deck count now travels with the hand label. The resources
+# count becomes a plain caption under the HUD, and the prize caption and its
+# energy share the bottom line of the small prize box.
+func _hide_opponent_field_extras() -> void:
+	for node_name in [
+			"OpponentDeck", "OpponentDeckLabel", "OpponentResourcesView",
+			"OpponentResourcesBackground", "OpponentPrizesView",
+			"OpponentFieldLabel"]:
+		var node = get_node_or_null("OpponentFieldVisual/" + node_name)
+		if node:
+			node.visible = false
+	var resources_label: Label = get_node(
+			"OpponentFieldVisual/OpponentResourcesLabel")
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	resources_label.anchor_left = 0.0
+	resources_label.anchor_right = 0.0
+	resources_label.rect_position = Vector2(viewport_size.x - 152, 93)
+	resources_label.rect_size = Vector2(148, 18)
+	resources_label.align = Label.ALIGN_RIGHT
+	resources_label.autowrap = false
+	var prizes_label: Label = get_node(
+			"OpponentFieldVisual/OpponentPrizesLabel")
+	prizes_label.rect_position = Vector2(22, 306)
+	prizes_label.rect_size = Vector2(56, 16)
+	prizes_label.align = Label.ALIGN_LEFT
+	var prizes_energy: Label = get_node(
+			"OpponentFieldVisual/OpponentPrizesEnergy")
+	prizes_energy.rect_position = Vector2(62, 306)
+	prizes_energy.rect_size = Vector2(77, 16)
+	prizes_energy.align = Label.ALIGN_RIGHT
 
 
 func _on_board_viewport_size_changed() -> void:
@@ -118,6 +178,29 @@ func _on_board_viewport_size_changed() -> void:
 func _process(delta: float) -> void:
 	._process(delta)
 	_update_prize_energy()
+	_hold_pile_layout()
+
+
+# Restacking a pile runs the anchor based repositioning of CardContainer,
+# which would snap these piles back to a viewport corner, so the board keeps
+# re-asserting the slots it assigned.
+func _hold_pile_layout() -> void:
+	if cfc.ut:
+		return
+	var deck: Pile = get_node("Deck")
+	var discard: Pile = get_node("Discard")
+	var prizes: Pile = get_node("Prêmios")
+	if deck.position != _deck_position or int(deck.rotation_degrees) != 270:
+		deck.rotation_degrees = 270
+		deck.position = _deck_position
+	if discard.position != _discard_position:
+		discard.position = _discard_position
+	if prizes.position != _prizes_position:
+		prizes.position = _prizes_position
+	var deck_control: Control = deck.get_node("Control")
+	if deck_control.rect_size != _deck_control_size:
+		_deck_control_size = deck_control.rect_size
+		deck.call_deferred("keep_children_upright")
 
 
 func _update_prize_energy() -> void:
@@ -201,9 +284,28 @@ func begin_resource_selection(host: Card, required_count: int) -> void:
 	pending_resource_host = host
 	pending_resource_count = required_count
 	_resource_selection_completed = false
+	# When the available resources match the cost exactly there is nothing to
+	# choose, so the payment happens without opening the selection popup.
+	if required_count > 0 \
+			and get_available_resource_count() == required_count:
+		_auto_pay_resources()
+		return
 	show_resource_message(
 			"Escolha recursos: 0/" + str(pending_resource_count))
 	cfc.NMAP.discard.populate_popup()
+
+
+func _auto_pay_resources() -> void:
+	cfc.NMAP.discard.populate_popup()
+	var payment := []
+	for slot in cfc.NMAP.discard.get_node("ViewPopup/CardView").get_children():
+		for node in slot.get_children():
+			if node is Card:
+				payment.append(node)
+	for resource in payment:
+		if pending_resource_count <= 0:
+			break
+		select_resource_for_host(resource)
 
 
 func select_resource_for_host(resource: Card) -> void:

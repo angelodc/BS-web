@@ -25,3 +25,6 @@ relay/.env
 
 # Skill bs-web-site (PIDs e logs locais)
 .qoder/skills/bs-web-site/.run/
+
+# Prints locais de validação de layout
+.prints/

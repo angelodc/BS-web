@@ -51,8 +51,7 @@ func prepare_excess_discard_pile() -> void:
 
 
 func _process(_delta: float) -> void:
-	_counter_cards.text = "Hand: " + str(get_card_count()) \
-			+ "/" + str(hand_size)
+	_counter_cards.text = "Hand: " + str(get_card_count())
 
 
 # Button which shuffles the children [Card] objects

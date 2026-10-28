@@ -1,17 +1,11 @@
-[gd_scene load_steps=10 format=2]
+[gd_scene load_steps=6 format=2]
 
 [ext_resource path="res://themes/darktheme/darktheme.theme" type="Theme" id=1]
 [ext_resource path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" type="DynamicFontData" id=2]
 [ext_resource path="res://src/custom/MainMenu.gd" type="Script" id=3]
-[ext_resource path="res://src/custom/CGFDeckbuilder/CGFDeckBuilder.tscn" type="PackedScene" id=4]
-[ext_resource path="res://src/custom/CGFDeckbuilder/CGFCardLibrary.tscn" type="PackedScene" id=5]
-[ext_resource path="res://src/custom/BSDBDeckImportDialog.tscn" type="PackedScene" id=6]
-[ext_resource path="res://src/custom/CheckpointList.tscn" type="PackedScene" id=7]
+[ext_resource path="res://src/custom/CheckpointList.tscn" type="PackedScene" id=4]
 
-[sub_resource type="StyleBoxFlat" id=1]
-bg_color = Color( 0.145098, 0.145098, 0.145098, 1 )
-
-[sub_resource type="DynamicFont" id=2]
+[sub_resource type="DynamicFont" id=1]
 size = 107
 font_data = ExtResource( 2 )
 
@@ -21,24 +15,7 @@ margin_bottom = 720.0
 theme = ExtResource( 1 )
 script = ExtResource( 3 )
 
-[node name="DeckBuilder" parent="." instance=ExtResource( 4 )]
-margin_left = -2.0
-margin_top = 4.0
-margin_bottom = -2.0
-custom_styles/panel = SubResource( 1 )
-
-[node name="CardLibrary" parent="." instance=ExtResource( 5 )]
-margin_right = -54.0
-margin_bottom = 52.0
-custom_styles/panel = SubResource( 1 )
-property_width_exceptions = {
-"Cost": 30,
-"Power": 50
-}
-
-[node name="DeckImportDialog" parent="." instance=ExtResource( 6 )]
-
-[node name="CheckpointList" parent="." instance=ExtResource( 7 )]
+[node name="CheckpointList" parent="." instance=ExtResource( 4 )]
 
 [node name="ActionError" type="AcceptDialog" parent="."]
 window_title = "Aviso"
@@ -61,30 +38,31 @@ margin_bottom = 723.0
 
 [node name="Margin" type="MarginContainer" parent="MainMenu/VBox"]
 margin_right = 1281.0
-margin_bottom = 337.0
+margin_bottom = 360.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 custom_constants/margin_top = 90
 
 [node name="Label" type="Label" parent="MainMenu/VBox/Margin"]
-margin_top = 97.0
+margin_top = 109.0
 margin_right = 1281.0
-margin_bottom = 329.0
-custom_fonts/font = SubResource( 2 )
+margin_bottom = 341.0
+custom_fonts/font = SubResource( 1 )
 text = "Godot 
 Card Game Framework"
 align = 1
 
 [node name="Center" type="CenterContainer" parent="MainMenu/VBox"]
-margin_top = 340.0
+margin_top = 363.0
 margin_right = 1281.0
 margin_bottom = 723.0
 size_flags_vertical = 3
 
 [node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
 margin_left = 500.0
+margin_top = 48.0
 margin_right = 780.0
-margin_bottom = 383.0
+margin_bottom = 311.0
 rect_min_size = Vector2( 280, 0 )
 custom_constants/separation = 3
 
@@ -155,34 +133,8 @@ margin_right = 280.0
 margin_bottom = 233.0
 text = "Iniciar jogo salvo"
 
-[node name="SavedDecks" type="MenuButton" parent="MainMenu/VBox/Center/VButtons"]
+[node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
 margin_top = 236.0
 margin_right = 280.0
 margin_bottom = 263.0
-text = "Decks salvos"
-
-[node name="Deckbuilder" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 266.0
-margin_right = 280.0
-margin_bottom = 293.0
-text = "Deck Builder"
-
-[node name="CardLibrary" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 296.0
-margin_right = 280.0
-margin_bottom = 323.0
-text = "Card Library"
-
-[node name="GUT" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 326.0
-margin_right = 280.0
-margin_bottom = 353.0
-text = "Tests"
-
-[node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 356.0
-margin_right = 280.0
-margin_bottom = 383.0
 text = "Exit"
-
-[node name="MenuTween" type="Tween" parent="."]

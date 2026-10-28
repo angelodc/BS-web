@@ -5,6 +5,18 @@ signal draw_card(deck)
 
 const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
 
+# The deck lies sideways in the bottom-left corner inside a box with a fixed
+# size, so the pile no longer grows with the card count. The cards are stacked
+# with a couple of pixels of offset each, as only the edges of the lower cards
+# should peek out.
+const BOX_SIZE := Vector2(156.0, 150.0)
+const BOX_BOTTOM_GAP := 2.0
+const CARD_INSET := 12.0
+const FAN_STEP := Vector2(0.8, 0.9)
+const FAN_MAX := 10
+# Distance from the top edge of the box to the center of the pile label.
+const LABEL_TOP_OFFSET := 23.0
+
 onready var _clarividencia_button: Button = get_node_or_null(
 		"Control/ManipulationButtons/Clarividencia")
 onready var _search_button: Button = get_node_or_null(
@@ -14,6 +26,81 @@ var _peek_menu: PopupMenu
 var _custom_peek_dialog: ConfirmationDialog
 var _custom_peek_count: SpinBox
 var _deck_action_in_progress := false
+var _label_count := -1
+
+
+# The deck rests turned 270 degrees, so after the shuffle animation leaves it
+# at a random angle it is put back sideways.
+func _on_shuffle_completed(_pile) -> void:
+	rotation_degrees = 270
+
+
+# The pile node is turned 270 degrees; the label and the action buttons are
+# turned back so their text stays readable. The local +y axis then points to
+# the screen right, so the label can sit centered in the empty strip above the
+# stacked cards and the buttons near the bottom edge.
+func keep_children_upright() -> void:
+	var control: Control = get_node("Control")
+	var label: Control = get_node("Control/CenterContainer")
+	var buttons: Control = get_node("Control/ManipulationButtons")
+	for child in [label, buttons]:
+		child.rect_pivot_offset = child.rect_size * 0.5
+		child.rect_rotation = 90
+	label.rect_position = Vector2(
+			BOX_BOTTOM_GAP + BOX_SIZE.y - LABEL_TOP_OFFSET \
+					- label.rect_size.x * 0.5,
+			control.rect_size.y * 0.5 - label.rect_size.y * 0.5)
+	buttons.rect_position = Vector2(
+			control.rect_size.x * 0.5 - buttons.rect_size.x * 0.5,
+			control.rect_size.y - 56.0 - buttons.rect_size.y * 0.5)
+
+
+func _process(delta: float) -> void:
+	._process(delta)
+	if cfc.ut:
+		return
+	_hold_layout()
+
+
+# Keeps the lying deck inside its fixed box: the panel no longer follows the
+# stack size, and the cards fan a little inside it instead of hugging the
+# bottom-left corner and running off the screen edge.
+func _hold_layout() -> void:
+	var control: Control = get_node("Control")
+	var panel_size := Vector2(BOX_SIZE.y, BOX_SIZE.x)
+	if not control.rect_size.is_equal_approx(panel_size):
+		control.rect_size = panel_size
+		call_deferred("keep_children_upright")
+	control.rect_position = Vector2(
+			BOX_BOTTOM_GAP + BOX_SIZE.y - panel_size.x, 0.0)
+	$Control/Highlight.rect_size = panel_size
+	_refresh_label()
+	if pile_popup.visible or cfc.card_drag_ongoing:
+		return
+	var cards := get_all_cards(false)
+	var count := cards.size()
+	var card_screen: Vector2 = Vector2(
+			CFConst.CARD_SIZE.y, CFConst.CARD_SIZE.x) * card_display_scale
+	var base := Vector2(
+			position.x + (BOX_SIZE.x - card_screen.x) * 0.5,
+			position.y - BOX_BOTTOM_GAP - CARD_INSET - card_screen.y)
+	for index in range(count):
+		var card: Card = cards[index]
+		if card.state != Card.CardState.IN_PILE:
+			continue
+		var depth: int = min(count - 1 - index, FAN_MAX)
+		var screen_pos: Vector2 = base + FAN_STEP * depth
+		card.position = Vector2(
+				position.y - screen_pos.y - card_screen.y,
+				screen_pos.x - position.x)
+
+
+func _refresh_label() -> void:
+	var count := get_card_count()
+	if count == _label_count:
+		return
+	_label_count = count
+	pile_name_label.text = "Deck: " + str(count)
 
 
 # Called when the node enters the scene tree for the first time.
@@ -24,6 +111,8 @@ func _ready() -> void:
 	$Control.connect("gui_input", self, "_on_Deck_input_event")
 	# warning-ignore:return_value_discarded
 	connect("draw_card", cfc.NMAP.hand, "draw_card")
+	# warning-ignore:return_value_discarded
+	connect("shuffle_completed", self, "_on_shuffle_completed")
 	if _clarividencia_button:
 		_clarividencia_button.connect(
 				"pressed", self, "_on_clarividencia_pressed")
@@ -31,6 +120,10 @@ func _ready() -> void:
 		_search_button.connect("pressed", self, "_on_search_pressed")
 	_create_peek_menu()
 	_create_custom_peek_dialog()
+	# The count is shown next to the pile name, so the separate count box is
+	# not needed and would cover the cards.
+	$Control/CenterContainer/VBoxContainer/PanelContainer.hide()
+	pile_name_label.align = Label.ALIGN_CENTER
 
 
 func _create_peek_menu() -> void:

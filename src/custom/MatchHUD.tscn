@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=2]
+[gd_scene load_steps=9 format=2]
 
 [ext_resource path="res://src/custom/MatchHUD.gd" type="Script" id=1]
 [ext_resource path="res://fonts/comfortaa/Comfortaa-Bold.ttf" type="DynamicFontData" id=2]
@@ -19,6 +19,13 @@ font_data = ExtResource( 2 )
 
 [sub_resource type="DynamicFont" id=3]
 size = 13
+outline_size = 2
+outline_color = Color( 0, 0, 0, 1 )
+use_filter = true
+font_data = ExtResource( 2 )
+
+[sub_resource type="DynamicFont" id=6]
+size = 16
 outline_size = 2
 outline_color = Color( 0, 0, 0, 1 )
 use_filter = true
@@ -52,61 +59,66 @@ corner_radius_bottom_left = 12
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
-z_index = 50
+z_index = 110
 script = ExtResource( 1 )
 __meta__ = {
 "_edit_use_anchors_": false
 }
 
 [node name="TopBar" type="PanelContainer" parent="."]
-anchor_left = 0.5
-anchor_right = 0.5
-margin_left = -330.0
-margin_top = 8.0
-margin_right = 330.0
+anchor_left = 1.0
+anchor_right = 1.0
+margin_left = -435.0
+margin_top = 6.0
+margin_right = -8.0
 margin_bottom = 88.0
 mouse_filter = 2
 custom_styles/panel = SubResource( 4 )
 
 [node name="Margin" type="MarginContainer" parent="TopBar"]
 mouse_filter = 2
-custom_constants/margin_left = 14
-custom_constants/margin_top = 6
-custom_constants/margin_right = 14
-custom_constants/margin_bottom = 6
+custom_constants/margin_left = 12
+custom_constants/margin_top = 4
+custom_constants/margin_right = 150
+custom_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="TopBar/Margin"]
 mouse_filter = 2
-custom_constants/separation = 2
+custom_constants/separation = 1
 
 [node name="PhaseLabel" type="Label" parent="TopBar/Margin/VBox"]
-custom_fonts/font = SubResource( 1 )
+custom_fonts/font = SubResource( 6 )
 text = "PREPARAÇÃO"
-align = 1
 
 [node name="InfoLabel" type="Label" parent="TopBar/Margin/VBox"]
 custom_fonts/font = SubResource( 3 )
 custom_colors/font_color = Color( 0.78, 0.82, 0.9, 1 )
-text = "Rodada 1 · Etapa 1/10 · Sua vez"
-align = 1
+text = "R1 · E1/10 · Sua vez"
 autowrap = true
+
+[node name="MatchMenu" type="MenuButton" parent="."]
+margin_left = 778.0
+margin_top = 14.0
+margin_right = 838.0
+margin_bottom = 46.0
+text = "Menu"
 
 [node name="AdvanceButton" type="Button" parent="."]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -210.0
-margin_top = 8.0
+margin_left = -150.0
+margin_top = 12.0
 margin_right = -18.0
-margin_bottom = 46.0
+margin_bottom = 48.0
 text = "Avançar Fase"
 
 [node name="CheckpointLabel" type="Label" parent="."]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -260.0
+margin_left = -150.0
 margin_top = 52.0
 margin_right = -18.0
-margin_bottom = 74.0
+margin_bottom = 76.0
 mouse_filter = 2
 custom_fonts/font = SubResource( 3 )
 custom_colors/font_color = Color( 0.7, 0.78, 0.65, 1 )
@@ -115,25 +127,28 @@ align = 2
 
 [node name="LogPanel" type="PanelContainer" parent="."]
 margin_left = 8.0
-margin_top = 8.0
-margin_right = 302.0
-margin_bottom = 124.0
-mouse_filter = 2
+margin_top = 6.0
+margin_right = 300.0
+margin_bottom = 126.0
 custom_styles/panel = SubResource( 4 )
 
 [node name="Margin" type="MarginContainer" parent="LogPanel"]
 mouse_filter = 2
 custom_constants/margin_left = 8
-custom_constants/margin_top = 6
-custom_constants/margin_right = 8
-custom_constants/margin_bottom = 6
+custom_constants/margin_top = 4
+custom_constants/margin_right = 4
+custom_constants/margin_bottom = 4
 
-[node name="LogLabel" type="Label" parent="LogPanel/Margin"]
+[node name="LogScroll" type="ScrollContainer" parent="LogPanel/Margin"]
+mouse_filter = 0
+scroll_horizontal_enabled = false
+
+[node name="LogLabel" type="Label" parent="LogPanel/Margin/LogScroll"]
+size_flags_horizontal = 3
 custom_fonts/font = SubResource( 3 )
 custom_colors/font_color = Color( 0.82, 0.85, 0.9, 1 )
+text = "Sessão multiplayer iniciada."
 autowrap = true
-max_lines_visible = 4
-valign = 2
 
 [node name="PreparePanel" type="PanelContainer" parent="."]
 anchor_left = 0.5

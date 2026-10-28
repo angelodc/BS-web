@@ -92,12 +92,19 @@ class TestPopupView:
 				"All cards all migrated to popup window")
 		assert_eq(1.0,discard.get_node("ViewPopup").modulate[3],
 				"ViewPopup should be visible")
+		for slot in discard.get_node("ViewPopup/CardView").get_children():
+			assert_true(slot.get_child(0).visible,
+					"Every card in the popup should be visible")
 		cards[1].move_to(discard)
 		yield(yield_for(1), YIELD)
 		assert_eq(13,discard.get_node("ViewPopup/CardView").get_child_count(),
 				"Hosting a card in the pile, while popup is open, puts it in the popup")
-		assert_eq(Vector2(0.75,0.75),cards[1].scale,
-				"Moving a card into the popup, should scale it")
+		var hand_scale: float = cfc.NMAP.hand.card_display_scale
+		assert_eq(Vector2(1,1) * hand_scale, cards[1].scale,
+				"Moving a card into the popup, should scale it to the hand size")
+		assert_almost_eq(Vector2(CFConst.CARD_SIZE.x, CFConst.CARD_SIZE.y) * hand_scale,
+				cards[1].get_parent().rect_min_size, Vector2(1,1),
+				"The popup slot should fit the hand-sized card")
 		pending("Drawing a card from the pile, picks it from the popup")
 		assert_false(discard.get_node("Control/ManipulationButtons").visible,
 				"Manipulation Buttons should be hidden while popup is active")
@@ -105,6 +112,25 @@ class TestPopupView:
 		yield(yield_for(1), YIELD)
 		assert_true(cards[1].is_faceup,
 				"Cards returning from popup should respect piles card facing")
+
+	func test_popup_discard_drops_slots_of_card_that_left():
+		var discard = cfc.NMAP.discard
+		for card in cfc.NMAP.deck.get_all_cards():
+			card.move_to(discard)
+		yield(yield_for(1), YIELD)
+		discard._on_View_Button_pressed()
+		yield(yield_for(1), YIELD)
+		var grid: GridContainer = discard.get_node("ViewPopup/CardView")
+		var card: Card = discard.pre_sorted_order[0]
+		var slot: Control = card.get_parent()
+		card.move_to(cfc.NMAP.deck)
+		yield(yield_for(0.5), YIELD)
+		assert_false(is_instance_valid(slot),
+				"The slot of a card that left the popup should be dropped")
+		assert_eq(11, grid.get_child_count(),
+				"The popup should keep only the remaining cards")
+		discard.get_node("ViewPopup").hide()
+		yield(yield_for(1), YIELD)
 
 	func test_popup_deck_view():
 		var deck = cfc.NMAP.deck

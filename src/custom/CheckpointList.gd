@@ -84,12 +84,7 @@ func _format_game(game: Dictionary, intact: bool) -> String:
 	if join_only:
 		label = "Partida com save local ilegível"
 	elif participants.size() == 2:
-		if _username == str(participants[0]):
-			label = "vs " + str(participants[1])
-		elif _username == str(participants[1]):
-			label = "vs " + str(participants[0])
-		else:
-			label = str(participants[0]) + " vs " + str(participants[1])
+		label = str(participants[0]) + " vs " + str(participants[1])
 	var phase := str(game.get("phase", ""))
 	var phase_label := str(PHASE_LABELS.get(phase, phase))
 	var text := label

@@ -198,6 +198,9 @@ export var thumbnail_scale := CFConst.THUMBNAIL_SCALE
 export var preview_scale := CFConst.PREVIEW_SCALE
 # The size of the card when seen larger in the viewport focus window
 export var focused_scale := CFConst.FOCUSED_SCALE
+# The size of the card while it sits in a pile's view popup. Piles can change it
+# per card to show the popup at a different scale.
+var popup_scale := 0.75
 
 # This is **the** authorative name for this node
 #
@@ -2651,8 +2654,9 @@ func _process_card_state() -> void:
 			set_card_rotation(0)
 			if modulate[3] != 1:
 				modulate[3] = 1
-			if scale != Vector2(0.75,0.75):
-				scale = Vector2(0.75,0.75)
+			var target_popup_scale := Vector2(1,1) * popup_scale
+			if not scale.is_equal_approx(target_popup_scale):
+				scale = target_popup_scale
 			if position != Vector2(0,0):
 				position = Vector2(0,0)
 			if not $Tween.is_active():

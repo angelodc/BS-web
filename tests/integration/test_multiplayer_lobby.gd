@@ -225,10 +225,19 @@ func test_main_menu_contains_matchmaking_fields():
 			"MainMenu/VBox/Center/VButtons/CreateMatch"))
 	assert_true(menu.has_node(
 			"MainMenu/VBox/Center/VButtons/ResumeGame"))
-	assert_true(menu.has_node(
-			"MainMenu/VBox/Center/VButtons/SavedDecks"))
 	assert_true(menu.has_node("CheckpointList"))
 	assert_true(menu.has_node("ActionError"))
+	menu.free()
+
+
+func test_main_menu_drops_deck_and_test_entries():
+	var menu: Control = load("res://src/custom/MainMenu.tscn").instance()
+	var buttons := "MainMenu/VBox/Center/VButtons/"
+
+	for removed_button in ["SavedDecks", "Deckbuilder", "CardLibrary", "GUT"]:
+		assert_false(menu.has_node(buttons + removed_button))
+	for removed_panel in ["DeckBuilder", "CardLibrary", "DeckImportDialog"]:
+		assert_false(menu.has_node(removed_panel))
 	menu.free()
 
 

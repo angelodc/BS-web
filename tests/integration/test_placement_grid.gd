@@ -223,13 +223,15 @@ func test_scenario_grid_matches_card_size():
 	var scenario_grid = add_child_autoqfree(
 			load("res://src/custom/CGFModifiedLabelGrid.tscn").instance())
 	yield(yield_for(0.1), YIELD)
-	var card_area: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
+	# The active scenario is shown at full card size, unlike the regular board
+	# cards that use the play area scale.
+	var card_area: Vector2 = CFConst.CARD_SIZE
 	assert_eq(scenario_grid.name_label.text, "Cenário Ativo",
 			"Scenario grid keeps its label")
 	assert_eq(scenario_grid.rect_size, card_area,
-			"Scenario grid is exactly the size of a card on the board")
+			"Scenario grid is exactly the size of a full card")
 	assert_eq(scenario_grid.get_slot(0).rect_size, card_area,
-			"Scenario slot is exactly the size of a card on the board")
+			"Scenario slot is exactly the size of a full card")
 
 
 func test_scene_grid_is_three_by_two():

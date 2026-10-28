@@ -10,15 +10,28 @@ const DRAG_SEND_INTERVAL := 0.08
 const CURSOR_SEND_INTERVAL := 0.1
 const CURSOR_HIDE_AFTER := 3.0
 const COUNTS_SEND_DELAY := 0.12
+const HIDDEN_SWEEP_INTERVAL := 1.5
 const HIDDEN_ZONES := ["hand", "deck"]
 const VISIBLE_ZONES := ["board", "scenario", "resources", "prizes"]
 # The opponent field is the local field rotated 180 degrees, so scene cards
-# must have the same size on both sides to line up across the middle.
+# must have the same size on both sides to line up across the middle. The
+# corner boxes only mirror one card each, so they use smaller scales.
 const BOARD_SCALE := CFConst.PLAY_AREA_SCALE
-const SCENARIO_SCALE := CFConst.PLAY_AREA_SCALE
-const PILE_SCALE := 0.3
-const HAND_SCALE := 0.24
+const SCENARIO_SCALE := 0.42
+const PILE_SCALE := 0.25
+const PRIZES_SCALE := 0.2
+const HAND_SCALE := 0.2
 const MAX_HAND_PLACEHOLDERS := 24
+# Room kept free at the bottom of the mirrored scene so attachments stacked
+# under a character stay inside the opponent half of the board.
+const SCENE_ATTACHMENT_MARGIN := 30.0
+# The scenario and pile boxes show their labels along the bottom edge.
+const SCENARIO_LABEL_MARGIN := 22.0
+# Hovering the mirrored resource box opens the same mini card grid the local
+# discard pile shows, limited to the top cards.
+const RESOURCES_HOVER_SCALE := 0.35
+const RESOURCES_HOVER_MAX := 6
+const RESOURCES_HOVER_WIDTH := 176.0
 
 var _active := false
 var _suppressed := false
@@ -30,12 +43,14 @@ var _remote_drag_card: Card = null
 var _remote_drag_offset := Vector2.ZERO
 var _sent_visible := {}
 var _pending_cards := {}
+var _resources_hover := false
 var _hand_placeholders := []
 var _cursor: Control
 var _cursor_hide_timer := 0.0
 var _cursor_send_timer := 0.0
 var _drag_timer := 0.0
 var _counts_timer := 0.0
+var _sweep_timer := 0.0
 var _counts_dirty := false
 var _last_sent_counts := {"hand": -1, "deck": -1}
 var _last_hidden_counts := {"hand": -1, "deck": -1}
@@ -89,11 +104,13 @@ func set_suppressed(value: bool) -> void:
 func _process(delta: float) -> void:
 	_update_remote_drag()
 	_update_cursor_receiver(delta)
+	_update_resources_hover()
 	if not _can_send():
 		return
 	_send_cursor(delta)
 	_send_pending_counts(delta)
 	_send_dragged_card(delta)
+	_sweep_hidden_cards(delta)
 
 
 func _can_send() -> bool:
@@ -164,6 +181,8 @@ func _send_dragged_card(delta: float) -> void:
 func _send_card_state(card: Card, zone: String, dragging := false) -> void:
 	if not _can_send() or not is_instance_valid(card) or card.network_mirror:
 		return
+	if card.state == Card.CardState.VIEWPORT_FOCUS:
+		return
 	var net_id := Multiplayer.ensure_card_id(card)
 	if net_id.empty():
 		return
@@ -205,6 +224,31 @@ func _send_hidden_card(card: Card) -> void:
 		_sent_visible.erase(net_id)
 		Rede.send_message({"t": "mp_remove", "id": net_id})
 	_counts_dirty = true
+
+
+# Cards that reach a hidden zone without emitting the usual move signal (the
+# shuffle animation, for example) would leave a phantom mirror on the other
+# side, so advertised cards are re-checked against the hidden zones.
+func _sweep_hidden_cards(delta: float) -> void:
+	if _sent_visible.empty():
+		return
+	_sweep_timer += delta
+	if _sweep_timer < HIDDEN_SWEEP_INTERVAL:
+		return
+	_sweep_timer = 0.0
+	var board: Control = cfc.NMAP.board
+	if board:
+		for node in board.get_children():
+			if node is Card and not node.network_mirror \
+					and node.state == Card.CardState.VIEWPORT_FOCUS \
+					and _sent_visible.has(node.network_id):
+				_send_hidden_card(node)
+	for container in [cfc.NMAP.get("deck"), cfc.NMAP.get("hand")]:
+		if not container:
+			continue
+		for card in container.get_all_cards():
+			if card is Card and _sent_visible.has(card.network_id):
+				_send_hidden_card(card)
 
 
 func _send_card_state_soon(card: Card) -> void:
@@ -335,8 +379,10 @@ func _apply_remote_card(data: Dictionary) -> void:
 	# warning-ignore:return_value_discarded
 	card.set_is_faceup(face, true, false, ["net"])
 	card.scale = Vector2(1, 1) * _scale_for_zone(zone)
+	# The mirror is seen from the other side of the table, so it is shown
+	# upside down like a real opponent's card.
 	# warning-ignore:return_value_discarded
-	card.set_card_rotation(rotation, false, false, false, ["net"])
+	card.set_card_rotation((rotation + 180) % 360, false, false, false, ["net"])
 	if card.attachments.size() > 0:
 		card._organize_attachments()
 	_update_remote_zone_labels()
@@ -561,7 +607,7 @@ func _update_remote_zone_labels() -> void:
 	var resources_label: Label = board.get_node_or_null(
 			"OpponentFieldVisual/OpponentResourcesLabel")
 	if resources_label:
-		resources_label.text = "Recursos / Descarte (" \
+		resources_label.text = "Recursos/Descarte (" \
 				+ str(_remote_zone_order["resources"].size()) + ")"
 
 
@@ -1039,12 +1085,14 @@ func _position_for_remote(zone: String, travel: Vector2, net_id: String) -> Vect
 			var scenario: Control = visual.get_node_or_null("OpponentScenario")
 			if scenario:
 				return _center_zone_position(
-						scenario, 0, CFConst.CARD_SIZE * SCENARIO_SCALE)
+						scenario, 2, CFConst.CARD_SIZE * SCENARIO_SCALE,
+						SCENARIO_LABEL_MARGIN)
 		_:
 			var scene: Control = visual.get_node_or_null("OpponentScene")
 			if scene:
 				return _map_zone_position(scene, travel, 0, 0,
-						CFConst.CARD_SIZE * BOARD_SCALE)
+						CFConst.CARD_SIZE * BOARD_SCALE,
+						SCENE_ATTACHMENT_MARGIN)
 	return board.rect_global_position
 
 
@@ -1056,10 +1104,12 @@ func _map_zone_position(
 		travel: Vector2,
 		margin_x: float,
 		margin_top: float,
-		display_size: Vector2) -> Vector2:
+		display_size: Vector2,
+		margin_bottom := 0.0) -> Vector2:
 	var usable := Vector2(
 			max(1.0, area.rect_size.x - margin_x * 2.0 - display_size.x),
-			max(1.0, area.rect_size.y - margin_top - display_size.y))
+			max(1.0, area.rect_size.y - margin_top - margin_bottom \
+					- display_size.y))
 	return area.rect_global_position + Vector2(margin_x, margin_top) \
 			+ Vector2((1.0 - travel.x) * usable.x,
 					(1.0 - travel.y) * usable.y)
@@ -1068,9 +1118,10 @@ func _map_zone_position(
 func _center_zone_position(
 		area: Control,
 		top_margin: float,
-		display_size: Vector2) -> Vector2:
+		display_size: Vector2,
+		bottom_margin := 0.0) -> Vector2:
 	var available_y := max(
-			0.0, area.rect_size.y - top_margin - display_size.y)
+			0.0, area.rect_size.y - top_margin - bottom_margin - display_size.y)
 	return area.rect_global_position + Vector2(
 			max(0.0, (area.rect_size.x - display_size.x) * 0.5),
 			top_margin + available_y * 0.5)
@@ -1081,22 +1132,78 @@ func _stack_position(area: Control, zone: String, net_id: String) -> Vector2:
 	var index := order.find(net_id)
 	if index < 0:
 		index = 0
-	var columns := 2 if zone == "prizes" else 3
-	var row_height := 24 if zone == "prizes" else 18
+	var columns := 3
+	var column_step := 40.0
+	var row_step := 16.0
+	var origin := Vector2(8, 4)
+	if zone == "resources" and _resources_hover:
+		column_step = 56.0
+		row_step = 77.0
+		origin = Vector2(6, 4)
+	if zone == "prizes":
+		columns = 4
+		column_step = 26.0
+		row_step = 11.0
+		origin = Vector2(6, 0)
 	var column := index % columns
 	var row := int(index / columns)
-	return area.rect_global_position + Vector2(
-			10 + column * 34, 30 + row * row_height)
+	return area.rect_global_position + origin \
+			+ Vector2(column * column_step, row * row_step)
 
 
 func _scale_for_zone(zone: String) -> float:
 	match zone:
-		"resources", "prizes":
-			return PILE_SCALE
+		"resources":
+			return RESOURCES_HOVER_SCALE if _resources_hover else PILE_SCALE
+		"prizes":
+			return PRIZES_SCALE
 		"scenario":
 			return SCENARIO_SCALE
 		_:
 			return BOARD_SCALE
+
+
+# The mirrored resource box opens the top cards into a mini grid while the
+# mouse is over it, the same way the local discard pile does.
+func _update_resources_hover() -> void:
+	var area := _resources_area()
+	if not area:
+		return
+	var hover := Rect2(
+			area.rect_global_position, area.rect_size).has_point(
+			area.get_global_mouse_position())
+	if hover == _resources_hover:
+		return
+	_resources_hover = hover
+	area.margin_left = -RESOURCES_HOVER_WIDTH if hover else -156.0
+	_relayout_remote_resources()
+
+
+func _relayout_remote_resources() -> void:
+	var area := _resources_area()
+	if not area:
+		return
+	var card_scale := _scale_for_zone("resources")
+	var order: Array = _remote_zone_order["resources"]
+	for index in range(order.size()):
+		var card: Card = _remote_cards.get(order[index])
+		if not is_instance_valid(card):
+			continue
+		if _resources_hover and index >= RESOURCES_HOVER_MAX:
+			card.visible = false
+			continue
+		card.visible = true
+		card.scale = Vector2(card_scale, card_scale)
+		card.position = _stack_position(area, "resources", order[index])
+
+
+func _resources_area() -> Control:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return null
+	var area: Control = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentResourcesBackground")
+	return area
 
 
 #-----------------------------------------------------------------------------
@@ -1203,6 +1310,8 @@ func _create_hand_placeholder() -> Card:
 	# warning-ignore:return_value_discarded
 	card.set_is_faceup(false, true, false, ["net"])
 	card.scale = Vector2(1, 1) * HAND_SCALE
+	# warning-ignore:return_value_discarded
+	card.set_card_rotation(180, false, false, false, ["net"])
 	card.z_index = 1
 	return card
 
@@ -1216,11 +1325,14 @@ func _layout_hand_placeholders() -> void:
 	if not background:
 		return
 	var count := _hand_placeholders.size()
-	var available := max(1.0, background.rect_size.x - 30.0)
-	var spacing := 34.0
+	var card_width := CFConst.CARD_SIZE.x * HAND_SCALE
+	var inner := max(card_width, background.rect_size.x - 20.0)
+	var spacing := card_width
 	if count > 1:
-		spacing = min(34.0, available / float(count - 1))
-	var origin := background.rect_global_position + Vector2(15, 18)
+		spacing = min(card_width, (inner - card_width) / float(count - 1))
+	var fan_width := card_width + spacing * float(count - 1)
+	var origin := background.rect_global_position + Vector2(
+			(background.rect_size.x - fan_width) * 0.5, 6)
 	for index in range(count):
 		var card = _hand_placeholders[index]
 		if is_instance_valid(card):
@@ -1241,11 +1353,8 @@ func _update_opponent_labels(hand_count: int, deck_count: int) -> void:
 	var hand_label: Label = board.get_node_or_null(
 			"OpponentFieldVisual/OpponentHandLabel")
 	if hand_label:
-		hand_label.text = "Mão do Oponente (" + str(hand_count) + ")"
-	var deck_label: Label = board.get_node_or_null(
-			"OpponentFieldVisual/OpponentDeckLabel")
-	if deck_label:
-		deck_label.text = "Deck (" + str(deck_count) + ")"
+		hand_label.text = "Mão: " + str(hand_count) \
+				+ " · Deck: " + str(deck_count)
 	var visual: Control = board.get_node_or_null("OpponentFieldVisual")
 	if visual:
 		var field_label: Label = visual.get_node_or_null("OpponentFieldLabel")

@@ -28,3 +28,6 @@ relay/.env
 
 # Prints locais de validação de layout
 .prints/
+
+# Iteracoes locais de arte gerada (as aprovadas vao para assets/)
+vibe_images/

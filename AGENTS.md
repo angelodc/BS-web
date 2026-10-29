@@ -1,5 +1,14 @@
 # Instrucoes do projeto
 
+## Engine
+
+O projeto roda em **Godot 3.4.4 / GDScript 3.x**. Use apenas API e sintaxe dessa
+versao: nada de `await`, `super._ready()`, `Callable`, `instantiate()`,
+`add_theme_*`/`get_theme_*` ou `RichTextLabel.get_paragraph_count()`. Em Godot 3,
+`_ready`/`_enter_tree` sao chamados em todos os niveis da heranca; nunca chame
+`._ready()` dentro de um `_ready` derivado, pois isso duplica as conexoes de
+sinal do script base.
+
 ## Testes locais no Godot
 
 Depois de implementar uma alteracao e executar as verificacoes automatizadas

@@ -1,6 +1,7 @@
 extends Control
 
 const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
+const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const LinkDeckScene = preload("res://src/custom/BSDBDeckImportDialog.tscn")
 
 const DECK_SIZE := 60
@@ -8,6 +9,8 @@ const MAX_LOG_LINES := 200
 const MENU_SAVE := 0
 const MENU_LEAVE := 1
 const CARD_LINK_COLOR := "#ffd479"
+const ACTIVE_SEAT_COLOR := Color(1.0, 0.85, 0.45)
+const IDLE_SEAT_COLOR := Color(0.82, 0.86, 0.92)
 
 onready var _top_bar: PanelContainer = $TopBar
 onready var _phase_label: Label = $TopBar/Margin/VBox/PhaseLabel
@@ -23,9 +26,13 @@ onready var _room_label: Label = $PreparePanel/Margin/VBox/RoomLabel
 onready var _deck_status: Label = $PreparePanel/Margin/VBox/DeckStatus
 onready var _display_label: Label = $PreparePanel/Margin/VBox/DisplayLabel
 onready var _hint_label: Label = $PreparePanel/Margin/VBox/Hint
-onready var _seat_picker: OptionButton = $PreparePanel/Margin/VBox/SeatPicker
+onready var _solo_deck_buttons: HBoxContainer = $PreparePanel/Margin/VBox/SoloDeckButtons
+onready var _solo_deck_p1: Button = $PreparePanel/Margin/VBox/SoloDeckButtons/DeckP1
+onready var _solo_deck_p2: Button = $PreparePanel/Margin/VBox/SoloDeckButtons/DeckP2
 onready var _saved_decks: MenuButton = $PreparePanel/Margin/VBox/DeckButtons/SavedDecks
 onready var _link_deck_button: Button = $PreparePanel/Margin/VBox/DeckButtons/LinkDeck
+onready var _playmat_options: OptionButton = \
+		$PreparePanel/Margin/VBox/PlaymatButtons/PlaymatOptions
 onready var _start_button: Button = $PreparePanel/Margin/VBox/StartButton
 onready var _cancel_button: Button = $PreparePanel/Margin/VBox/CancelButton
 onready var _overlay: ColorRect = $Overlay
@@ -35,10 +42,12 @@ onready var _reconnect_button: Button = $Overlay/Center/VBox/Buttons/ReconnectBu
 onready var _leave_button: Button = $Overlay/Center/VBox/Buttons/LeaveButton
 
 var _saved_deck_list := []
+var _playmat_list := []
 var _logs := []
 var _status_note := ""
 var _last_display_summary := ""
 var _link_dialog: WindowDialog
+var _solo_deck_popup: PopupMenu
 var _preview_name := ""
 var _preview_card: Card = null
 var _preview_owned := {}
@@ -48,19 +57,23 @@ func _ready() -> void:
 	_saved_decks.get_popup().connect(
 			"index_pressed", self, "_on_saved_deck_pressed")
 	_saved_decks.connect("about_to_show", self, "_populate_saved_decks")
+	_solo_deck_popup = PopupMenu.new()
+	add_child(_solo_deck_popup)
+	_solo_deck_popup.connect("index_pressed", self, "_on_saved_deck_pressed")
+	_solo_deck_p1.connect("pressed", self, "_on_solo_deck_pressed", [1])
+	_solo_deck_p2.connect("pressed", self, "_on_solo_deck_pressed", [2])
 	var match_popup := _match_menu.get_popup()
 	match_popup.clear()
 	match_popup.add_item("Salvar jogo", MENU_SAVE)
 	match_popup.add_item("Voltar ao menu", MENU_LEAVE)
 	match_popup.connect("id_pressed", self, "_on_match_menu_pressed")
 	_link_deck_button.connect("pressed", self, "_on_link_deck_pressed")
+	_playmat_options.connect("item_selected", self, "_on_playmat_selected")
+	_populate_playmats()
 	_start_button.connect("pressed", self, "_on_start_pressed")
 	_cancel_button.connect("pressed", self, "_on_leave_pressed")
 	_advance_button.connect("pressed", self, "_on_advance_pressed")
 	_swap_seat_button.connect("pressed", self, "_on_swap_seat_pressed")
-	_seat_picker.add_item("Deck de P1", 1)
-	_seat_picker.add_item("Deck de P2", 2)
-	_seat_picker.connect("item_selected", self, "_on_seat_picked")
 	_reconnect_button.connect("pressed", self, "_on_reconnect_pressed")
 	_leave_button.connect("pressed", self, "_on_leave_pressed")
 	_link_dialog = LinkDeckScene.instance()
@@ -106,6 +119,9 @@ func _exit_tree() -> void:
 func _apply_last_deck() -> void:
 	if not is_inside_tree() or not Multiplayer.is_preparing():
 		return
+	if Multiplayer.is_solo():
+		_apply_last_solo_decks()
+		return
 	if Multiplayer.is_local_deck_ready():
 		return
 	var entry := DeckCatalog.find_auto_deck()
@@ -114,8 +130,23 @@ func _apply_last_deck() -> void:
 	_choose_deck(entry["deck"], str(entry["path"]))
 
 
+# The hotseat keeps one deck button per seat; each one starts with the last deck
+# chosen for that seat so the match can begin without picking them again.
+func _apply_last_solo_decks() -> void:
+	for slot in [1, 2]:
+		if Multiplayer.is_solo_deck_ready(slot):
+			continue
+		var entry := DeckCatalog.find_seat_deck(slot)
+		if entry.empty():
+			continue
+		_choose_deck(entry["deck"], str(entry["path"]), slot)
+
+
 func _populate_saved_decks() -> void:
-	var popup := _saved_decks.get_popup()
+	_populate_deck_popup(_saved_decks.get_popup())
+
+
+func _populate_deck_popup(popup: PopupMenu) -> void:
 	popup.clear()
 	_saved_deck_list = DeckCatalog.list_decks()
 	if _saved_deck_list.empty():
@@ -133,6 +164,14 @@ func _on_saved_deck_pressed(index: int) -> void:
 	_choose_deck(entry["deck"], str(entry["path"]))
 
 
+func _on_solo_deck_pressed(slot: int) -> void:
+	Multiplayer.set_solo_pick_slot(slot)
+	_hint_label.text = "Escolha o deck de " \
+			+ Multiplayer.get_slot_username(slot) + " ou importe um link."
+	_populate_deck_popup(_solo_deck_popup)
+	_solo_deck_popup.popup_centered()
+
+
 func _on_link_deck_pressed() -> void:
 	_link_dialog.popup_centered(Vector2(560, 190))
 
@@ -141,19 +180,54 @@ func _on_link_deck_loaded(deck: Dictionary) -> void:
 	_choose_deck(deck)
 
 
-func _choose_deck(deck: Dictionary, path: String = "") -> void:
+func _populate_playmats() -> void:
+	_playmat_options.clear()
+	_playmat_list = PlaymatCatalog.list()
+	var selected := PlaymatCatalog.selected_id()
+	var selected_index := 0
+	for index in range(_playmat_list.size()):
+		_playmat_options.add_item(str(_playmat_list[index].get("name", "")))
+		if str(_playmat_list[index].get("id", "")) == selected:
+			selected_index = index
+	_playmat_options.selected = selected_index
+
+
+# The board is already on screen behind this panel, so applying the choice here
+# doubles as the preview.
+func _on_playmat_selected(index: int) -> void:
+	if index < 0 or index >= _playmat_list.size():
+		return
+	var playmat_id := str(_playmat_list[index].get("id", ""))
+	PlaymatCatalog.remember_id(playmat_id)
+	var board := get_parent()
+	if board and board.has_method("apply_playmat"):
+		board.apply_playmat(playmat_id)
+
+
+func _choose_deck(deck: Dictionary, path: String = "", slot: int = 0) -> void:
 	var count := DeckCatalog.count_cards(deck)
 	if count != DECK_SIZE:
 		_hint_label.text = "O deck tem " + str(count) + " cartas. " \
 				+ "São necessárias 60 para iniciar."
 		_append_log("Deck recusado: " + str(count) + "/60 cartas.")
 		return
-	var result := Multiplayer.select_deck(deck)
+	# A deck picked from the list or from a link goes to the seat whose button
+	# was pressed last; the match prefill passes its seat explicitly.
+	var target := slot
+	if Multiplayer.is_solo() and target <= 0:
+		target = int(Multiplayer.solo_pick_slot)
+	var result := {}
+	if target > 0:
+		result = Multiplayer.select_solo_deck(target, deck)
+	else:
+		result = Multiplayer.select_deck(deck)
 	if not result.get("ok", false):
 		_hint_label.text = str(result.get("reason", "Não foi possível usar o deck."))
 		return
 	if not path.empty():
 		DeckCatalog.remember_deck(path)
+		if target > 0:
+			DeckCatalog.remember_seat_deck(target, path)
 	_refresh()
 
 
@@ -171,6 +245,7 @@ func _on_start_pressed() -> void:
 
 func _on_prep_changed() -> void:
 	_refresh()
+	call_deferred("_apply_last_deck")
 
 
 #-----------------------------------------------------------------------------
@@ -180,10 +255,6 @@ func _on_prep_changed() -> void:
 func _on_advance_pressed() -> void:
 	if not Multiplayer.advance_phase():
 		_append_log("Não é possível avançar a fase agora.")
-
-
-func _on_seat_picked(index: int) -> void:
-	Multiplayer.set_solo_pick_slot(_seat_picker.get_item_id(index))
 
 
 func _on_swap_seat_pressed() -> void:
@@ -323,9 +394,10 @@ func _refresh_texts() -> void:
 
 func _refresh_prepare() -> void:
 	var solo := Multiplayer.is_solo()
-	_seat_picker.visible = solo
+	_solo_deck_buttons.visible = solo
+	_saved_decks.visible = not solo
 	if solo:
-		_seat_picker.select(clamp(int(Multiplayer.solo_pick_slot) - 1, 0, 1))
+		_refresh_solo_deck_buttons()
 	var role := "Você controla os dois assentos" if solo \
 			else ("Anfitrião" if Multiplayer.is_authority() else "Convidado")
 	var opponent := Multiplayer.get_opponent_username()
@@ -350,8 +422,8 @@ func _refresh_prepare() -> void:
 		if both_ready:
 			_hint_label.text = "Os dois decks estão prontos. Inicie a partida."
 		else:
-			_hint_label.text = "Escolha o deck de P1 e o de P2, " \
-					+ "60 cartas cada."
+			_hint_label.text = "Clique em P1 e em P2 para escolher " \
+					+ "60 cartas para cada assento."
 	elif Multiplayer.is_local_deck_ready() and Multiplayer.opponent_deck_ready:
 		_hint_label.text = "Os dois decks estão prontos. Inicie a partida."
 	elif Multiplayer.is_local_deck_ready():
@@ -362,6 +434,27 @@ func _refresh_prepare() -> void:
 		_hint_label.text = Rede.get_status()
 	else:
 		_hint_label.text = "Aguardando um oponente entrar na sala."
+
+
+# Both seat buttons show the deck they will use and which seat the next deck or
+# link import goes to.
+func _refresh_solo_deck_buttons() -> void:
+	var active := int(Multiplayer.solo_pick_slot)
+	_solo_deck_p1.text = _solo_deck_button_text(1)
+	_solo_deck_p2.text = _solo_deck_button_text(2)
+	_solo_deck_p1.add_color_override("font_color",
+			ACTIVE_SEAT_COLOR if active == 1 else IDLE_SEAT_COLOR)
+	_solo_deck_p2.add_color_override("font_color",
+			ACTIVE_SEAT_COLOR if active == 2 else IDLE_SEAT_COLOR)
+
+
+func _solo_deck_button_text(slot: int) -> String:
+	var label := Multiplayer.get_slot_username(slot) + " · "
+	var deck := Multiplayer.get_solo_deck(slot)
+	if deck.empty():
+		return label + "Escolher deck"
+	return label + str(deck.get("name", "Deck")) + " (" \
+			+ str(DeckCatalog.count_cards(deck)) + "/60)"
 
 
 func _refresh_overlay() -> void:
@@ -444,7 +537,7 @@ func _escape_bbcode(text: String) -> String:
 
 
 func _scroll_log_to_bottom() -> void:
-	_log_label.scroll_to_line(_log_label.get_paragraph_count())
+	_log_label.scroll_to_line(max(_log_label.get_line_count() - 1, 0))
 
 
 #-----------------------------------------------------------------------------
@@ -481,24 +574,40 @@ func _show_card_preview(card_name: String) -> void:
 	if not card or cfc.ut or not cfc.NMAP.has("main") or not cfc.NMAP.main:
 		return
 	_preview_card = card
+	card.preview_force_front = not card.is_faceup and card.was_public
+	# The detached previews and the mirrors run the card state machine, which
+	# would unfocus the closeup again on the next frame.
+	card.preview_locked = true
 	cfc.NMAP.main.focus_card(card)
 
 
 func _release_preview() -> void:
-	if is_instance_valid(_preview_card) and cfc.NMAP.has("main") and cfc.NMAP.main:
-		cfc.NMAP.main.unfocus(_preview_card)
+	if is_instance_valid(_preview_card):
+		_preview_card.preview_force_front = false
+		_preview_card.preview_locked = false
+		if cfc.NMAP.has("main") and cfc.NMAP.main:
+			cfc.NMAP.main.unfocus(_preview_card)
 	_preview_card = null
 	_preview_name = ""
 
 
+# The log names a card, but the table can hold several copies of it, and the
+# first one found is often face down inside the deck, which would preview its
+# back. Only a copy the player is allowed to read is used; anything else falls
+# back to a detached preview that always shows the front.
 func _find_preview_card(card_name: String) -> Card:
 	for group in ["cards", "remote_cards"]:
 		for candidate in get_tree().get_nodes_in_group(group):
 			if candidate is Card and is_instance_valid(candidate) \
 					and candidate.is_inside_tree() \
-					and candidate.canonical_name == card_name:
+					and candidate.canonical_name == card_name \
+					and _is_readable_preview(candidate):
 				return candidate
 	return _instance_preview_card(card_name)
+
+
+func _is_readable_preview(card: Card) -> bool:
+	return card.visible and (card.is_faceup or card.was_public)
 
 
 # Cards that already left the table still deserve a preview, so a detached copy

@@ -16,6 +16,8 @@ const FAN_STEP := Vector2(0.8, 0.9)
 const FAN_MAX := 10
 # Distance from the top edge of the box to the center of the pile label.
 const LABEL_TOP_OFFSET := 23.0
+# Distance from the top edge of the box to the center of the action buttons.
+const BUTTONS_TOP_OFFSET := 43.0
 
 onready var _clarividencia_button: Button = get_node_or_null(
 		"Control/ManipulationButtons/Clarividencia")
@@ -50,9 +52,26 @@ func keep_children_upright() -> void:
 			BOX_BOTTOM_GAP + BOX_SIZE.y - LABEL_TOP_OFFSET \
 					- label.rect_size.x * 0.5,
 			control.rect_size.y * 0.5 - label.rect_size.y * 0.5)
+	_place_manipulation_buttons(control)
+
+
+# The action buttons are an upright column over the top of the box, above the
+# stacked cards. The pile is turned 270 degrees, so the visual centre of a
+# child at pile position p is (p.y, pile.y - p.x); the formula below inverts
+# that after the buttons are turned back upright.
+func _place_manipulation_buttons(control: Control) -> void:
+	var buttons: Control = get_node("Control/ManipulationButtons")
+	var pivot: Vector2 = buttons.rect_size * 0.5
+	if buttons.rect_pivot_offset != pivot:
+		buttons.rect_pivot_offset = pivot
+	var box_top: float = position.y - control.rect_position.x \
+			- control.rect_size.x
+	var center := Vector2(
+			control.rect_position.y + control.rect_size.y * 0.5,
+			box_top + BUTTONS_TOP_OFFSET)
 	buttons.rect_position = Vector2(
-			control.rect_size.x * 0.5 - buttons.rect_size.x * 0.5,
-			control.rect_size.y - 56.0 - buttons.rect_size.y * 0.5)
+			position.y - center.y - buttons.rect_size.x * 0.5,
+			center.x - buttons.rect_size.y * 0.5)
 
 
 func _process(delta: float) -> void:
@@ -74,6 +93,7 @@ func _hold_layout() -> void:
 	control.rect_position = Vector2(
 			BOX_BOTTOM_GAP + BOX_SIZE.y - panel_size.x, 0.0)
 	$Control/Highlight.rect_size = panel_size
+	_place_manipulation_buttons(control)
 	_refresh_label()
 	if pile_popup.visible or cfc.card_drag_ongoing:
 		return
@@ -167,7 +187,29 @@ func _on_clarividencia_pressed() -> void:
 	_custom_peek_count.max_value = max(4, get_card_count())
 	_custom_peek_count.value = min(4, get_card_count())
 	_peek_menu.set_item_disabled(3, get_card_count() < 4)
-	_peek_menu.popup(Rect2(get_viewport().get_mouse_position(), Vector2.ZERO))
+	_peek_menu.popup(Rect2(_clarividencia_anchor(), Vector2.ZERO))
+
+
+# The menu opens beside the button that owns it instead of at the mouse, which
+# may be anywhere on the board when the button is pressed from a hotkey.
+func _clarividencia_anchor() -> Vector2:
+	if not _clarividencia_button or not _clarividencia_button.is_inside_tree():
+		return get_viewport().get_mouse_position()
+	var xf: Transform2D = _clarividencia_button.get_global_transform_with_canvas()
+	var size: Vector2 = _clarividencia_button.rect_size
+	var corners := [
+			xf.xform(Vector2.ZERO),
+			xf.xform(Vector2(size.x, 0.0)),
+			xf.xform(size),
+			xf.xform(Vector2(0.0, size.y))]
+	var min_point: Vector2 = corners[0]
+	var max_point: Vector2 = corners[0]
+	for corner in corners:
+		min_point = Vector2(min(min_point.x, corner.x),
+				min(min_point.y, corner.y))
+		max_point = Vector2(max(max_point.x, corner.x),
+				max(max_point.y, corner.y))
+	return Vector2(max_point.x + 4.0, min_point.y)
 
 
 func _on_peek_count_selected(item_id: int) -> void:

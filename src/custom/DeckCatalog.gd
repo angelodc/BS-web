@@ -2,6 +2,7 @@ extends Reference
 
 const DECKS_PATH := "user://Decks/"
 const LAST_DECK_SETTING := "last_deck_path"
+const SEAT_DECK_SETTING := "last_solo_deck_path_"
 
 
 static func list_decks() -> Array:
@@ -84,6 +85,34 @@ static func remember_deck(path: String) -> void:
 	if path.empty() or last_deck_path() == path:
 		return
 	cfc.set_setting(LAST_DECK_SETTING, path)
+
+
+static func seat_deck_path(slot: int) -> String:
+	if slot < 1 or slot > 2:
+		return ""
+	return str(cfc.game_settings.get(SEAT_DECK_SETTING + str(slot), ""))
+
+
+# The hotseat preparation fills one deck button per seat, so each seat keeps its
+# own last deck. Seat two falls back to seat one's pick, which keeps both
+# buttons filled on the first run instead of leaving the table half chosen.
+static func find_seat_deck(slot: int) -> Dictionary:
+	var path := seat_deck_path(slot)
+	if not path.empty():
+		var deck := load_deck(path)
+		if not deck.empty():
+			return {"path": path, "deck": deck}
+	if slot == 2:
+		var first := find_seat_deck(1)
+		if not first.empty():
+			return first
+	return find_auto_deck()
+
+
+static func remember_seat_deck(slot: int, path: String) -> void:
+	if path.empty() or seat_deck_path(slot) == path:
+		return
+	cfc.set_setting(SEAT_DECK_SETTING + str(slot), path)
 
 
 static func apply_definitions(deck: Dictionary) -> void:

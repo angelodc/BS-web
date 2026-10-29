@@ -17,7 +17,6 @@ const VISIBLE_ZONES := ["board", "scenario", "resources", "prizes"]
 # corner boxes only mirror one card each, so they use smaller scales.
 const BOARD_SCALE := CFConst.PLAY_AREA_SCALE
 const SCENARIO_SCALE := 0.42
-const PILE_SCALE := 0.25
 const PRIZES_SCALE := 0.2
 const HAND_SCALE := 0.2
 const MAX_HAND_PLACEHOLDERS := 24
@@ -26,11 +25,11 @@ const MAX_HAND_PLACEHOLDERS := 24
 const SCENE_ATTACHMENT_MARGIN := 30.0
 # The scenario and pile boxes show their labels along the bottom edge.
 const SCENARIO_LABEL_MARGIN := 22.0
-# Hovering the mirrored resource box opens the same mini card grid the local
-# discard pile shows, limited to the top cards.
-const RESOURCES_HOVER_SCALE := 0.35
-const RESOURCES_HOVER_MAX := 6
-const RESOURCES_HOVER_WIDTH := 176.0
+# The mirrored resource box draws the same mini grid the local discard shows:
+# three columns with a 6 px gap inside the authored panel width.
+const RESOURCES_GRID_COLUMNS := 3
+const RESOURCES_GRID_GAP := 6.0
+const RESOURCES_GRID_MAX := 6
 # The zone lens pulses so a still frame still reads as "someone is here".
 const LENS_PULSE_SPEED := 5.0
 
@@ -44,7 +43,7 @@ var _remote_drag_card: Card = null
 var _remote_drag_offset := Vector2.ZERO
 var _sent_visible := {}
 var _pending_cards := {}
-var _resources_hover := false
+var _resource_preview: Card = null
 var _hand_placeholders := []
 var _lens: Panel
 var _lens_time := 0.0
@@ -109,7 +108,7 @@ func set_suppressed(value: bool) -> void:
 func _process(delta: float) -> void:
 	_update_remote_drag()
 	_update_lens(delta)
-	_update_resources_hover()
+	_update_remote_resources()
 	if _solo_preview:
 		_preview_zone_presence()
 		return
@@ -274,11 +273,15 @@ func _send_card_state_soon(card: Card) -> void:
 # Sends a local character to the opponent's prize area. The card leaves the
 # local field; the receiver hosts it as one of its own prize cards.
 func send_card_to_opponent_prizes(card: Card) -> bool:
-	if not _can_send() or not is_instance_valid(card) or card.network_mirror:
+	if not is_instance_valid(card) or card.network_mirror:
 		return false
 	var net_id := Multiplayer.ensure_card_id(card)
 	if net_id.empty():
 		return false
+	if not _can_send():
+		# The hotseat has no peer, so the same mirror the other client would
+		# echo back is built here directly.
+		return Multiplayer.is_solo() and _hold_prize_card_locally(card, net_id)
 	var payload := {
 		"t": "mp_card",
 		"id": net_id,
@@ -410,6 +413,31 @@ func _apply_remote_card(data: Dictionary) -> void:
 				host.canonical_name if is_instance_valid(host) else "")
 
 
+# The hotseat keeps the knocked-out character as a mirror in the opponent prize
+# box, which is exactly the entry a snapshot carries once the seats are swapped.
+func _hold_prize_card_locally(card: Card, net_id: String) -> bool:
+	if not _active:
+		return false
+	var card_name := card.definition_key()
+	var mirror: Card = _instance_named_card(net_id, card_name)
+	if not is_instance_valid(mirror):
+		return false
+	_remember_remote_meta(net_id, "prizes", card_name, Vector2(0.5, 0.5),
+			0, true, "", 0, -1)
+	_set_remote_card_interactive(mirror, "prizes")
+	var target := _target_for_remote("prizes", Vector2(0.5, 0.5), net_id, -1)
+	mirror.global_position = target
+	mirror._target_position = target
+	mirror.set_state(Card.CardState.ON_PLAY_BOARD)
+	# warning-ignore:return_value_discarded
+	mirror.set_is_faceup(true, true, false, ["net"])
+	mirror.scale = Vector2(1, 1) * _scale_for_zone("prizes")
+	# warning-ignore:return_value_discarded
+	mirror.set_card_rotation(180, false, true, false, ["net"])
+	_update_remote_zone_labels()
+	return true
+
+
 # The opponent sent one of their characters to this player's prize area. It
 # stops being a mirror and becomes a real local prize card.
 func _apply_remote_card_to_local_prizes(net_id: String, card_name: String) -> void:
@@ -448,7 +476,20 @@ func _apply_remote_card_to_local_prizes(net_id: String, card_name: String) -> vo
 func _set_remote_card_interactive(card: Card, zone: String) -> void:
 	var interactive := zone in ["board", "scenario"]
 	card.remote_draggable = interactive
-	card.set_control_mouse_filters(interactive)
+	# The mirrored resource grid previews the card under the pointer by position,
+	# like the local discard grid does, so its mirrors stay out of the mouse
+	# detection: Area2D hover fires for every overlapping mirror at once and
+	# leaves the preview flickering between them.
+	var pointer_zone := zone in VISIBLE_ZONES and zone != "resources"
+	card.set_control_mouse_filters(pointer_zone)
+	if pointer_zone:
+		if not card.is_connected("mouse_entered", self, "_on_remote_card_hover_entered"):
+			card.connect("mouse_entered", self, "_on_remote_card_hover_entered", [card])
+			card.connect("mouse_exited", self, "_on_remote_card_hover_exited", [card])
+	elif card.is_connected("mouse_entered", self, "_on_remote_card_hover_entered"):
+		card.disconnect("mouse_entered", self, "_on_remote_card_hover_entered")
+		card.disconnect("mouse_exited", self, "_on_remote_card_hover_exited")
+		_on_remote_card_hover_exited(card)
 	if not interactive:
 		if _remote_drag_card == card:
 			_remote_drag_card = null
@@ -456,6 +497,24 @@ func _set_remote_card_interactive(card: Card, zone: String) -> void:
 	var control := card.get_node("Control")
 	if not control.is_connected("gui_input", self, "_on_remote_card_gui_input"):
 		control.connect("gui_input", self, "_on_remote_card_gui_input", [card])
+
+
+func _on_remote_card_hover_entered(card: Card) -> void:
+	if cfc.ut or not is_instance_valid(card) \
+			or not cfc.NMAP.has("main") or not cfc.NMAP.main:
+		return
+	card.preview_force_front = not card.is_faceup
+	card.preview_locked = true
+	cfc.NMAP.main.focus_card(card)
+
+
+func _on_remote_card_hover_exited(card: Card) -> void:
+	if not is_instance_valid(card):
+		return
+	card.preview_force_front = false
+	card.preview_locked = false
+	if cfc.NMAP.has("main") and cfc.NMAP.main:
+		cfc.NMAP.main.unfocus(card)
 
 
 func _on_remote_card_gui_input(event, card: Card) -> void:
@@ -737,10 +796,13 @@ func _update_remote_zone_labels() -> void:
 		if is_instance_valid(card):
 			total_energy += str(
 					card.properties.get("ENERGIA", "0")).to_int()
-	var energy_label: Label = board.get_node_or_null(
-			"OpponentFieldVisual/OpponentPrizesEnergy")
-	if energy_label:
-		energy_label.text = "Energia: " + str(total_energy)
+	var prizes_label: Label = board.get_node_or_null(
+			"OpponentFieldVisual/OpponentPrizesLabel")
+	if prizes_label:
+		prizes_label.text = "Prêmios: " + str(total_energy)
+	if Multiplayer.is_session_active() \
+			and board.has_method("report_prize_energy"):
+		board.report_prize_energy(Multiplayer.opponent_slot, total_energy)
 	var resources_label: Label = board.get_node_or_null(
 			"OpponentFieldVisual/OpponentResourcesLabel")
 	if resources_label:
@@ -1005,11 +1067,19 @@ func _on_new_card(card) -> void:
 
 
 func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
-	if not _can_send() or not (card is Card) \
-			or not is_instance_valid(card) or card.network_mirror:
+	if not (card is Card) or not is_instance_valid(card) \
+			or card.network_mirror:
 		return
 	var tags = details.get("tags", [])
 	if typeof(tags) == TYPE_ARRAY and "net" in tags:
+		return
+	# The hotseat has no peer to send to, but it still needs the claim: the
+	# opponent's scenario is a mirror here and only this step takes it off the
+	# arena, the same move the other client would echo back.
+	if _active and trigger == "card_moved_to_board" \
+			and _zone_for_card(card) == "scenario":
+		_register_local_scenario(card)
+	if not _can_send():
 		return
 	_counts_dirty = true
 	match trigger:
@@ -1022,8 +1092,6 @@ func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
 			else:
 				_send_card_state_soon(card)
 		"card_moved_to_board":
-			if _zone_for_card(card) == "scenario":
-				_register_local_scenario(card)
 			_send_card_state_soon(card)
 		"card_rotated", "card_flipped", "card_attached", "card_unattached":
 			var visible_zone := _zone_for_card(card)
@@ -1427,10 +1495,17 @@ func _stack_position(area: Control, zone: String, net_id: String) -> Vector2:
 	var column_step := 40.0
 	var row_step := 16.0
 	var origin := Vector2(8, 4)
-	if zone == "resources" and _resources_hover:
-		column_step = 56.0
-		row_step = 77.0
-		origin = Vector2(6, 4)
+	if zone == "resources":
+		var size: Vector2 = CFConst.CARD_SIZE * _resources_grid_scale()
+		columns = RESOURCES_GRID_COLUMNS
+		column_step = size.x + RESOURCES_GRID_GAP
+		row_step = size.y + RESOURCES_GRID_GAP
+		origin = Vector2(
+				max(0.0, (area.rect_size.x - (columns * size.x
+						+ (columns - 1) * RESOURCES_GRID_GAP)) * 0.5),
+				4.0)
+		# The newest card fills the first cell, like the local pile's top card.
+		index = max(0, order.size() - 1 - index)
 	if zone == "prizes":
 		columns = 4
 		column_step = 26.0
@@ -1445,7 +1520,7 @@ func _stack_position(area: Control, zone: String, net_id: String) -> Vector2:
 func _scale_for_zone(zone: String) -> float:
 	match zone:
 		"resources":
-			return RESOURCES_HOVER_SCALE if _resources_hover else PILE_SCALE
+			return _resources_grid_scale()
 		"prizes":
 			return PRIZES_SCALE
 		"scenario":
@@ -1454,37 +1529,84 @@ func _scale_for_zone(zone: String) -> float:
 			return BOARD_SCALE
 
 
-# The mirrored resource box opens the top cards into a mini grid while the
-# mouse is over it, the same way the local discard pile does.
-func _update_resources_hover() -> void:
-	var area := _resources_area()
-	if not area:
-		return
-	var hover := Rect2(
-			area.rect_global_position, area.rect_size).has_point(
-			area.get_global_mouse_position())
-	if hover == _resources_hover:
-		return
-	_resources_hover = hover
-	area.rect_size.x = RESOURCES_HOVER_WIDTH if hover else 156.0
+# The local pile lays its miniatures in three columns with a 6 px gap inside the
+# authored resources panel; the mirror uses the same numbers so both read alike.
+func _resources_grid_scale() -> float:
+	var width := _resources_base_width()
+	return clamp(
+			(width - 12.0 - 2.0 * RESOURCES_GRID_GAP) \
+					/ (RESOURCES_GRID_COLUMNS * CFConst.CARD_SIZE.x),
+			0.26, 0.4)
+
+
+func _update_remote_resources() -> void:
 	_relayout_remote_resources()
+	_update_resource_preview()
+
+
+# The local grid previews the card under the pointer itself, so the mirrored
+# grid follows the same rule instead of the Area2D hover.
+func _update_resource_preview() -> void:
+	var hovered: Card = null
+	if not cfc.card_drag_ongoing and not _suppressed:
+		var area := _resources_area()
+		if area:
+			var mouse: Vector2 = area.get_global_mouse_position()
+			var size: Vector2 = CFConst.CARD_SIZE * _resources_grid_scale()
+			for net_id in _remote_zone_order["resources"]:
+				var card: Card = _remote_cards.get(net_id)
+				if not is_instance_valid(card) or not card.visible:
+					continue
+				if Rect2(card.global_position, size).has_point(mouse):
+					hovered = card
+	_set_resource_preview(hovered)
+
+
+func _set_resource_preview(card: Card) -> void:
+	if card == _resource_preview:
+		return
+	if is_instance_valid(_resource_preview):
+		_resource_preview.preview_force_front = false
+		_resource_preview.preview_locked = false
+		if cfc.NMAP.has("main") and cfc.NMAP.main:
+			cfc.NMAP.main.unfocus(_resource_preview)
+	_resource_preview = card
+	if not is_instance_valid(card) or cfc.ut \
+			or not cfc.NMAP.has("main") or not cfc.NMAP.main:
+		return
+	card.preview_force_front = not card.is_faceup
+	# Without the lock the mirror's own state machine unfocuses the closeup on
+	# the very next frame, which is why the grid hover used to show nothing.
+	card.preview_locked = true
+	cfc.NMAP.main.focus_card(card)
+
+
+# The panel width is authored in CGFBoard.tscn, so the grid never falls back to
+# a hardcoded size that the scene would not be able to change.
+func _resources_base_width() -> float:
+	var board = cfc.NMAP.get("board", null)
+	if board and board.has_method("resources_base_width"):
+		return board.resources_base_width()
+	return 156.0
 
 
 func _relayout_remote_resources() -> void:
 	var area := _resources_area()
 	if not area:
 		return
-	var card_scale := _scale_for_zone("resources")
+	var card_scale := _resources_grid_scale()
 	var order: Array = _remote_zone_order["resources"]
 	for index in range(order.size()):
 		var card: Card = _remote_cards.get(order[index])
 		if not is_instance_valid(card):
 			continue
-		if _resources_hover and index >= RESOURCES_HOVER_MAX:
+		if index < order.size() - RESOURCES_GRID_MAX:
 			card.visible = false
 			continue
 		card.visible = true
-		card.scale = Vector2(card_scale, card_scale)
+		var target_scale := Vector2(card_scale, card_scale)
+		if not card.scale.is_equal_approx(target_scale):
+			card.scale = target_scale
 		card.position = _stack_position(area, "resources", order[index])
 
 
@@ -1520,6 +1642,9 @@ func _instance_named_card(net_id: String, card_name: String) -> Card:
 
 func _configure_remote_card(card: Card) -> void:
 	card.network_mirror = true
+	# A mirror only exists for zones the local player can read, so its front is
+	# fair game for the hover preview and for the log.
+	card.was_public = true
 	if card.is_in_group("cards"):
 		card.remove_from_group("cards")
 	if not card.is_in_group("remote_cards"):
@@ -1552,6 +1677,7 @@ func _remove_remote_card(net_id: String) -> void:
 
 
 func _clear_remote_cards() -> void:
+	_set_resource_preview(null)
 	for net_id in _remote_cards.keys():
 		_discard_remote_card(net_id)
 	_remote_cards.clear()

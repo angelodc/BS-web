@@ -214,10 +214,20 @@ align = 1
 autowrap = true
 rect_min_size = Vector2( 0, 34 )
 
-[node name="SeatPicker" type="OptionButton" parent="PreparePanel/Margin/VBox"]
+[node name="SoloDeckButtons" type="HBoxContainer" parent="PreparePanel/Margin/VBox"]
 visible = false
-rect_min_size = Vector2( 0, 34 )
-text = "Deck de P1"
+alignment = 1
+custom_constants/separation = 12
+
+[node name="DeckP1" type="Button" parent="PreparePanel/Margin/VBox/SoloDeckButtons"]
+rect_min_size = Vector2( 250, 40 )
+clip_text = true
+text = "P1 · Escolher deck"
+
+[node name="DeckP2" type="Button" parent="PreparePanel/Margin/VBox/SoloDeckButtons"]
+rect_min_size = Vector2( 250, 40 )
+clip_text = true
+text = "P2 · Escolher deck"
 
 [node name="DeckButtons" type="HBoxContainer" parent="PreparePanel/Margin/VBox"]
 alignment = 1
@@ -230,6 +240,18 @@ text = "Decks salvos"
 [node name="LinkDeck" type="Button" parent="PreparePanel/Margin/VBox/DeckButtons"]
 rect_min_size = Vector2( 190, 38 )
 text = "Deck por link"
+
+[node name="PlaymatButtons" type="HBoxContainer" parent="PreparePanel/Margin/VBox"]
+alignment = 1
+custom_constants/separation = 12
+
+[node name="PlaymatLabel" type="Label" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
+custom_fonts/font = SubResource( 3 )
+custom_colors/font_color = Color( 0.78, 0.82, 0.88, 1 )
+text = "Playmat"
+
+[node name="PlaymatOptions" type="OptionButton" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
+rect_min_size = Vector2( 210, 38 )
 
 [node name="Spacer" type="Control" parent="PreparePanel/Margin/VBox"]
 size_flags_vertical = 3

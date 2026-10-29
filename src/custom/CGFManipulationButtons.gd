@@ -10,6 +10,7 @@ func _ready() -> void:
 		"Rot90": "T",
 		"Premios": "Prêmios",
 		"Nocaute": "Nocaute",
+		"Dano": "Dano",
 	}
 	spawn_manipulation_buttons()
 	var shield_menu: PopupMenu = PopupMenu.new()
@@ -28,6 +29,8 @@ func _ready() -> void:
 			elif button.name == "Premios":
 				button.rect_min_size = Vector2(80, 26)
 			elif button.name == "Nocaute":
+				button.rect_min_size = Vector2(80, 26)
+			elif button.name == "Dano":
 				button.rect_min_size = Vector2(80, 26)
 
 
@@ -49,6 +52,7 @@ func _update_action_visibility(is_available: bool, is_character: bool) -> void:
 	set_button_visible("Premios",
 			is_available and is_character and Multiplayer.is_session_active())
 	set_button_visible("Nocaute", is_available and is_support)
+	set_button_visible("Dano", is_available and is_character)
 	set_button_visible(
 			"Capacitar",
 			is_available and is_character and stage >= -1 and stage <= 0)
@@ -63,6 +67,10 @@ func _on_Premios_pressed() -> void:
 
 func _on_Nocaute_pressed() -> void:
 	owner_node.knockout()
+
+
+func _on_Dano_pressed() -> void:
+	cfc.NMAP.board.damage_character(owner_node, 1)
 
 
 func _on_Rot90_pressed() -> void:

@@ -223,13 +223,17 @@ func test_right_half_click_discards_ability():
 			"Right half click discards an ability from the hand")
 
 
-func test_hand_counter_only_shows_card_count():
+# The board draws "Mão: N · Deck: M" above the deck box, so the counter the
+# framework puts inside the hand stays hidden instead of repeating the number.
+func test_hand_counter_is_hidden():
 	var card: Card = hand.draw_card()
 	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card.get_node("Tween"), "tween_all_completed", 1), YIELD)
 	hand._process(0)
 
-	assert_eq(hand._counter_cards.text, "1")
+	assert_eq(hand.get_card_count(), 1, "The drawn card reached the hand")
+	assert_false(hand.get_node("Counters").visible,
+			"The hand draws no counter of its own")
 
 
 func test_resources_pile_has_a_view_button():

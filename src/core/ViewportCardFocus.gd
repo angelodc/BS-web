@@ -87,6 +87,12 @@ func _process(_delta) -> void:
 		$VBC/Focus.modulate.a = 0
 
 
+# A card known to both players can be previewed face up even while its copy on
+# the table is face down, which is what the log preview asks for.
+func _preview_faceup(card: Card) -> bool:
+	return card.is_faceup or card.preview_force_front
+
+
 # Displays the card closeup in the Focus viewport
 func focus_card(card: Card, show_preview := true) -> void:
 	# A different card taking over (for instance a hand card after hovering a
@@ -110,7 +116,7 @@ func focus_card(card: Card, show_preview := true) -> void:
 				# warning-ignore:return_value_discarded
 				dupe_focus.set_is_faceup(!dupe_focus.is_faceup, true)
 			# warning-ignore:return_value_discarded
-			dupe_focus.set_is_faceup(card.is_faceup, true)
+			dupe_focus.set_is_faceup(_preview_faceup(card), true)
 			dupe_focus.is_viewed = card.is_viewed
 		else:
 			dupe_focus = card.duplicate(DUPLICATE_USE_INSTANCING)
@@ -121,7 +127,7 @@ func focus_card(card: Card, show_preview := true) -> void:
 			dupe_focus.state = Card.CardState.VIEWPORT_FOCUS
 			_focus_viewport.add_child(dupe_focus)
 			_extra_dupe_ready(dupe_focus, card)
-			dupe_focus.is_faceup = card.is_faceup
+			dupe_focus.is_faceup = _preview_faceup(card)
 			dupe_focus.is_viewed = card.is_viewed
 			# We check that the card front was not left half-visible because it was duplicated
 			# in the middle of the flip animation
@@ -130,7 +136,17 @@ func focus_card(card: Card, show_preview := true) -> void:
 					dupe_focus._flip_card(dupe_focus._card_back_container, dupe_focus._card_front_container,true)
 				else:
 					dupe_focus._flip_card(dupe_focus._card_front_container,dupe_focus._card_back_container, true)
+		# Mirrors are drawn upside down on the table; the closeup is always
+		# upright so it reads like the owner's own preview. The setter queues a
+		# rotation tween, which would spin the dupe, so it is dropped here.
+		dupe_focus.card_rotation = 0
+		dupe_focus.get_node("Tween").remove_all()
+		dupe_focus.get_node("Control").rect_rotation = 0
 		_current_focus_source = card
+		# We store all our previously focused cards in an array, and clean them
+		# up when they're not focused anymore. The new dupe is registered first
+		# so the loop below shows it even when its source sits hidden in a pile.
+		_previously_focused_cards[card] = dupe_focus
 		for c in _previously_focused_cards.values():
 			if not is_instance_valid(c):
 				continue
@@ -145,9 +161,6 @@ func focus_card(card: Card, show_preview := true) -> void:
 		else:
 			cfc.ov_utils.populate_info_panels(card,focus_info)
 			focus_info.visible = true
-		# We store all our previously focused cards in an array, and clean them
-		# up when they're not focused anymore
-		_previously_focused_cards[card] = dupe_focus
 		# We have to copy these internal vars because they are reset
 		# see https://github.com/godotengine/godot/issues/3393
 		# We make the viewport camera focus on it

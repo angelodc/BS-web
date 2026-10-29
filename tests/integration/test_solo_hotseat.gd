@@ -47,6 +47,22 @@ func test_solo_preparation_takes_one_deck_per_seat():
 			"Two full decks let the solo match start")
 
 
+func test_solo_deck_can_be_chosen_for_a_specific_seat():
+	Multiplayer.begin_solo("Doug")
+
+	Multiplayer.select_solo_deck(2, _sixty_card_deck("B"))
+	assert_eq(Multiplayer.get_solo_deck(2).get("name", ""), "B",
+			"The deck lands on the requested seat")
+	assert_false(Multiplayer.is_solo_deck_ready(1),
+			"The other seat stays empty")
+	assert_true(Multiplayer.is_solo_deck_ready(2),
+			"The chosen seat counts as ready")
+
+	Multiplayer.select_solo_deck(1, _sixty_card_deck("A"))
+	assert_true(Multiplayer.are_both_decks_ready(),
+			"Each deck lands on its own seat")
+
+
 func test_solo_hidden_payload_splits_the_sixty_cards_of_a_seat():
 	var payload: Dictionary = Multiplayer._solo_hidden_payload(
 			_sixty_card_deck("A"), 2, "seed")
@@ -380,6 +396,56 @@ func test_solo_swaps_with_a_scenario_keep_both_fields():
 	yield(_settle(), "completed")
 	_assert_fields("After swap three", 0, 2)
 	cfc.ut = true
+
+
+# The hotseat has no peer to send to, so the scenario claim is registered
+# locally: the play on the current turn takes the arena and the opponent's
+# mirror has to leave it, exactly like the relay does for a real client.
+func test_solo_scenario_pushes_the_opponent_mirror_to_its_discard():
+	yield(_start_solo_match({}, {}, true), "completed")
+
+	var first := _place_scenario_card()
+	assert_not_null(first, "Seat one plays a scenario")
+	_announce_scenario(first)
+	var first_id := str(Multiplayer.ensure_card_id(first))
+	yield(_settle(), "completed")
+
+	assert_true(Multiplayer.swap_solo_seat(), "Swap one changes the seat")
+	yield(_settle(), "completed")
+
+	var second := _place_scenario_card()
+	assert_not_null(second, "Seat two answers with a scenario")
+	_announce_scenario(second)
+	yield(_settle(), "completed")
+
+	var sync = Multiplayer._sync
+	var older: Dictionary = sync._remote_meta.get(first_id, {})
+	assert_eq(str(older.get("zone", "")), "resources",
+			"The older scenario leaves the other field")
+
+	assert_true(Multiplayer.swap_solo_seat(), "Swap two returns to P1")
+	yield(_settle(), "completed")
+	assert_true(_is_in_discard(first_id),
+			"The older scenario reaches its owner's discard")
+	assert_eq(_mirrored_field_cards().size(), 1,
+			"The arena keeps only the newer scenario mirrored")
+
+
+# The sync node skips the signal bus under GUT, so the test delivers the same
+# event the board delivers after a scenario drop.
+func _announce_scenario(card: Card) -> void:
+	Multiplayer._sync._on_card_signal(card, "card_moved_to_board", {"tags": []})
+
+
+func _is_in_discard(net_id: String) -> bool:
+	var discard = cfc.NMAP.get("discard", null)
+	if not discard:
+		return false
+	for card in discard.get_children():
+		if card is Card and is_instance_valid(card) \
+				and str(card.network_id) == net_id:
+			return true
+	return false
 
 
 # Imported decks are the case that broke the hotseat: a card saved under an

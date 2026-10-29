@@ -13,8 +13,9 @@ enum ExcessCardsBehaviour {
 }
 
 # The maximum amount of cards allowed to draw in this hand
-# Offsets the hand position based on the configuration
-var bottom_margin: float = card_size.y * CFConst.BOTTOM_MARGIN_MULTIPLIER
+# Offsets the hand position based on the configuration. The board scene sets
+# this in the Inspector.
+export var bottom_margin := CFConst.CARD_SIZE.y * CFConst.BOTTOM_MARGIN_MULTIPLIER
 # During _read(), this variable will be populated with a node from cfc.NMAP
 # according to the name specified in excess_discard_pile_name
 var _excess_discard_pile : Pile = null

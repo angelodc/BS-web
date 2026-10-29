@@ -219,6 +219,14 @@ var network_mirror := false
 # When true, the mirrored card still accepts pointer input so the local player
 # can drag it. The drop is handled by MultiplayerSync and sent to its owner.
 var remote_draggable := false
+# The log preview shows the front of a card that was already public, even when
+# it is face down again (for instance after returning to the opponent's hand).
+# Both flags are set outside the card itself.
+var was_public := false
+var preview_force_front := false
+# The hover preview of a mirrored card is driven by MultiplayerSync and by the
+# match log, so the state machine has to leave the closeup alone while it lasts.
+var preview_locked := false
 # Ensures all nodes fit inside this rect.
 var card_size := canonical_size setget set_card_size
 # Starting state for each card
@@ -1045,6 +1053,10 @@ func set_state(value: int) -> void:
 	var prev_state = state
 	state = value
 	state_finalized = false
+	# Cards that ever sat on the table are known to both players, so their
+	# faces can be shown later from the log without revealing anything.
+	if value in [CardState.ON_PLAY_BOARD, CardState.FOCUSED_ON_BOARD]:
+		was_public = true
 	emit_signal("state_changed", self, prev_state, state)
 
 
@@ -2555,7 +2567,8 @@ func _process_card_state() -> void:
 
 		CardState.ON_PLAY_BOARD:
 			if network_mirror:
-				set_focus(false)
+				if not preview_locked:
+					set_focus(false)
 				set_control_mouse_filters(remote_draggable)
 				buttons.set_active(false)
 				return

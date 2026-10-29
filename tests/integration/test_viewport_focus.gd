@@ -126,3 +126,57 @@ func test_FocusInfoPanel():
 	if main.focus_info.existing_details.get("Clarification A"):
 		assert_true(main.focus_info.existing_details["Clarification A"].visible,
 				"Clarification visible")
+
+# The mirrored cards of the opponent run the state machine every frame, and its
+# ON_PLAY_BOARD branch used to unfocus the closeup right after the hover showed
+# it, which is why the mirrored zones previewed nothing at all.
+func test_locked_mirror_preview_survives_the_state_machine():
+	var card: Card = cards[0]
+	hand.remove_child(card)
+	board.add_child(card)
+	card.network_mirror = true
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+
+	card.preview_locked = true
+	main.focus_card(card)
+	yield(yield_for(0.5), YIELD)
+	assert_eq(main._current_focus_source, card,
+			"The previewed mirror keeps the closeup")
+	assert_true(main.card_focus.visible, "The closeup stays on screen")
+	assert_true(main._previously_focused_cards[card].visible,
+			"The duplicate of the mirror is shown")
+
+	card.preview_locked = false
+	yield(yield_for(0.5), YIELD)
+	assert_null(main._current_focus_source,
+			"Releasing the lock lets the mirror clear the closeup again")
+
+# The log names a card, and the table can hold another copy of it face down
+# inside a pile. The preview has to read a copy the player is allowed to see.
+func test_log_preview_reads_a_copy_the_player_can_see():
+	var hud = add_child_autofree(load("res://src/custom/MatchHUD.tscn").instance())
+	yield(yield_for(0.2), YIELD)
+	var hidden: Card = cards[1]
+	var shown: Card = cards[2]
+	hidden.canonical_name = "Carta Gêmea"
+	shown.canonical_name = "Carta Gêmea"
+	hidden.visible = false
+	hidden.is_faceup = false
+	hidden.was_public = false
+	shown.visible = true
+	shown.is_faceup = true
+	# The hidden copy stays first in the group, which is the order that used to
+	# win and preview the back of a card nobody was allowed to read.
+	shown.remove_from_group("cards")
+	shown.add_to_group("cards")
+
+	assert_eq(hud._find_preview_card("Carta Gêmea"), shown,
+			"The preview skips the copy the player cannot read")
+
+	# A copy that went back to a hand is face down again, but both players
+	# already saw it, so the log may still show its front.
+	shown.visible = false
+	hidden.visible = true
+	hidden.was_public = true
+	assert_eq(hud._find_preview_card("Carta Gêmea"), hidden,
+			"A copy that was already public can be previewed face up")

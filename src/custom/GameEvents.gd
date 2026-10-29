@@ -107,11 +107,11 @@ func _on_phase_changed() -> void:
 #-----------------------------------------------------------------------------
 
 func record_local(action: String, zone: String, card_name: String,
-		source_zone := "", faceup := true, host := "") -> void:
+		source_zone := "", faceup := true, host := "", amount := 0) -> void:
 	if not enabled or suppressed:
 		return
 	_push(_actor_slot(), action, zone, card_name, host,
-			_reveals(card_name, zone, source_zone, faceup))
+			_reveals(card_name, zone, source_zone, faceup), "", amount)
 
 
 func record_remote_card(zone: String, card_name: String, faceup: bool,
@@ -140,7 +140,8 @@ func record_system(text: String) -> void:
 
 
 func _push(slot: int, action: String, zone: String, card_name: String,
-		host: String, revealed: bool, text_override := "") -> void:
+		host: String, revealed: bool, text_override := "",
+		amount := 0) -> void:
 	var entry := {
 		"slot": slot,
 		"actor": actor_name(slot),
@@ -148,6 +149,7 @@ func _push(slot: int, action: String, zone: String, card_name: String,
 		"zone": zone,
 		"card": card_name if revealed else "",
 		"host": host if revealed else "",
+		"amount": amount,
 		"public": revealed,
 		"text": text_override,
 	}
@@ -208,6 +210,11 @@ func _sentence(entry: Dictionary) -> String:
 		"sent_to_prizes":
 			return prefix + "enviou " + subject \
 					+ " para os Prêmios do adversário"
+		"damaged":
+			return prefix + "causou " + str(int(entry.get("amount", 1))) \
+					+ " de dano em " + subject
+		"knocked_out":
+			return prefix + "nocauteou " + subject
 	return prefix + str(entry["action"])
 
 

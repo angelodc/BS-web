@@ -229,8 +229,17 @@ func are_both_decks_ready() -> bool:
 
 func is_local_deck_ready() -> bool:
 	if mode == Mode.SOLO:
-		return _count_deck_cards(solo_decks.get(solo_pick_slot, {})) == DECK_SIZE
+		return is_solo_deck_ready(solo_pick_slot)
 	return local_deck_count == DECK_SIZE
+
+
+func is_solo_deck_ready(slot: int) -> bool:
+	return _count_deck_cards(solo_decks.get(slot, {})) == DECK_SIZE
+
+
+func get_solo_deck(slot: int) -> Dictionary:
+	var deck: Dictionary = solo_decks.get(slot, {})
+	return deck
 
 
 func get_deck_summary() -> String:
@@ -324,6 +333,17 @@ func set_solo_pick_slot(slot: int) -> void:
 		return
 	solo_pick_slot = slot
 	emit_signal("prep_changed")
+
+
+# Each seat has its own deck button on the preparation screen, so the deck goes
+# straight to that seat. The pick slot still marks the seat the link import
+# targets.
+func select_solo_deck(slot: int, deck: Dictionary) -> Dictionary:
+	if state != State.PREPARING or mode != Mode.SOLO:
+		return {"ok": false, "reason": "A partida não está em preparação."}
+	if slot < 1 or slot > 2:
+		return {"ok": false, "reason": "Assento inválido."}
+	return _select_solo_deck(slot, deck)
 
 
 # The hotseat picks one deck per seat; both are known locally from the start, so

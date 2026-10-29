@@ -30,10 +30,11 @@ var _backdrop: Panel
 
 var _focused_card: Card = null
 var _preview_card: Card = null
+var _deck_choice: PopupPanel
+var _deck_choice_card: Card = null
 
 
 func _ready() -> void:
-	._ready()
 	_create_backdrop()
 	$Control/ManipulationButtons/View.show()
 	$Control/ManipulationButtons/View.text = "Ver"
@@ -53,10 +54,15 @@ func _ready() -> void:
 	swap_button.add_to_group("manipulation_button")
 	$Control/ManipulationButtons.add_child(swap_button)
 	swap_button.connect("pressed", self, "_on_SwapResource_pressed")
+	_build_deck_choice()
 
 
 func _exit_tree() -> void:
 	_set_preview(null)
+	# The dialog lives outside the pile, so leaving the tree has to take it along.
+	if is_instance_valid(_deck_choice):
+		_deck_choice.queue_free()
+		_deck_choice = null
 
 
 func remove_child(node, legible_unique_name := false) -> void:
@@ -145,6 +151,88 @@ func _slot_card_into_popup(card: Card) -> void:
 	card.set_is_faceup(true, true)
 	card.position = Vector2(0, 0)
 	card.state = card.CardState.IN_POPUP
+	if not card.is_connected("card_moved_to_pile", self,
+			"_on_popup_card_moved_to_pile"):
+		# The signal already carries the card as its first argument, so binding it
+		# again would hand four values to a three-parameter method.
+		card.connect("card_moved_to_pile", self,
+				"_on_popup_card_moved_to_pile")
+
+
+# A resource leaving the popup for the deck asks which side it stays on: the
+# resource base, or the deck (which is shuffled afterwards). Picking the deck
+# means the answer already reached the log, so the card is not moved again.
+func _on_popup_card_moved_to_pile(card: Card, _trigger: String,
+		details: Dictionary) -> void:
+	if str(details.get("destination", "")).to_lower() != "deck":
+		return
+	var slot = card.get_parent()
+	if not slot or not ("CardPopUpSlot" in str(slot.name)):
+		return
+	if slot.get_parent().get_parent().get_parent() != self:
+		return
+	_deck_choice_card = card
+	call_deferred("_ask_deck_choice")
+
+
+func _ask_deck_choice() -> void:
+	if not _deck_choice or not is_instance_valid(_deck_choice_card):
+		return
+	if not cfc.NMAP.has("deck") or _deck_choice_card.get_parent() != cfc.NMAP.deck:
+		return
+	_deck_choice.popup_centered()
+
+
+func _build_deck_choice() -> void:
+	_deck_choice = PopupPanel.new()
+	_deck_choice.name = "DeckChoice"
+	_deck_choice.popup_exclusive = true
+	# The dialog belongs to the window, not to the pile: hanging it off the root
+	# centers it on screen and leaves the pile holding only what a pile holds.
+	get_tree().root.add_child(_deck_choice)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_constant_override("margin_" + side, 16)
+	_deck_choice.add_child(margin)
+	var vbox := VBoxContainer.new()
+	vbox.add_constant_override("separation", 12)
+	margin.add_child(vbox)
+	var label := Label.new()
+	label.text = "Carta de Recursos enviada ao Deck.\nOnde ela deve ficar?"
+	label.align = Label.ALIGN_CENTER
+	vbox.add_child(label)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGN_CENTER
+	row.add_constant_override("separation", 10)
+	vbox.add_child(row)
+	var base_button := Button.new()
+	base_button.name = "Base"
+	base_button.text = "Base"
+	base_button.rect_min_size = Vector2(92, 32)
+	base_button.connect("pressed", self, "_on_deck_choice_base")
+	row.add_child(base_button)
+	var deck_button := Button.new()
+	deck_button.name = "Deck"
+	deck_button.text = "Deck"
+	deck_button.rect_min_size = Vector2(92, 32)
+	deck_button.connect("pressed", self, "_on_deck_choice_deck")
+	row.add_child(deck_button)
+
+
+func _on_deck_choice_base() -> void:
+	if is_instance_valid(_deck_choice_card):
+		# warning-ignore:return_value_discarded
+		_deck_choice_card.move_to(self)
+	_deck_choice_card = null
+	_deck_choice.hide()
+
+
+func _on_deck_choice_deck() -> void:
+	var deck = cfc.NMAP.get("deck", null)
+	if deck and is_instance_valid(deck):
+		deck.shuffle_cards()
+	_deck_choice_card = null
+	_deck_choice.hide()
 
 
 # The pile fades its own panel out once it holds cards, which would leave the

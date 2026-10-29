@@ -1,20 +1,32 @@
 # Code for a sample playspace, you're expected to provide your own ;)
 extends Board
 
+const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
+
 var _last_prize_energy := -1
+var _last_hand_count := -1
+var _last_deck_count := -1
+var _victory_slot := 0
 var _deck_position := Vector2.ZERO
 var _discard_position := Vector2.ZERO
 var _prizes_position := Vector2.ZERO
 var _deck_control_size := Vector2.ZERO
+var _resources_base_width := 156.0
+var _authored_opponent_scene_rect := Rect2()
 var pending_resource_host: Card
 var pending_resource_swap_card: Card
 var pending_resource_count := 0
 var pending_resource_swap_active := false
 var _resource_selection_completed := false
 
+# The match is won by the first player whose prize area reaches this much
+# printed energy.
+const PRIZE_ENERGY_WIN := 15
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	counters = $Counters
+	_capture_authored_layout()
 	# The sample credit/research counters are not part of the BS match and were
 	# covering the deck corner.
 	$Counters.visible = false
@@ -27,8 +39,15 @@ func _ready() -> void:
 	# Discard pile goes bottom right
 	$FancyMovementToggle.pressed = cfc.game_settings.fancy_movement
 	$OvalHandToggle.pressed = cfc.game_settings.hand_use_oval_shape
+	# A SCALED focus style stored by an older build turns off the hover preview
+	# on hand, field and pile cards, leaving only the previews the pile grids
+	# draw themselves. The option is hidden on this board, so it is normalized
+	# here instead of depending on the saved settings file.
+	if not cfc.game_settings.focus_style:
+		cfc.game_settings.focus_style = CFInt.FocusStyle.BOTH
 	$ScalingFocusOptions.selected = cfc.game_settings.focus_style
 	$Debug.pressed = cfc._debug
+	apply_playmat(PlaymatCatalog.selected_id())
 	call_deferred("_apply_battle_scenes_layout")
 	get_viewport().connect(
 			"size_changed", self, "_on_board_viewport_size_changed")
@@ -61,6 +80,17 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	GameEvents.set_enabled(false)
+
+
+# The playmat is the local player's own artwork behind the whole board, so the
+# mirrored opponent band shows it too and the choice never goes through the relay.
+func apply_playmat(playmat_id: String) -> void:
+	var playmat: TextureRect = get_node_or_null("Playmat")
+	if not playmat:
+		return
+	var texture: Texture = PlaymatCatalog.texture_for_id(playmat_id)
+	playmat.texture = texture
+	playmat.visible = texture != null
 
 
 # Solo keeps the deck builder and the way back to the menu, but the dev toggles
@@ -96,163 +126,96 @@ func _apply_battle_scenes_layout() -> void:
 	var discard: Pile = get_node("Discard")
 	var prizes: Pile = get_node("Prêmios")
 	var scene_grid: BoardPlacementGrid = get_node("PlacementGridDemo")
-	# The deck and the resources keep the wide column; the scenario and the
-	# prizes never show more than one card side by side, so their column is
-	# narrower on both halves of the table.
-	var left_column_width := 156.0
-	var side_column_width := 156.0
-	var prize_column_width := 120.0
-	var right_column_x: float = viewport_size.x - prize_column_width
-	var resources_column_x: float = viewport_size.x - side_column_width
+	var opponent_visual: Control = get_node("OpponentFieldVisual")
+	# The strip height and the column widths are authored in CGFBoard.tscn. The
+	# opponent deck box is the mirrored copy of the local left column.
+	var strip_bottom: float = opponent_visual.get_node(
+			"OpponentFieldBackground").rect_position.y
+	var left_column_width: float = opponent_visual.get_node(
+			"OpponentDeck").rect_size.x
 
-	# Three horizontal bands: opponent hand strip on top, then the two field
-	# rows, then a shorter hand row at the bottom.
-	scene_grid.configure_width(right_column_x - left_column_width)
+	scene_grid.configure_width(_prizes_position.x - left_column_width)
 	var scene_size: Vector2 = scene_grid.rect_size
-	var opponent_strip_height := 80.0
-	var player_field_y: float = opponent_strip_height + scene_size.y
-	# The two field rows at the play-area scale nearly fill the viewport, so
-	# the hand band is anchored to the bottom edge instead of the leftover
-	# space below the field.
-	var hand: Hand = get_node("Hand")
-	var hand_band_y: float = viewport_size.y - hand.card_size.y * 0.6
+	var player_field_y: float = strip_bottom + scene_size.y
 
-	# The deck lies turned 270 degrees in the bottom-left corner of the local
-	# half; the discard pile sits above it with the same width as the lying
-	# deck, so the field column stays free.
+	# The deck lies turned 270 degrees in the bottom-left corner; its slot and
+	# the two other pile slots are the authored ones.
 	deck.rotation_degrees = 270
-	_deck_position = Vector2(0, viewport_size.y + 2)
 	deck.position = _deck_position
-	_discard_position = Vector2(0, player_field_y + 6)
 	discard.position = _discard_position
-	deck.call_deferred("keep_children_upright")
-	# The right column holds one full-size card slot for the active scenario
-	# and the quarter-size prize minis right below it.
-	_prizes_position = Vector2(right_column_x, player_field_y + 218)
 	prizes.position = _prizes_position
+	deck.call_deferred("keep_children_upright")
 	scene_grid.rect_position = Vector2(
 			(viewport_size.x - scene_size.x) * 0.5, player_field_y)
+	# The mirror reads this rect for every slot and floating card, so the
+	# opponent scene has to keep matching the real grid.
+	if $Debug.pressed:
+		_warn_if_opponent_scene_drifted(
+				Vector2(scene_grid.rect_position.x, strip_bottom), scene_size)
+	var opponent_scene: Control = opponent_visual.get_node("OpponentScene")
+	opponent_scene.rect_position = Vector2(
+			scene_grid.rect_position.x, strip_bottom)
+	opponent_scene.rect_size = scene_size
+
+	# The scenario slot is centred in the right column, the same width as the
+	# mirrored deck slot, so it lines up with the prize box below it.
 	var scenario_grid: BoardPlacementGrid = get_node("ModifiedLabelGrid")
 	scenario_grid.rect_position = Vector2(
-			right_column_x \
-					+ (prize_column_width - scenario_grid.rect_size.x) * 0.5,
+			_prizes_position.x \
+					+ (left_column_width - scenario_grid.rect_size.x) * 0.5,
 			player_field_y + 2)
 	var scene_caption: Label = scenario_grid.get_node("Control/Label")
-	scene_caption.rect_size = Vector2(prize_column_width, 20)
+	scene_caption.rect_size = Vector2(left_column_width, 20)
 	# Above the card this caption lands on the opponent resources row, so it
 	# sits under the scenario card instead.
 	scene_caption.rect_global_position = Vector2(
-			right_column_x,
+			_prizes_position.x,
 			scenario_grid.rect_global_position.y + scenario_grid.rect_size.y + 2)
-	scene_caption.align = Label.ALIGN_RIGHT
-	$PrizeEnergyLabel.rect_position = Vector2(
-			right_column_x, _prizes_position.y + 126)
-	$PrizeEnergyLabel.rect_size = Vector2(prize_column_width, 20)
+	scene_caption.align = Label.ALIGN_CENTER
 
-	# The hand cards are drawn above the hand node origin (the oval fan), so
-	# the margin keeps the fan leaning on the bottom edge of the viewport.
-	hand.bottom_margin = hand.card_size.y * 0.5
+	# The hand cards are drawn above the hand node origin (the oval fan); the
+	# margin authored in CGFHand.tscn keeps the fan on the bottom edge.
+	var hand: Hand = get_node("Hand")
 	# warning-ignore:return_value_discarded
 	hand.re_place()
-	$ResourceSelectionLabel.rect_position = Vector2(262, hand_band_y + 2)
-	$HandLabel.rect_position = Vector2(610, hand_band_y + 2)
-	_layout_opponent_field(scene_grid, player_field_y, right_column_x,
-			resources_column_x, discard)
 
 
-# The opponent half is the local half seen from across the table: the side
-# columns swap left and right, and every box is derived from the same numbers
-# the local side uses instead of the fixed rects saved in the scene.
-func _layout_opponent_field(
-		scene_grid: BoardPlacementGrid,
-		player_field_y: float,
-		right_column_x: float,
-		resources_column_x: float,
-		discard: Pile) -> void:
-	var visual: Control = get_node("OpponentFieldVisual")
-	var grid_size: Vector2 = scene_grid.rect_size
-	var grid_x: float = scene_grid.rect_position.x
-	var strip_bottom := 80.0
-	var available := player_field_y - strip_bottom
-	var column_width := 120.0
-	var side_width := 156.0
+# The pile slots and the mirrored resources width are authored in the scene, so
+# they are read once before any restack or hover can move them.
+func _capture_authored_layout() -> void:
+	var deck: Pile = get_node("Deck")
+	var discard: Pile = get_node("Discard")
+	var prizes: Pile = get_node("Prêmios")
+	_deck_position = deck.position
+	_discard_position = discard.position
+	_prizes_position = prizes.position
+	var resources: Control = get_node(
+			"OpponentFieldVisual/OpponentResourcesBackground")
+	_resources_base_width = resources.rect_size.x
+	var opponent_scene: Control = get_node("OpponentFieldVisual/OpponentScene")
+	_authored_opponent_scene_rect = Rect2(
+			opponent_scene.rect_position, opponent_scene.rect_size)
 
-	visual.margin_bottom = player_field_y
-	var background: Control = visual.get_node("OpponentFieldBackground")
-	background.rect_position = Vector2(0, strip_bottom)
-	background.rect_size = Vector2(
-			visual.rect_size.x, player_field_y - strip_bottom)
 
-	var hand_bg: Control = visual.get_node("OpponentHandBackground")
-	hand_bg.rect_position = Vector2(grid_x, 2)
-	hand_bg.rect_size = Vector2(grid_size.x, strip_bottom - 4)
-	var hand_label: Label = visual.get_node("OpponentHandLabel")
-	hand_label.rect_position = Vector2(grid_x, strip_bottom - 24)
-	hand_label.rect_size = Vector2(grid_size.x, 22)
+# The mirror scales the floating cards by scene/grid, so a stale authored rect
+# only shows up once cards are dragged. This warns before the runtime sync hides
+# the drift, which means the scene needs a re-bake.
+func _warn_if_opponent_scene_drifted(
+		expected_position: Vector2, expected_size: Vector2) -> void:
+	var drift := _authored_opponent_scene_rect.position.distance_to(
+			expected_position)
+	drift = max(drift,
+			(_authored_opponent_scene_rect.size - expected_size).length())
+	if drift <= 1.0:
+		return
+	print("LAYOUT: OpponentScene/ OpponentSceneLabel divergiram %.1f px do "
+			% drift
+			+ "grid; re-bake CGFBoard.tscn (cena %s, grid %s)"
+			% [_authored_opponent_scene_rect.size, expected_size])
 
-	var scene: Control = visual.get_node("OpponentScene")
-	scene.rect_position = Vector2(grid_x, strip_bottom)
-	scene.rect_size = grid_size
-	var scene_label: Label = visual.get_node("OpponentSceneLabel")
-	scene_label.rect_size = Vector2(120, 20)
-	scene_label.rect_position = scene.rect_position + Vector2(10, 4)
 
-	# Left column mirrors the local right column: scenario above prizes.
-	var scenario_height := available * 0.48
-	var scenario: Control = visual.get_node("OpponentScenario")
-	scenario.rect_position = Vector2(0, strip_bottom)
-	scenario.rect_size = Vector2(column_width, scenario_height)
-	var scenario_label: Label = visual.get_node("OpponentScenarioLabel")
-	scenario_label.rect_size = Vector2(column_width - 4, 20)
-	scenario_label.rect_position = scenario.rect_position \
-			+ Vector2(2, scenario_height - 22)
-	var prizes: Control = visual.get_node("OpponentPrizes")
-	prizes.rect_position = Vector2(0, strip_bottom + scenario_height + 4)
-	prizes.rect_size = Vector2(column_width, available - scenario_height - 22)
-	var prizes_label: Label = visual.get_node("OpponentPrizesLabel")
-	prizes_label.rect_size = Vector2(56, 16)
-	prizes_label.rect_position = prizes.rect_position \
-			+ Vector2(4, prizes.rect_size.y - 46)
-	var prizes_energy: Label = visual.get_node("OpponentPrizesEnergy")
-	prizes_energy.rect_size = Vector2(56, 16)
-	prizes_energy.rect_position = prizes.rect_position \
-			+ Vector2(60, prizes.rect_size.y - 46)
-
-	# Right column mirrors the local left column: resources under the deck box.
-	var resources: Control = visual.get_node("OpponentResourcesBackground")
-	resources.anchor_left = 0.0
-	resources.anchor_right = 0.0
-	var resources_height: float = discard.get_node("Control").rect_size.y
-	resources.rect_position = Vector2(resources_column_x,
-			2.0 * player_field_y - (discard.position.y + resources_height))
-	resources.rect_size = Vector2(side_width, resources_height)
-	var resources_label: Label = visual.get_node("OpponentResourcesLabel")
-	resources_label.anchor_left = 0.0
-	resources_label.anchor_right = 0.0
-	resources_label.rect_size = Vector2(148, 18)
-	resources_label.rect_position = resources.rect_position \
-			+ Vector2(4, resources.rect_size.y - 22)
-	resources_label.align = Label.ALIGN_RIGHT
-	resources_label.autowrap = false
-	var resources_view: Button = visual.get_node("OpponentResourcesView")
-	resources_view.rect_size = Vector2(60, 22)
-	resources_view.rect_position = resources.rect_position \
-			+ Vector2(92, resources.rect_size.y - 24)
-	var deck_box: Control = visual.get_node("OpponentDeck")
-	deck_box.rect_position = Vector2(resources_column_x, 2)
-	deck_box.rect_size = Vector2(
-			side_width, max(24.0, resources.rect_position.y - 6))
-	var deck_label: Label = visual.get_node("OpponentDeckLabel")
-	deck_label.rect_size = Vector2(148, 22)
-	deck_label.rect_position = deck_box.rect_position \
-			+ Vector2(4, deck_box.rect_size.y - 24)
-	var prizes_view: Button = visual.get_node("OpponentPrizesView")
-	prizes_view.rect_size = Vector2(59, 20)
-	prizes_view.rect_position = prizes.rect_position \
-			+ Vector2(4, prizes.rect_size.y - 24)
-	var field_label: Label = visual.get_node("OpponentFieldLabel")
-	field_label.rect_size = Vector2(grid_size.x, 20)
-	field_label.rect_position = Vector2(grid_x, player_field_y - 22)
+func resources_base_width() -> float:
+	return _resources_base_width
 
 
 func _on_board_viewport_size_changed() -> void:
@@ -262,7 +225,29 @@ func _on_board_viewport_size_changed() -> void:
 func _process(delta: float) -> void:
 	._process(delta)
 	_update_prize_energy()
+	_refresh_hand_label()
 	_hold_pile_layout()
+
+
+# The opponent field already shows "Mão: N · Deck: M" under the hand; this is
+# the same line for the local seat, in the gap above the deck box.
+func _refresh_hand_label() -> void:
+	var label: Label = get_node_or_null("HandLabel")
+	if not label:
+		return
+	var hand: Hand = get_node_or_null("Hand")
+	var deck = cfc.NMAP.get("deck")
+	var hand_count = 0
+	var deck_count = 0
+	if hand:
+		hand_count = hand.get_card_count()
+	if deck:
+		deck_count = deck.get_card_count()
+	if hand_count == _last_hand_count and deck_count == _last_deck_count:
+		return
+	_last_hand_count = hand_count
+	_last_deck_count = deck_count
+	label.text = "Mão: " + str(hand_count) + " · Deck: " + str(deck_count)
 
 
 # Restacking a pile runs the anchor based repositioning of CardContainer,
@@ -290,16 +275,117 @@ func _hold_pile_layout() -> void:
 func _update_prize_energy() -> void:
 	if cfc.ut:
 		return
-	var prize_pile: Pile = get_node("Prêmios")
+	var total_energy := local_prize_energy()
+	var label: Label = get_node_or_null("PrizeEnergyLabel")
+	if label and total_energy != _last_prize_energy:
+		label.text = "Prêmios: " + str(total_energy)
+		_last_prize_energy = total_energy
+	if Multiplayer.is_session_active():
+		report_prize_energy(Multiplayer.my_slot, total_energy)
+
+
+# The pile holds the characters this player took from the opponent, so its
+# printed energy is the score that wins the match.
+func local_prize_energy() -> int:
+	var prize_pile: Pile = get_node_or_null("Prêmios")
+	if not prize_pile:
+		return 0
 	var total_energy := 0
 	for card in prize_pile.get_all_cards():
 		var card_parent = card.get_parent()
 		if card_parent == prize_pile \
 				or (card_parent and "CardPopUpSlot" in str(card_parent.name)):
 			total_energy += str(card.properties.get("ENERGIA", "0")).to_int()
-	if total_energy != _last_prize_energy:
-		$PrizeEnergyLabel.text = "Energia: " + str(total_energy)
-		_last_prize_energy = total_energy
+	return total_energy
+
+
+# Both prize piles are public, so either side can end the match. The first
+# total to reach the mark wins and the screens only open once.
+func report_prize_energy(slot: int, total: int) -> void:
+	if slot < 1 or slot > 2 or total < PRIZE_ENERGY_WIN or _victory_slot != 0:
+		return
+	_victory_slot = slot
+	GameEvents.record_system(prize_owner_name(slot) + " venceu a partida com "
+			+ str(total) + " de energia nos Prêmios.")
+	if not cfc.ut:
+		_build_victory_overlay(slot)
+
+
+func prize_owner_name(slot: int) -> String:
+	var display := Multiplayer.get_slot_username(slot)
+	if display.empty():
+		display = "P" + str(slot)
+	return display
+
+
+func _build_victory_overlay(slot: int) -> void:
+	var area := rect_size
+	if area.x <= 0.0 or area.y <= 0.0:
+		area = get_viewport().get_visible_rect().size
+	var overlay := Control.new()
+	overlay.name = "VictoryOverlay"
+	overlay.rect_size = area
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(overlay)
+	var backdrop := ColorRect.new()
+	backdrop.color = Color(0, 0, 0, 0.72)
+	backdrop.rect_size = area
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(backdrop)
+	var title := Label.new()
+	title.text = prize_owner_name(slot) + " venceu!"
+	title.align = Label.ALIGN_CENTER
+	title.valign = Label.VALIGN_CENTER
+	title.rect_position = Vector2(0, area.y * 0.32)
+	title.rect_size = Vector2(area.x, 40)
+	overlay.add_child(title)
+	var detail := Label.new()
+	detail.text = str(PRIZE_ENERGY_WIN) + " de energia nos Prêmios"
+	detail.align = Label.ALIGN_CENTER
+	detail.rect_position = Vector2(0, area.y * 0.32 + 42)
+	detail.rect_size = Vector2(area.x, 24)
+	overlay.add_child(detail)
+	var close := Button.new()
+	close.text = "Fechar"
+	close.rect_min_size = Vector2(120, 34)
+	close.rect_position = Vector2((area.x - 120.0) * 0.5, area.y * 0.32 + 92)
+	overlay.add_child(close)
+	# warning-ignore:return_value_discarded
+	close.connect("pressed", overlay, "queue_free")
+
+
+# Attached cards are the character's energy, so damage takes them away one by
+# one and the owner recovers them in the Resources/Discard pile. Losing the
+# last one knocks the character out.
+func damage_character(card: Card, amount := 1) -> int:
+	if not is_instance_valid(card) or card.get_parent() != self \
+			or not card.is_battle_scenes_character() or amount <= 0:
+		return CFConst.ReturnCode.FAILED
+	var removed := 0
+	while removed < amount and not card.attachments.empty():
+		var attachment: Card = card.attachments.back()
+		card.attachments.erase(attachment)
+		attachment.current_host_card = null
+		attachment.move_to(cfc.NMAP.discard)
+		removed += 1
+	card._organize_attachments()
+	if removed > 0:
+		GameEvents.record_local("damaged", "board", card.canonical_name,
+				"board", true, "", removed)
+	if card.attachments.empty():
+		knockout_character(card)
+	return CFConst.ReturnCode.CHANGED
+
+
+# A character with no energy left leaves the field: the cards still attached go
+# to its owner's discard and the card itself becomes a prize of the opponent.
+func knockout_character(card: Card) -> void:
+	if not is_instance_valid(card) or card.get_parent() != self \
+			or not card.is_battle_scenes_character():
+		return
+	GameEvents.record_local("knocked_out", "prizes", card.canonical_name,
+			"board", true)
+	send_character_to_opponent_prizes(card)
 
 
 # Sends a character on the scene to the opponent's prize area. Attached cards

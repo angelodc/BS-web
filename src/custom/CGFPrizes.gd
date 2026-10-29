@@ -16,7 +16,6 @@ var _preview_card: Card = null
 
 
 func _ready() -> void:
-	._ready()
 	var label: Label = $Control/CenterContainer/VBoxContainer/Label
 	label.align = Label.ALIGN_CENTER
 

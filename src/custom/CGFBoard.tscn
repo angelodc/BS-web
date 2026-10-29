@@ -50,14 +50,24 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
+[node name="Playmat" type="TextureRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+self_modulate = Color( 0.75, 0.75, 0.75, 1 )
+z_index = -2
+stretch_mode = 4
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
 [node name="Deck" parent="." instance=ExtResource( 2 )]
-position = Vector2( 0, 360 )
+position = Vector2( 0, 722 )
 script = ExtResource( 4 )
 placement = 0
 pile_name = "Deck"
 card_size = Vector2( 150, 210 )
 card_display_scale = 0.66
-show_manipulation_buttons = false
 
 [node name="VBoxContainer" parent="Deck/Control/CenterContainer" index="0"]
 visible = false
@@ -79,7 +89,7 @@ margin_right = 68.0
 margin_right = 45.0
 
 [node name="ManipulationButtons" parent="Deck/Control" index="2"]
-visible = false
+custom_constants/separation = 2
 
 [node name="View" parent="Deck/Control/ManipulationButtons" index="0"]
 visible = false
@@ -87,7 +97,9 @@ visible = false
 [node name="ViewSorted" parent="Deck/Control/ManipulationButtons" index="1"]
 visible = false
 
-[node name="Shuffle" parent="Deck/Control/ManipulationButtons" index="2"]
+[node name="Shuffle" parent="Deck/Control/ManipulationButtons" index="2" groups=[
+"manipulation_button",
+]]
 rect_min_size = Vector2( 110, 27 )
 text = "Embaralhar"
 
@@ -123,7 +135,7 @@ margin_top = 52.0
 margin_bottom = 75.0
 
 [node name="Discard" parent="." instance=ExtResource( 2 )]
-position = Vector2( 0, 475 )
+position = Vector2( 0, 372.200012 )
 script = ExtResource( 1 )
 placement = 8
 pile_name = "Recursos / Descarte"
@@ -182,7 +194,7 @@ margin_top = 52.0
 margin_bottom = 75.0
 
 [node name="Prêmios" parent="." instance=ExtResource( 2 )]
-position = Vector2( 1139, 540 )
+position = Vector2( 1124, 584.200012 )
 script = ExtResource( 13 )
 placement = 0
 pile_name = "Prêmios"
@@ -224,22 +236,22 @@ visible = false
 visible = false
 
 [node name="PrizeEnergyLabel" type="Label" parent="."]
-margin_left = 1139.0
-margin_top = 680.0
-margin_right = 1259.0
-margin_bottom = 704.0
+margin_left = 1124.0
+margin_top = 560.200012
+margin_right = 1280.0
+margin_bottom = 580.200012
 custom_fonts/font = SubResource( 2 )
 align = 1
-text = "Energia: 0"
+text = "Prêmios: 0"
 
 [node name="Hand" parent="." instance=ExtResource( 3 )]
 position = Vector2( 170, 475 )
 
 [node name="ResourceSelectionLabel" type="Label" parent="."]
-margin_left = 165.0
-margin_top = 445.0
-margin_right = 560.0
-margin_bottom = 470.0
+margin_left = 262.0
+margin_top = 596.0
+margin_right = 657.0
+margin_bottom = 621.0
 text = ""
 
 [node name="Counters" parent="." instance=ExtResource( 6 )]
@@ -336,53 +348,49 @@ margin_bottom = 528.0
 rect_min_size = Vector2( 120, 168 )
 
 [node name="OpponentFieldVisual" type="Control" parent="."]
-anchor_right = 1.0
-margin_bottom = 328.0
+margin_right = 1280.0
+margin_bottom = 366.200012
 mouse_filter = 2
 z_index = -1
 
 [node name="OpponentFieldBackground" type="ColorRect" parent="OpponentFieldVisual"]
-anchor_right = 1.0
 margin_top = 80.0
-margin_bottom = 328.0
+margin_right = 1280.0
+margin_bottom = 366.200012
 mouse_filter = 2
 color = Color( 0.12, 0.14, 0.2, 0.42 )
 
 [node name="OpponentHandBackground" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 304.0
+margin_left = 159.5
 margin_top = 2.0
-margin_right = 772.0
+margin_right = 1120.5
 margin_bottom = 78.0
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.4 )
 
 [node name="OpponentHandLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 304.0
-margin_top = 52.0
-margin_right = 772.0
-margin_bottom = 74.0
+margin_left = 159.5
+margin_top = 56.0
+margin_right = 1120.5
+margin_bottom = 78.0
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "Mão: 0"
 align = 1
 
 [node name="OpponentResourcesBackground" type="ColorRect" parent="OpponentFieldVisual"]
-anchor_left = 1.0
-anchor_right = 1.0
-margin_left = -156.0
-margin_top = 112.0
-margin_right = 0.0
-margin_bottom = 320.0
+margin_left = 1124.0
+margin_top = 144.200012
+margin_right = 1280.0
+margin_bottom = 360.200012
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.4 )
 
 [node name="OpponentResourcesLabel" type="Label" parent="OpponentFieldVisual"]
-anchor_left = 1.0
-anchor_right = 1.0
-margin_left = -152.0
-margin_top = 268.0
-margin_right = -4.0
-margin_bottom = 294.0
+margin_left = 1128.0
+margin_top = 338.200012
+margin_right = 1276.0
+margin_bottom = 356.200012
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "Recursos/Descarte (0)"
@@ -390,121 +398,105 @@ align = 1
 autowrap = true
 
 [node name="OpponentResourcesView" type="Button" parent="OpponentFieldVisual"]
-anchor_left = 1.0
-anchor_right = 1.0
-margin_left = -64.0
-margin_top = 294.0
-margin_right = -4.0
-margin_bottom = 316.0
+margin_left = 1216.0
+margin_top = 336.200012
+margin_right = 1276.0
+margin_bottom = 363.200012
 text = "Ver"
 
 [node name="OpponentFieldLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 800.0
-margin_top = 302.0
-margin_right = 1115.0
-margin_bottom = 322.0
+margin_left = 159.5
+margin_top = 344.200012
+margin_right = 1120.5
+margin_bottom = 364.200012
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "CAMPO DO OPONENTE - VISUAL"
 align = 2
 
 [node name="OpponentPrizes" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 18.0
-margin_top = 244.0
-margin_right = 141.0
-margin_bottom = 326.0
+margin_top = 221.376007
+margin_right = 120.0
+margin_bottom = 348.200012
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentPrizesLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 22.0
-margin_top = 296.0
-margin_right = 76.0
-margin_bottom = 312.0
+margin_left = 4.0
+margin_top = 302.200012
+margin_right = 122.0
+margin_bottom = 318.200012
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
-text = "Prêmios"
+text = "Prêmios: 0"
 
 [node name="OpponentPrizesView" type="Button" parent="OpponentFieldVisual"]
-margin_left = 78.0
-margin_top = 294.0
-margin_right = 137.0
-margin_bottom = 314.0
+margin_left = 4.0
+margin_top = 324.200012
+margin_right = 63.0
+margin_bottom = 351.200012
 text = "Ver"
 
-[node name="OpponentPrizesEnergy" type="Label" parent="OpponentFieldVisual"]
-margin_left = 18.0
-margin_top = 310.0
-margin_right = 141.0
-margin_bottom = 326.0
-mouse_filter = 2
-custom_fonts/font = SubResource( 5 )
-text = "Energia: 0"
-align = 1
-
 [node name="OpponentScenario" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 18.0
-margin_top = 128.0
-margin_right = 141.0
-margin_bottom = 240.0
+margin_top = 80.0
+margin_right = 120.0
+margin_bottom = 217.376007
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentScenarioLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 22.0
-margin_top = 220.0
-margin_right = 138.0
-margin_bottom = 240.0
+margin_left = 2.0
+margin_top = 195.376007
+margin_right = 118.0
+margin_bottom = 215.376007
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "Cenário"
 align = 1
 
 [node name="OpponentScene" type="ColorRect" parent="OpponentFieldVisual"]
-margin_left = 211.0
+margin_left = 159.5
 margin_top = 80.0
-margin_right = 1069.0
-margin_bottom = 328.0
+margin_right = 1120.5
+margin_bottom = 366.200012
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentSceneLabel" type="Label" parent="OpponentFieldVisual"]
-margin_left = 221.0
+margin_left = 169.5
 margin_top = 84.0
-margin_right = 531.0
-margin_bottom = 107.0
+margin_right = 289.5
+margin_bottom = 104.0
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "Cena"
 
 [node name="OpponentDeck" type="ColorRect" parent="OpponentFieldVisual"]
-anchor_left = 1.0
-anchor_right = 1.0
-margin_left = -156.0
+margin_left = 1124.0
 margin_top = 2.0
-margin_right = 0.0
-margin_bottom = 106.0
+margin_right = 1280.0
+margin_bottom = 140.200012
 mouse_filter = 2
 color = Color( 0.28, 0.3, 0.37, 0.65 )
 
 [node name="OpponentDeckLabel" type="Label" parent="OpponentFieldVisual"]
-anchor_left = 1.0
-anchor_right = 1.0
-margin_left = -152.0
-margin_top = 80.0
-margin_right = -4.0
-margin_bottom = 102.0
+margin_left = 1128.0
+margin_top = 116.200012
+margin_right = 1276.0
+margin_bottom = 138.200012
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "Deck"
 align = 1
 
 [node name="HandLabel" type="Label" parent="."]
-margin_left = 610.0
-margin_top = 445.0
-margin_right = 670.0
-margin_bottom = 470.0
-text = ""
+margin_left = 0.0
+margin_top = 576.0
+margin_right = 120.0
+margin_bottom = 598.0
+custom_fonts/font = SubResource( 5 )
+text = "Mão: 0 · Deck: 0"
+align = 1
 
 [node name="SeedLabel" type="Label" parent="."]
 margin_left = 10.0

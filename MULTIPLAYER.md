@@ -4,7 +4,7 @@ Este documento reúne os requisitos e decisões confirmados para o multiplayer, 
 
 ## Objetivo
 
-Permitir uma partida local entre dois jogadores, em que ambos acompanhem ao vivo as ações um do outro no tabuleiro, vejam o cursor adversário e compartilhem a indicação da fase e do jogador ativo. O jogador que abre/inicia a sala é P1 e deverá atuar como servidor autoritativo do jogo.
+Permitir uma partida local entre dois jogadores, em que ambos acompanhem ao vivo as ações um do outro no tabuleiro, vejam em que zona o mouse adversário está e compartilhem a indicação da fase e do jogador ativo. O jogador que abre/inicia a sala é P1 e deverá atuar como servidor autoritativo do jogo.
 
 ## Requisitos confirmados
 
@@ -36,8 +36,8 @@ Permitir uma partida local entre dois jogadores, em que ambos acompanhem ao vivo
 ### Acompanhamento ao vivo
 
 - Além do registro textual existente, o adversário deve ver as ações e movimentos no campo espelhado.
-- O jogador também deve ver o cursor do adversário movendo-se ao vivo, identificado pelo username.
-- O cursor não pode revelar o nome, a face ou outra informação de uma carta que esteja na mão ou no deck.
+- O jogador também deve ver uma lupa pulsando na zona espelhada onde o mouse do adversário está (mão, deck, recursos, prêmios ou cenário), sem a posição exata do ponteiro.
+- A lupa não pode revelar o nome, a face ou outra informação de uma carta que esteja na mão ou no deck.
 
 ### Fases e turnos
 
@@ -95,7 +95,7 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - Ao iniciar, o anfitrião sorteia dois d6 (repetindo em empate), publica os resultados e quem começa, gera uma semente de embaralhamento e envia tudo ao convidado. Cada cliente monta o próprio deck de forma determinística, embaralha e compra 10 cartas.
 - Se a preparação falhar em um dos clientes, o anfitrião envia `mp_abort` para que os dois encerrem a sessão em vez de um ficar preso no início.
 - O jogo usa uma resolução lógica fixa de `1280x720` em 16:9 (`window/stretch/mode="2d"` com `aspect keep`), então os dois clientes compartilham a mesma geometria de tabuleiro mesmo com janelas ou monitores de tamanhos diferentes. A cena é renderizada em 1280x720 e escalada para a janela; em telas fora de 16:9 aparecem barras pretas. No desktop a janela abre em 1280x720 sem bordas (não em fullscreen); `F11` alterna para fullscreen. Para abrir a segunda instância em 960x540, use `run-second-instance.cmd` ou `BS_WINDOWED=1`.
-- O handshake troca tamanho de tela, janela e viewport lógica dos dois jogadores. A preparação mostra essas medidas e o log registra ambas; se as proporções de tela forem diferentes, o log avisa que o jogo vai letterboxar em vez de desalinhar cartas e cursor.
+- O handshake troca tamanho de tela, janela e viewport lógica dos dois jogadores. A preparação mostra essas medidas e o log registra ambas; se as proporções de tela forem diferentes, o log avisa que o jogo vai letterboxar em vez de desalinhar cartas e zonas espelhadas.
 
 ### Autoridade, fases e desconexão
 
@@ -107,10 +107,12 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 ### Visibilidade e acompanhamento
 
 - Apenas `hand` e `deck` são ocultos. `board`, `scenario`, `resources` e `prizes` são públicos e espelhados em coordenadas normalizadas. As cartas do oponente são invertidas em 180° e mantidas dentro da área do campo superior; o Cenário remoto fica centralizado no slot de Cenário.
+- As duas bandas de cena usam a mesma caixa e se encaram na linha central. Uma carta que ocupa um slot do campo do dono aparece no slot equivalente da banda do oponente, invertida em 180°: a fileira da frente de um lado fica na fileira da frente do outro. O estado público carrega o índice do slot (`slot`), e a coordenada normalizada continua sendo o fallback para cartas em movimento, para slots que não existem aqui ou quando a grade do outro cliente tem outra forma.
+- Arrastar uma carta espelhada da banda de cena devolve o pedido já convertido para o sistema de coordenadas do dono, com o slot mais próximo do ponto de soltura. No multiplayer o dono encaixa a carta real no slot pedido e retransmite o estado; na partida solo o encaixe é aplicado no próprio cliente, porque os dois assentos vivem no mesmo processo. Uma soltura fora da banda devolve a carta espelhada para a posição registrada.
 - Só pode existir um Cenário ativo entre os dois campos. Ao colocar um Cenário, o Cenário ativo do oponente vai para o Recursos/Descarte do dono. Cada jogada leva uma marca de ordem (relógio lógico) para que a jogada mais recente vença, inclusive quando os dois jogadores jogam quase ao mesmo tempo; em empate, o Cenário do anfitrião permanece. A regra também é reaplicada na retomada de checkpoints, quando o Cenário local é devolvido ao slot `Cenário Ativo`.
 - O slot de Cenário do jogador ocupa exatamente a área de uma carta em campo (`150x210` × `0,55` = `82,5x115,5`), sem a borda extra das grades comuns.
 - Cartas ocultas do oponente são representadas por contadores e posições sem identidade, face ou nome; a identidade só é transmitida quando a carta passa para uma zona pública.
-- O cursor do oponente é enviado a 10 Hz, desenhado espelhado (rotação de 180°) na metade superior, some após 3 segundos sem movimento e exibe apenas o username, sem informação da carta sob o ponteiro.
+- A presença do mouse do oponente é enviada somente quando muda de zona e desenhada como uma lupa pulsando sobre a caixa espelhada correspondente na metade superior; nenhuma coordenada do ponteiro é transmitida.
 - O tabuleiro espelhado exibe o rótulo `CAMPO DO OPONENTE - <username>` e ignora interação do jogador local.
 
 ### Checkpoints e retomada
@@ -123,10 +125,18 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - Se todos os arquivos locais de uma partida estiverem ilegíveis, a lista mostra a entrada como somente entrada (`join_only`): o jogador pode entrar na sala de retomada do oponente, mas não pode hospedar.
 - Alterar o username tenta reproteger os checkpoints locais com o novo nome. Checkpoints que não puderem acompanhar a mudança — por exemplo, quando o novo nome já identifica o outro jogador ou o envelope está ilegível — permanecem com o username anterior e não bloqueiam a alteração.
 
+### Partida solo (hotseat)
+
+- **Partida Solo (P1 vs P2)** abre uma mesa local sem relay. `Rede.start_solo()` cria uma sala falsa (`peer_tag = "H"`, `room_id = "SOLO"`) e `send_message()` descarta tudo por não haver socket, então o código de sessão percorre os mesmos caminhos de uma partida real.
+- A preparação pede dois decks, um por assento, escolhidos pelo seletor `Deck de P1` / `Deck de P2`. Os assentos se chamam `P1` e `P2`, e é esse nome que aparece no log de ações.
+- O assento que você não controla existe como dados: mão e deck ficam em `_solo_hidden`, embaralhados com semente própria por assento, e aparecem como cartas espelhadas na metade superior. A partida solo não grava checkpoints.
+- **Controlar P2** troca de assento durante a partida: o estado público e o envelope privado do assento atual são capturados, os slots são invertidos e a mesa é reconstruída pelas mesmas funções usadas na retomada de checkpoint. Por isso o hotseat mostra exatamente o que o outro cliente mostraria, com as cartas de cena devolvidas aos próprios slots.
+- A lupa de zona entra em modo de pré-visualização (`set_solo_preview`), sem enviar nada: passar o mouse sobre mão, deck, recursos, prêmios ou cenário desenha a lupa na caixa espelhada correspondente.
+
 ### Arquivos principais
 
 - [src/custom/Multiplayer.gd](./src/custom/Multiplayer.gd) — sessão, autoridade, início, fases e retomada.
-- [src/custom/MultiplayerSync.gd](./src/custom/MultiplayerSync.gd) — espelhamento, privacidade e cursor remoto.
+- [src/custom/MultiplayerSync.gd](./src/custom/MultiplayerSync.gd) — espelhamento, privacidade e presença de zona do adversário.
 - [src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd) — relay embutido para endereços locais.
 - [src/custom/Rede.gd](./src/custom/Rede.gd) — WebSocket, pareamento, reconexão e divisão de mensagens.
 - [src/custom/CheckpointStore.gd](./src/custom/CheckpointStore.gd) — gravação, envelopes e validação.
@@ -142,7 +152,7 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 
 ### Automatizado
 
-- Suite GUT do multiplayer: `tests/integration/test_multiplayer_lobby.gd`, com 17 testes e 72 asserções. Execute pelo painel GUT do editor ou pela cena `tests/cli/tests.tscn` com janela (a execução completa com `--no-window` pode travar neste ambiente).
+- Suites GUT do multiplayer, um arquivo por processo (`-gselect=<arquivo>`): `tests/integration/test_multiplayer_lobby.gd` (21 testes, 89 asserções), `tests/integration/test_solo_hotseat.gd` (5 testes, 21 asserções) e a geometria das bandas de cena em `tests/integration/test_placement_grid.gd` (32 testes, 139 asserções). Execute pelo painel GUT do editor ou pela cena `tests/cli/tests.tscn` com janela (a execução completa com `--no-window` pode travar neste ambiente).
 - Testes do relay Node.js: `cd relay && npm test` (21 testes com clientes `ws` reais, incluindo `join_room`, sala cheia, código inválido, expiração, protocolo errado, limites e reconexão). Executados e passando em 27/10/2026.
 - Testes do relay Python (legado): `python tools/test_ws_relay.py` (14 testes). Neste ambiente não há Python instalado, então eles foram revisados estaticamente, mas não executados.
 - O relay embutido foi validado em headless com dois clientes WebSocket reais: criação/busca de sala, encaminhamento, queda e reconexão, além da sala de retomada e recusa de terceiro.
@@ -155,9 +165,17 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 3. Jogador 1 usa **Criar Sala**; jogador 2 usa **Procurar Partida**. Confirme que ambos entram na mesma partida e que o indicador mostra os usernames corretos.
 4. Ao entrar na preparação, confirme que o último deck usado já está selecionado e que **Decks salvos** lista o deck importado. Escolham decks de 60 cartas. Confirme que `INICIAR` só habilita com os dois decks válidos, que qualquer jogador consegue iniciar e que os dois veem os mesmos dados, o mesmo vencedor e as mesmas 10 cartas iniciais (cada um vê a própria mão).
 5. Avancem as fases e confirme rodada, jogador ativo, cores e incremento de rodada após os dois completarem a sequência.
-6. Movimentem cartas entre zonas públicas e confirme o espelhamento; mantenham cartas na mão/deck e confirme que o oponente vê apenas contadores, nunca a identidade. Confira o cursor remoto com username e o desaparecimento após 3 segundos.
+6. Movimentem cartas entre zonas públicas e confirme o espelhamento; mantenham cartas na mão/deck e confirme que o oponente vê apenas contadores, nunca a identidade. Confira a lupa de zona: passe o mouse em mão, deck, recursos, prêmios e cenário e veja a lupa pulsar na caixa espelhada do outro lado.
 7. Derrube um cliente e confirme o congelamento do outro e a reconexão na mesma sala. Encerre manualmente para testar a saída durante a espera.
 8. Fechem os dois clientes e usem **Iniciar jogo salvo** para retomar: teste a cópia íntegra, uma cópia local corrompida e o caso sem checkpoint íntegro comum.
+
+### Manual, sem segundo cliente
+
+1. No menu, use **Partida Solo (P1 vs P2)** e escolha os dois decks pelo seletor `Deck de P1` / `Deck de P2`. `INICIAR` só habilita com os dois decks de 60 cartas.
+2. Confira o log de ações, o avanço de fases (na partida solo os dois assentos podem avançar) e a lupa ao passar o mouse sobre as zonas espelhadas.
+3. Coloque cartas na cena e confirme que elas aparecem na banda do oponente nos slots equivalentes, invertidas em 180°, com as fileiras da frente se encarando na linha central.
+4. Arraste uma carta espelhada para outro slot da banda do oponente e confirme o encaixe; solte fora da banda e confirme que a carta volta ao lugar.
+5. Use **Controlar P2** e confirme que mão, deck e campo trocam de lado e que o assento anterior reaparece espelhado, com cada carta de cena no mesmo slot.
 
 ## Limitações conhecidas da v1
 
@@ -168,7 +186,8 @@ Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida 
 - Se todos os checkpoints locais de uma partida estiverem ilegíveis, o jogador só pode entrar na sala de retomada do oponente, não hospedar.
 - O relay embutido só inicia para endereços locais; um endereço remoto continua exigindo um relay externo. Se outro processo já ocupa a porta, o jogo tenta usá-lo; se ele não falar este protocolo, a conexão falha com aviso no HUD.
 - O relay Node.js e o lobby do Netlify existem no repositório, mas ainda não foram publicados; o build HTML5 local já foi gerado. A integração do cliente web (`join_room`, `?room=`, `?relay=`, padrão `wss://` e bloqueio do `LocalRelay` no navegador) está implementada e foi validada localmente com dois navegadores até o início da partida (Fase 4 de [ONLINE_HOSTING.md](./ONLINE_HOSTING.md)).
-- Não há transferência de anfitrião, reconexão automática, espectadores nem limite configurável da frequência do cursor (fixo em 10 Hz).
+- Não há transferência de anfitrião, reconexão automática, espectadores nem limite configurável da frequência das mensagens de presença (enviadas apenas na mudança de zona).
+- A única ação sobre o campo do adversário é arrastar uma carta espelhada da banda de cena para outro slot, que o dono aplica na carta real. Ações de regra entre assentos — uma carta atacar outra, retirar uma carta de baixo do personagem do oponente — ainda não existem porque as regras de combate não estão implementadas; as fases são informativas.
 
 ## Roadmap para o modo online
 
@@ -231,7 +250,7 @@ A v1 é LAN, mas o código deve ser tratado como a base de um jogo online; o rel
 - Atualmente não há sala criada pelo anfitrião: o relay atribui `H` ao jogador que já estava na fila e `C` ao jogador que completa o par. Isso precisa ser alinhado com a definição escolhida de anfitrião/P1.
 - O importador de deck atual consulta o título do deck no BSDB e guarda em cache local os dados e a URL de origem. Não foi encontrada uma lista/menu para salvar links e escolher decks importados em partidas futuras.
 - O username não é secreto; qualquer proteção derivada dele é fraca. Não apresentar isso como criptografia segura.
-- O espelhamento existente envia atualizações de cartas durante o arraste e trata alguns movimentos, rotações e ações ocultas. O cursor do mouse não é enviado.
+- O espelhamento existente envia atualizações de cartas durante o arraste e trata alguns movimentos, rotações e ações ocultas. A posição do mouse não é enviada; apenas a zona sob ele.
 - O código atual considera `hand`, `deck` **e `prizes`** como zonas ocultas. Isso diverge do requisito confirmado neste documento: no comportamento desejado, **Prêmios são visíveis**. Essa diferença precisa ser corrigida antes de considerar a privacidade alinhada ao requisito.
 - O relay encaminha mensagens de sincronização; não valida jogadas, não mantém o estado oficial e não sincroniza completamente RNG/deck.
 
@@ -263,11 +282,11 @@ As etapas abaixo são uma proposta de ordem para implementar e validar os requis
 - Validar que a identidade da carta só seja transmitida ao sair de mão/deck para uma zona pública.
 - Cobrir os estados iniciais da partida e mudanças de zona, evitando que snapshots revelem cartas ocultas.
 
-### 4. Completar o espelhamento visual e adicionar cursor remoto
+### 4. Completar o espelhamento visual e adicionar presença de zona
 
 - Fazer com que movimentos e mudanças visíveis apareçam no tabuleiro espelhado, além da caixa de texto.
-- Enviar a posição do cursor enquanto ele se move e desenhá-lo no tabuleiro do oponente com o username.
-- Mapear coordenadas para o tabuleiro em resoluções diferentes; definir frequência de atualização e tratamento de cursor fora do tabuleiro e desconexão.
+- Enviar a zona sob o mouse quando ela muda e desenhá-la no tabuleiro do oponente como uma lupa sobre a caixa espelhada.
+- Mapear as zonas espelhadas para resoluções diferentes; definir tratamento de zona vazia e desconexão.
 - Não transmitir informações da carta sob o ponteiro.
 
 ### 5. Adicionar fases, turnos e contador de rodadas
@@ -304,4 +323,4 @@ Só considerar a partida pronta após testes reais com dois clientes e confirma�
 
 ## Fora do escopo confirmado
 
-Não foram definidos neste planejamento: partidas pela internet, autenticação de contas, reconexão automática, transferência do anfitrião durante uma partida ativa, espectadores ou limite/frequência exatos de mensagens do cursor. A direção para o modo online está no roadmap acima; essas decisões continuam fora do escopo da v1 e devem ser detalhadas antes de serem tratadas como requisitos.
+Não foram definidos neste planejamento: partidas pela internet, autenticação de contas, reconexão automática, transferência do anfitrião durante uma partida ativa, espectadores ou limite/frequência exatos de mensagens de presença. A direção para o modo online está no roadmap acima; essas decisões continuam fora do escopo da v1 e devem ser detalhadas antes de serem tratadas como requisitos.

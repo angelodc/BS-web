@@ -60,9 +60,9 @@ size_flags_vertical = 3
 
 [node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
 margin_left = 500.0
-margin_top = 48.0
+margin_top = 33.0
 margin_right = 780.0
-margin_bottom = 311.0
+margin_bottom = 326.0
 rect_min_size = Vector2( 280, 0 )
 custom_constants/separation = 3
 
@@ -115,26 +115,32 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+[node name="SoloMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
 margin_top = 146.0
 margin_right = 280.0
 margin_bottom = 173.0
-text = "Criar Sala"
+text = "Partida Solo (P1 vs P2)"
 
-[node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+[node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
 margin_top = 176.0
 margin_right = 280.0
 margin_bottom = 203.0
-text = "Procurar Partida"
+text = "Criar Sala"
 
-[node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+[node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
 margin_top = 206.0
 margin_right = 280.0
 margin_bottom = 233.0
-text = "Iniciar jogo salvo"
+text = "Procurar Partida"
 
-[node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+[node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons"]
 margin_top = 236.0
 margin_right = 280.0
 margin_bottom = 263.0
+text = "Iniciar jogo salvo"
+
+[node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 266.0
+margin_right = 280.0
+margin_bottom = 293.0
 text = "Exit"

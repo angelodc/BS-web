@@ -1,9 +1,11 @@
 ---
 name: bs-multiplayer-smoke
-description: Roteiro de teste manual de multiplayer LAN do BS-web com dois clientes. Use ao validar criação e busca de sala, preparação com decks, espelhamento do tabuleiro, cursor remoto, privacidade de mão/deck, fases, reconexão, Prêmios, Cenário ou retomada por checkpoint, especialmente após mudar Multiplayer.gd, MultiplayerSync.gd, Rede.gd, LocalRelay.gd, MatchHUD.gd, CheckpointStore.gd ou CheckpointList.gd.
+description: Roteiro de teste manual de multiplayer LAN do BS-web com dois clientes, mais a partida solo (hotseat P1 vs P2) com um cliente só. Use ao validar criação e busca de sala, preparação com decks, espelhamento do tabuleiro e das bandas de cena slot a slot, lupa de zona do adversário, privacidade de mão/deck, fases, reconexão, Prêmios, Cenário, retomada por checkpoint ou a troca de assento da partida solo, especialmente após mudar Multiplayer.gd, MultiplayerSync.gd, Rede.gd, LocalRelay.gd, MatchHUD.gd, CheckpointStore.gd ou CheckpointList.gd.
 ---
 
-# Teste manual de multiplayer (dois clientes)
+# Teste manual de multiplayer (dois clientes) e partida solo
+
+As seções 1 a 7 precisam de dois clientes. A seção 8 é a partida solo (hotseat), que roda com um cliente só e usa o **modo 1** da `bs-godot-test`.
 
 ## Relação com a skill bs-godot-test
 
@@ -53,8 +55,10 @@ Aqui fica apenas o que é específico de dois clientes. O comportamento esperado
 - O campo superior deve ser do oponente, com cartas giradas em 180° e contidas na área superior.
 - O campo do oponente não deve aceitar interação local.
 - Mover cartas entre zonas públicas e conferir a posição espelhada nos dois clientes.
+- Bandas de cena: as duas grades têm a mesma caixa e se encaram na linha central. Uma carta no slot da frente de um cliente aparece no slot da frente do outro, girada em 180°. Conferir coluna por coluna, inclusive suportes na linha de trás.
+- Arrastar a carta espelhada do oponente para outro slot: o dono encaixa a carta real no mesmo slot e retransmite; os dois lados devem concordar. Soltar fora da banda não pode mover a carta do dono.
 - Mão e deck do oponente nunca podem revelar nome, face ou imagem; apenas contadores/posições.
-- Cursor remoto: espelhado, 10 Hz, com username, some após cerca de 3 segundos sem movimento.
+- Lupa de zona: pulsa sobre a caixa espelhada (mão, deck, recursos, prêmios, cenário) enquanto o mouse do oponente está na zona; some ao sair.
 - Comparar as duas telas: o mesmo estado deve aparecer nos dois lados, mesmo com janelas de tamanhos diferentes.
 
 ### 4. Regras visíveis no tabuleiro
@@ -85,6 +89,19 @@ Aqui fica apenas o que é específico de dois clientes. O comportamento esperado
 - Verificar que os dois retomam a mesma partida, sequência e fase.
 - Testar uma cópia local corrompida: o outro cliente deve fornecer a cópia íntegra.
 - Testar sem checkpoint comum íntegro: a retomada deve ser bloqueada com explicação, sem trocar participante.
+
+### 8. Partida solo (um cliente só)
+
+Use quando não houver segunda instância disponível, ou para conferir rapidamente o espelhamento. É o **modo 1** da `bs-godot-test`: não abre segunda instância nem relay.
+
+- **Partida Solo (P1 vs P2)** no menu; escolher os dois decks no seletor `Deck de P1` / `Deck de P2`. `INICIAR` só habilita com os dois decks de 60 cartas.
+- O log de ações deve usar `P1` e `P2` como autores.
+- Fases: os dois assentos conseguem avançar (na solo não há bloqueio por jogador ativo).
+- A lupa de zona deve aparecer ao passar o mouse sobre mão, deck, recursos, prêmios e cenário espelhados, mesmo sem nada ser enviado pela rede.
+- Cartas do assento que você não controla aparecem espelhadas na banda superior, com contadores de mão/deck atualizados.
+- Arrastar uma carta espelhada para outro slot deve encaixá-la no slot correspondente; soltar fora da banda deve devolvê-la ao lugar.
+- **Controlar P2** troca de assento: mão, deck e campo trocam de lado, e cada carta de cena volta ao mesmo slot no novo lado. Trocar de volta deve restaurar o estado anterior.
+- A partida solo não grava checkpoint: o item **Salvar jogo** do menu deve responder no log que a partida solo não salva.
 
 ## Como reportar
 

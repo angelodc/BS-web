@@ -7,7 +7,7 @@ class TestSingleCardFocus:
 		cfc.game_settings.hand_use_oval_shape = false
 		cards[0]._on_Card_mouse_entered()
 		yield(yield_to(cards[0].get_node('Tween'), "tween_all_completed", 1), YIELD)
-		assert_almost_eq(Vector2(265.75, -210),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(313.75, -210),cards[0].position,Vector2(2,2),
 				"Card dragged in correct global position")
 		assert_almost_eq(Vector2(1.5, 1.5),cards[0].scale,Vector2(0.1,0.1),
 				"Card has correct scale")
@@ -42,13 +42,13 @@ class TestNeightbourPush:
 		cfc.game_settings.hand_use_oval_shape = false
 		cards[2]._on_Card_mouse_entered()
 		yield(yield_for(1), YIELD)
-		assert_almost_eq(Vector2(256.375, 0),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(304.375, 0),cards[0].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(310.75, 0),cards[1].position,Vector2(2,2),
+		assert_almost_eq(Vector2(334.75, 0),cards[1].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(588.25, 0),cards[3].position,Vector2(2,2),
+		assert_almost_eq(Vector2(564.25, 0),cards[3].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(642.625, 0),cards[4].position,Vector2(2,2),
+		assert_almost_eq(Vector2(594.625, 0),cards[4].position,Vector2(2,2),
 				"Card dragged in correct global position")
 		cfc.game_settings.hand_use_oval_shape = true
 	func test_card_focus_neighbour_push_use_oval():

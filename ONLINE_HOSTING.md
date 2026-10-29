@@ -536,7 +536,7 @@ redes diferentes depois de publicar.
 
 1. Dois navegadores em redes diferentes: criar sala, copiar link, entrar,
    escolher decks de 60 cartas, iniciar e completar uma rodada.
-2. Confirmar que mão e deck do oponente continuam ocultos; cursor remoto e
+2. Confirmar que mão e deck do oponente continuam ocultos; lupa de zona e
    espelhamento funcionam.
 3. Recarregar a aba no meio da partida e reconectar na mesma sala dentro da
    janela de tolerância; se não for possível, encerrar com mensagem clara.

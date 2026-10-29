@@ -11,20 +11,19 @@ corner_radius_bottom_left = 10
 
 [node name="ModifiedLabelGrid" instance=ExtResource( 2 )]
 exact_card_size = true
-card_play_scale = 1.0
 custom_styles/panel = SubResource( 1 )
 
 [node name="GridContainer" parent="." index="0"]
 margin_left = 0.0
 margin_top = 0.0
-margin_right = 150.0
-margin_bottom = 210.0
+margin_right = 99.0
+margin_bottom = 138.6
 
 [node name="Control" parent="." index="1"]
 margin_left = 0.0
 margin_top = 0.0
-margin_right = 150.0
-margin_bottom = 210.0
+margin_right = 99.0
+margin_bottom = 138.6
 
 [node name="Label" parent="Control" index="0"]
 text = "Cenário Ativo"

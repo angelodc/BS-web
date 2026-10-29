@@ -12,6 +12,7 @@ script = ExtResource( 3 )
 placement = 7
 excess_discard_pile_name = "discard"
 excess_cards = 1
+show_manipulation_buttons = false
 
 [node name="DiscardRandom" type="Button" parent="Control/ManipulationButtons" index="2" groups=[
 "manipulation_button",

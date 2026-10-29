@@ -4,24 +4,26 @@ const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
 const LinkDeckScene = preload("res://src/custom/BSDBDeckImportDialog.tscn")
 
 const DECK_SIZE := 60
-const MAX_LOG_LINES := 40
+const MAX_LOG_LINES := 200
 const MENU_SAVE := 0
 const MENU_LEAVE := 1
+const CARD_LINK_COLOR := "#ffd479"
 
 onready var _top_bar: PanelContainer = $TopBar
 onready var _phase_label: Label = $TopBar/Margin/VBox/PhaseLabel
 onready var _info_label: Label = $TopBar/Margin/VBox/InfoLabel
 onready var _match_menu: MenuButton = $MatchMenu
 onready var _advance_button: Button = $AdvanceButton
+onready var _swap_seat_button: Button = $SwapSeatButton
 onready var _checkpoint_label: Label = $CheckpointLabel
 onready var _log_panel: PanelContainer = $LogPanel
-onready var _log_scroll: ScrollContainer = $LogPanel/Margin/LogScroll
-onready var _log_label: Label = $LogPanel/Margin/LogScroll/LogLabel
+onready var _log_label: RichTextLabel = $LogPanel/Margin/LogLabel
 onready var _prepare_panel: PanelContainer = $PreparePanel
 onready var _room_label: Label = $PreparePanel/Margin/VBox/RoomLabel
 onready var _deck_status: Label = $PreparePanel/Margin/VBox/DeckStatus
 onready var _display_label: Label = $PreparePanel/Margin/VBox/DisplayLabel
 onready var _hint_label: Label = $PreparePanel/Margin/VBox/Hint
+onready var _seat_picker: OptionButton = $PreparePanel/Margin/VBox/SeatPicker
 onready var _saved_decks: MenuButton = $PreparePanel/Margin/VBox/DeckButtons/SavedDecks
 onready var _link_deck_button: Button = $PreparePanel/Margin/VBox/DeckButtons/LinkDeck
 onready var _start_button: Button = $PreparePanel/Margin/VBox/StartButton
@@ -37,6 +39,9 @@ var _logs := []
 var _status_note := ""
 var _last_display_summary := ""
 var _link_dialog: WindowDialog
+var _preview_name := ""
+var _preview_card: Card = null
+var _preview_owned := {}
 
 
 func _ready() -> void:
@@ -52,6 +57,10 @@ func _ready() -> void:
 	_start_button.connect("pressed", self, "_on_start_pressed")
 	_cancel_button.connect("pressed", self, "_on_leave_pressed")
 	_advance_button.connect("pressed", self, "_on_advance_pressed")
+	_swap_seat_button.connect("pressed", self, "_on_swap_seat_pressed")
+	_seat_picker.add_item("Deck de P1", 1)
+	_seat_picker.add_item("Deck de P2", 2)
+	_seat_picker.connect("item_selected", self, "_on_seat_picked")
 	_reconnect_button.connect("pressed", self, "_on_reconnect_pressed")
 	_leave_button.connect("pressed", self, "_on_leave_pressed")
 	_link_dialog = LinkDeckScene.instance()
@@ -70,9 +79,24 @@ func _ready() -> void:
 	Multiplayer.connect("action_logged", self, "_on_action_logged")
 	Multiplayer.connect("display_changed", self, "_on_display_changed")
 	Rede.connect("status_changed", self, "_on_network_status")
-	_append_log("Sessão multiplayer iniciada.")
+	GameEvents.connect("game_event", self, "_on_game_event")
+	_log_label.connect("meta_hover_started", self, "_on_log_meta_hover_started")
+	_log_label.connect("meta_hover_ended", self, "_on_log_meta_hover_ended")
+	_log_label.connect("mouse_exited", self, "_on_log_mouse_exited")
+	if Multiplayer.is_session_active():
+		_append_log("Sessão multiplayer iniciada.")
+	else:
+		_append_log("Modo solo: cada ação sua é registrada aqui.")
 	_refresh()
 	call_deferred("_apply_last_deck")
+
+
+func _exit_tree() -> void:
+	_release_preview()
+	for card in _preview_owned.values():
+		if is_instance_valid(card):
+			card.queue_free()
+	_preview_owned.clear()
 
 
 #-----------------------------------------------------------------------------
@@ -139,7 +163,8 @@ func _on_start_pressed() -> void:
 	if not Multiplayer.is_local_deck_ready():
 		_hint_label.text = "Escolha um deck de 60 cartas para iniciar."
 	elif not Multiplayer.opponent_deck_ready:
-		_hint_label.text = "Aguardando o oponente escolher o deck."
+		_hint_label.text = "Escolha o deck de P2." if Multiplayer.is_solo() \
+				else "Aguardando o oponente escolher o deck."
 	else:
 		_hint_label.text = "Não foi possível iniciar a partida agora."
 
@@ -155,6 +180,15 @@ func _on_prep_changed() -> void:
 func _on_advance_pressed() -> void:
 	if not Multiplayer.advance_phase():
 		_append_log("Não é possível avançar a fase agora.")
+
+
+func _on_seat_picked(index: int) -> void:
+	Multiplayer.set_solo_pick_slot(_seat_picker.get_item_id(index))
+
+
+func _on_swap_seat_pressed() -> void:
+	if not Multiplayer.swap_solo_seat():
+		_append_log("Não foi possível trocar de assento agora.")
 
 
 func _on_match_menu_pressed(id: int) -> void:
@@ -236,7 +270,8 @@ func _refresh() -> void:
 	if not is_inside_tree():
 		return
 	var active := Multiplayer.is_session_active()
-	_log_panel.visible = active
+	# The log is the one piece of the HUD that also belongs to a solo table.
+	_log_panel.visible = true
 	_match_menu.visible = active and not Multiplayer.is_preparing()
 	_top_bar.visible = active and not Multiplayer.is_preparing() \
 			and not Multiplayer.is_starting()
@@ -244,7 +279,13 @@ func _refresh() -> void:
 	_overlay.visible = Multiplayer.is_frozen()
 	_advance_button.visible = Multiplayer.is_playing() \
 			and Multiplayer.is_my_phase()
-	_checkpoint_label.visible = active and Multiplayer.sequence >= 0
+	_swap_seat_button.visible = Multiplayer.is_solo() \
+			and Multiplayer.is_playing()
+	if _swap_seat_button.visible:
+		_swap_seat_button.text = "Controlar " \
+				+ Multiplayer.get_opponent_username()
+	_checkpoint_label.visible = active and Multiplayer.sequence >= 0 \
+			and not Multiplayer.is_solo()
 	if _checkpoint_label.visible:
 		_checkpoint_label.text = "Checkpoint #" + str(Multiplayer.sequence)
 	if Multiplayer.is_ended():
@@ -260,6 +301,9 @@ func _refresh_texts() -> void:
 		var actor := Multiplayer.get_actor_username()
 		var turn := "Sua vez" if Multiplayer.is_my_phase() \
 				else "Vez de " + actor
+		if Multiplayer.is_solo():
+			turn = "Você é " + Multiplayer.get_my_username() \
+					+ " · vez de " + actor
 		_phase_label.text = Multiplayer.get_phase_label().to_upper()
 		_phase_label.add_color_override(
 				"font_color", Multiplayer.get_phase_color())
@@ -278,22 +322,37 @@ func _refresh_texts() -> void:
 
 
 func _refresh_prepare() -> void:
-	var role := "Anfitrião" if Multiplayer.is_authority() else "Convidado"
+	var solo := Multiplayer.is_solo()
+	_seat_picker.visible = solo
+	if solo:
+		_seat_picker.select(clamp(int(Multiplayer.solo_pick_slot) - 1, 0, 1))
+	var role := "Você controla os dois assentos" if solo \
+			else ("Anfitrião" if Multiplayer.is_authority() else "Convidado")
 	var opponent := Multiplayer.get_opponent_username()
 	if opponent.empty():
 		opponent = "aguardando oponente"
-	var room := "Conectando ao relay..."
-	if not Rede.room_id.empty():
+	var room := "Mesa local" if solo else "Conectando ao relay..."
+	if not solo and not Rede.room_id.empty():
 		room = "Sala " + Rede.room_id
 	_room_label.text = room + " · " + role \
 			+ " · " + Multiplayer.get_my_username() + " vs " + opponent
 	_deck_status.text = Multiplayer.get_deck_summary()
-	_display_label.text = Multiplayer.get_display_summary()
-	_last_display_summary = _display_label.text
+	_display_label.visible = not solo
+	if not solo:
+		_display_label.text = Multiplayer.get_display_summary()
+		_last_display_summary = _display_label.text
+	_cancel_button.text = "Voltar ao menu" if solo else "Sair da sala"
 	var both_ready := Multiplayer.are_both_decks_ready()
 	_start_button.disabled = not both_ready
-	_start_button.text = "INICIAR" if both_ready else "Aguardando decks"
-	if Multiplayer.is_local_deck_ready() and Multiplayer.opponent_deck_ready:
+	_start_button.text = "INICIAR" if both_ready \
+			else ("Escolha os dois decks" if solo else "Aguardando decks")
+	if solo:
+		if both_ready:
+			_hint_label.text = "Os dois decks estão prontos. Inicie a partida."
+		else:
+			_hint_label.text = "Escolha o deck de P1 e o de P2, " \
+					+ "60 cartas cada."
+	elif Multiplayer.is_local_deck_ready() and Multiplayer.opponent_deck_ready:
 		_hint_label.text = "Os dois decks estão prontos. Inicie a partida."
 	elif Multiplayer.is_local_deck_ready():
 		_hint_label.text = "Seu deck está pronto. Aguardando o oponente."
@@ -339,17 +398,143 @@ func _on_action_logged(text: String) -> void:
 	_append_log(text)
 
 
-func _append_log(text: String) -> void:
+func _on_game_event(entry) -> void:
+	if typeof(entry) != TYPE_DICTIONARY:
+		return
+	_append_log(str(entry.get("text", "")), str(entry.get("card", "")))
+
+
+func _append_log(text: String, card_name := "") -> void:
 	if text.empty():
 		return
-	_logs.append(text)
+	_logs.append({"text": text, "card": card_name})
 	while _logs.size() > MAX_LOG_LINES:
 		_logs.pop_front()
-	_log_label.text = PoolStringArray(_logs).join("\n")
-	_scroll_log_to_bottom()
+	_render_logs()
 	call_deferred("_scroll_log_to_bottom")
 
 
+func _render_logs() -> void:
+	var lines := PoolStringArray()
+	for index in range(_logs.size()):
+		lines.append(_line_bbcode(index))
+	_log_label.bbcode_text = lines.join("\n")
+
+
+# The card name becomes a link keyed by its line index, so the value never
+# carries spaces or brackets that the BBCode parser would choke on.  Godot 3
+# exposes its meta payload through [url], not the [meta] tag.
+func _line_bbcode(index: int) -> String:
+	var entry: Dictionary = _logs[index]
+	var text := str(entry["text"])
+	var card_name := str(entry.get("card", ""))
+	if card_name.empty():
+		return _escape_bbcode(text)
+	var position := text.find(card_name)
+	if position < 0:
+		return _escape_bbcode(text)
+	return _escape_bbcode(text.substr(0, position)) \
+			+ "[color=" + CARD_LINK_COLOR + "][url=" + str(index) + "]" \
+			+ _escape_bbcode(card_name) + "[/url][/color]" \
+			+ _escape_bbcode(text.substr(position + card_name.length()))
+
+
+func _escape_bbcode(text: String) -> String:
+	return text.replace("[", "[lb]").replace("]", "[rb]")
+
+
 func _scroll_log_to_bottom() -> void:
-	var bar: VScrollBar = _log_scroll.get_v_scrollbar()
-	bar.value = bar.max_value
+	_log_label.scroll_to_line(_log_label.get_paragraph_count())
+
+
+#-----------------------------------------------------------------------------
+# Card preview from the log
+#-----------------------------------------------------------------------------
+
+func _on_log_meta_hover_started(meta) -> void:
+	_show_card_preview(_card_name_for_meta(str(meta)))
+
+
+func _on_log_meta_hover_ended(_meta = null) -> void:
+	_show_card_preview("")
+
+
+func _on_log_mouse_exited() -> void:
+	_show_card_preview("")
+
+
+func _card_name_for_meta(meta: String) -> String:
+	var index := int(meta)
+	if index < 0 or index >= _logs.size():
+		return ""
+	return str(_logs[index].get("card", ""))
+
+
+func _show_card_preview(card_name: String) -> void:
+	if card_name == _preview_name:
+		return
+	_release_preview()
+	if card_name.empty():
+		return
+	_preview_name = card_name
+	var card := _find_preview_card(card_name)
+	if not card or cfc.ut or not cfc.NMAP.has("main") or not cfc.NMAP.main:
+		return
+	_preview_card = card
+	cfc.NMAP.main.focus_card(card)
+
+
+func _release_preview() -> void:
+	if is_instance_valid(_preview_card) and cfc.NMAP.has("main") and cfc.NMAP.main:
+		cfc.NMAP.main.unfocus(_preview_card)
+	_preview_card = null
+	_preview_name = ""
+
+
+func _find_preview_card(card_name: String) -> Card:
+	for group in ["cards", "remote_cards"]:
+		for candidate in get_tree().get_nodes_in_group(group):
+			if candidate is Card and is_instance_valid(candidate) \
+					and candidate.is_inside_tree() \
+					and candidate.canonical_name == card_name:
+				return candidate
+	return _instance_preview_card(card_name)
+
+
+# Cards that already left the table still deserve a preview, so a detached copy
+# is instanced by name and kept until the HUD goes away.
+func _instance_preview_card(card_name: String) -> Card:
+	if _preview_owned.has(card_name) and is_instance_valid(_preview_owned[card_name]):
+		return _preview_owned[card_name]
+	var key := _definition_key_for_display(card_name)
+	if key.empty():
+		return null
+	if not cfc.NMAP.has("board") or not cfc.NMAP.board:
+		return null
+	var card = cfc.instance_card(key)
+	if not card:
+		return null
+	cfc.NMAP.board.add_child(card)
+	card.network_mirror = true
+	if card.is_in_group("cards"):
+		card.remove_from_group("cards")
+	card.monitoring = false
+	card.monitorable = false
+	card.set_control_mouse_filters(false)
+	if card.buttons:
+		card.buttons.set_active(false)
+	card.position = Vector2(-6000, -6000)
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+	_preview_owned[card_name] = card
+	return card
+
+
+# The log shows the display Name, but an imported deck registers each card under
+# its definition id, which can be spelled without the accents.
+func _definition_key_for_display(card_name: String) -> String:
+	if cfc.card_definitions.has(card_name):
+		return card_name
+	for key in cfc.card_definitions:
+		if str(cfc.card_definitions[key].get("Name", "")) == card_name:
+			return str(key)
+	return ""

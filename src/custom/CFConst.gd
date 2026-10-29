@@ -132,7 +132,7 @@ const PATH_MOUSE_POINTER := PATH_CORE + "MousePointer.tscn"
 const NEIGHBOUR_PUSH := 0.75
 # The scale of a card while on the play area
 # You can adjust this for each different card type
-const PLAY_AREA_SCALE := 0.55
+const PLAY_AREA_SCALE := 0.66
 # The scale of a card while it rests in the player's hand.
 # It is intentionally smaller than the play area so the hand occupies its own
 # short row below the two field rows.

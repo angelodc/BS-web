@@ -63,7 +63,7 @@ func test_draw_multiple_cards_slow_use_rectangle():
 	var card2: Card = hand.draw_card()
 	yield(yield_to(card2.get_node('Tween'), "tween_all_completed", 1), YIELD)
 	yield(yield_to(card2.get_node('Tween'), "tween_all_completed", 1), YIELD)
-	assert_almost_eq(367.0,card0.recalculate_position().x,5.0,
+	assert_almost_eq(391.0,card0.recalculate_position().x,5.0,
 			"Index 0 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card0.recalculate_position().y,5.0,
 			"Index 0 card position y is recalculated correctly")
@@ -71,7 +71,7 @@ func test_draw_multiple_cards_slow_use_rectangle():
 			"Index 1 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card1.recalculate_position().y,5.0,
 			"Index 1 card position y is recalculated correctly")
-	assert_almost_eq(532.0,card2.recalculate_position().x,5.0,
+	assert_almost_eq(508.5,card2.recalculate_position().x,5.0,
 			"Index 2 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card2.recalculate_position().y,5.0,
 			"Index 2 card position y is recalculated correctly")

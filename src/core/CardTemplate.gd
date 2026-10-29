@@ -208,6 +208,10 @@ var popup_scale := 0.75
 # if that is also not set, will be set.
 # to the human-readable value of the "name" node property.
 var canonical_name : String setget set_card_name, get_card_name
+# The key this card is registered under in cfc.card_definitions. Imported cards
+# can carry a display Name that differs from that key, so anything that has to
+# look the card up again later must store this instead of canonical_name.
+var definitions_key := ""
 # Network identity for multiplayer mirroring. Empty when the card is local-only.
 var network_id := ""
 # Remote copies of the opponent's cards must not accept input or fire scripts.
@@ -995,6 +999,10 @@ func get_is_viewed() -> bool:
 # Setter for canonical_name
 # Also changes the card label and the node name
 func set_card_name(value : String, set_label := true) -> void:
+	# The first name a card gets is the key it was defined under; later renames
+	# only change how it reads, never how it is looked up.
+	if definitions_key.empty():
+		definitions_key = value
 	# if the card_front.card_labels variable is not set it means ready() has not
 	# run yet, so we just store the card name for later.
 	if not card_front:
@@ -1014,6 +1022,11 @@ func set_card_name(value : String, set_label := true) -> void:
 # Getter for canonical_name
 func get_card_name() -> String:
 	return canonical_name
+
+
+# The identifier other systems use to find this card's definition again.
+func definition_key() -> String:
+	return definitions_key if not definitions_key.empty() else canonical_name
 
 
 # Overwrites the built-in set name, so that it also sets canonical_name
@@ -2371,10 +2384,13 @@ func _process_card_state() -> void:
 							+ card_size.y * 1.5 > get_viewport().get_visible_rect().size.y:
 						_target_position.y -= 1
 				else:
+					# The hand's position already includes its bottom margin,
+					# so only the focused card's own height is compared with
+					# the viewport. Using the hand margin again pushed the
+					# card up into the middle of the screen.
 					while get_parent().position.y \
-						+ get_parent().bottom_margin \
 						+ _target_position.y \
-						+ card_size.y > get_viewport().get_visible_rect().size.y:
+						+ card_size.y * 1.5 > get_viewport().get_visible_rect().size.y:
 						_target_position.y -= 1
 				# We need to bump up the y postion a bit based on the rotation
 				# We subtract 13 if there is no rotation
@@ -2869,7 +2885,9 @@ func _recalculate_position_use_rectangle(index_diff = null)-> Vector2:
 	var visual_width: float = card_size.x * _get_hand_display_scale()
 	# The maximum distance between cards
 	# We base it on the card width to allow it to work with any card-size.
-	var card_gap_max: float = visual_width * 1.1
+	# Kept slightly below the card width so a small hand reads as a compact
+	# fan instead of spreading across the whole hand area.
+	var card_gap_max: float = visual_width * 0.78
 	# The minimum distance between cards
 	# (less than card width means they start overlapping)
 	var card_gap_min: float = visual_width/2

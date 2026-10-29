@@ -46,15 +46,35 @@ func _ready() -> void:
 			"popup_closed", self, "_on_resource_popup_closed")
 	_update_prize_energy()
 	if not cfc.ut:
+		var hud := preload("res://src/custom/MatchHUD.tscn").instance()
+		hud.name = "MatchHUD"
+		add_child(hud)
 		if multiplayer_session:
-			_setup_multiplayer()
+			_setup_multiplayer(hud)
 		else:
 			var sync := preload("res://src/custom/MultiplayerSync.gd").new()
 			sync.name = "MultiplayerSync"
 			add_child(sync)
+			_setup_solo()
+		GameEvents.set_enabled(true)
 
 
-func _setup_multiplayer() -> void:
+func _exit_tree() -> void:
+	GameEvents.set_enabled(false)
+
+
+# Solo keeps the deck builder and the way back to the menu, but the dev toggles
+# would otherwise sit under the log panel.
+func _setup_solo() -> void:
+	for control in [
+			$FancyMovementToggle, $OvalHandToggle, $ScalingFocusOptions,
+			$EnableAttach, $Debug, $SeedLabel]:
+		control.visible = false
+	$DeckBuilder.rect_position = Vector2(8, 132)
+	$BackToMain.rect_position = Vector2(148, 132)
+
+
+func _setup_multiplayer(hud: Control) -> void:
 	for control in [
 			$FancyMovementToggle, $OvalHandToggle, $ScalingFocusOptions,
 			$EnableAttach, $DeckBuilder, $BackToMain, $Debug, $SeedLabel]:
@@ -62,9 +82,6 @@ func _setup_multiplayer() -> void:
 	var hand_buttons := get_node_or_null("Hand/Control/ManipulationButtons")
 	if hand_buttons:
 		hand_buttons.visible = false
-	var hud := preload("res://src/custom/MatchHUD.tscn").instance()
-	hud.name = "MatchHUD"
-	add_child(hud)
 	var sync := preload("res://src/custom/MultiplayerSync.gd").new()
 	sync.name = "MultiplayerSync"
 	add_child(sync)
@@ -78,9 +95,15 @@ func _apply_battle_scenes_layout() -> void:
 	var deck: Pile = get_node("Deck")
 	var discard: Pile = get_node("Discard")
 	var prizes: Pile = get_node("Prêmios")
-	var right_column_x: float = viewport_size.x - 156
 	var scene_grid: BoardPlacementGrid = get_node("PlacementGridDemo")
+	# The deck and the resources keep the wide column; the scenario and the
+	# prizes never show more than one card side by side, so their column is
+	# narrower on both halves of the table.
 	var left_column_width := 156.0
+	var side_column_width := 156.0
+	var prize_column_width := 120.0
+	var right_column_x: float = viewport_size.x - prize_column_width
+	var resources_column_x: float = viewport_size.x - side_column_width
 
 	# Three horizontal bands: opponent hand strip on top, then the two field
 	# rows, then a shorter hand row at the bottom.
@@ -88,7 +111,11 @@ func _apply_battle_scenes_layout() -> void:
 	var scene_size: Vector2 = scene_grid.rect_size
 	var opponent_strip_height := 80.0
 	var player_field_y: float = opponent_strip_height + scene_size.y
-	var hand_band_y: float = player_field_y + scene_size.y
+	# The two field rows at the play-area scale nearly fill the viewport, so
+	# the hand band is anchored to the bottom edge instead of the leftover
+	# space below the field.
+	var hand: Hand = get_node("Hand")
+	var hand_band_y: float = viewport_size.y - hand.card_size.y * 0.6
 
 	# The deck lies turned 270 degrees in the bottom-left corner of the local
 	# half; the discard pile sits above it with the same width as the lying
@@ -105,70 +132,127 @@ func _apply_battle_scenes_layout() -> void:
 	prizes.position = _prizes_position
 	scene_grid.rect_position = Vector2(
 			(viewport_size.x - scene_size.x) * 0.5, player_field_y)
-	var scene_caption: Label = get_node("ModifiedLabelGrid/Control/Label")
-	scene_caption.rect_position = Vector2(
-			right_column_x + 6, player_field_y - 24)
-	scene_caption.rect_size = Vector2(144, 20)
+	var scenario_grid: BoardPlacementGrid = get_node("ModifiedLabelGrid")
+	scenario_grid.rect_position = Vector2(
+			right_column_x \
+					+ (prize_column_width - scenario_grid.rect_size.x) * 0.5,
+			player_field_y + 2)
+	var scene_caption: Label = scenario_grid.get_node("Control/Label")
+	scene_caption.rect_size = Vector2(prize_column_width, 20)
+	# Above the card this caption lands on the opponent resources row, so it
+	# sits under the scenario card instead.
+	scene_caption.rect_global_position = Vector2(
+			right_column_x,
+			scenario_grid.rect_global_position.y + scenario_grid.rect_size.y + 2)
 	scene_caption.align = Label.ALIGN_RIGHT
 	$PrizeEnergyLabel.rect_position = Vector2(
 			right_column_x, _prizes_position.y + 126)
-	$PrizeEnergyLabel.rect_size = Vector2(156, 20)
-	_hide_opponent_field_extras()
+	$PrizeEnergyLabel.rect_size = Vector2(prize_column_width, 20)
 
 	# The hand cards are drawn above the hand node origin (the oval fan), so
-	# the margin is computed from the top of the hand band.
-	var hand: Hand = get_node("Hand")
-	hand.bottom_margin = hand_band_y + hand.card_size.y * 0.25 \
-			- (viewport_size.y - hand.card_size.y)
+	# the margin keeps the fan leaning on the bottom edge of the viewport.
+	hand.bottom_margin = hand.card_size.y * 0.5
 	# warning-ignore:return_value_discarded
 	hand.re_place()
 	$ResourceSelectionLabel.rect_position = Vector2(262, hand_band_y + 2)
 	$HandLabel.rect_position = Vector2(610, hand_band_y + 2)
-
-	var opponent_scene: ColorRect = get_node(
-			"OpponentFieldVisual/OpponentScene")
-	opponent_scene.rect_position = Vector2(
-			scene_grid.rect_position.x, opponent_strip_height)
-	opponent_scene.rect_size = scene_size
-	var opponent_scene_label: Label = get_node(
-			"OpponentFieldVisual/OpponentSceneLabel")
-	opponent_scene_label.rect_size = Vector2(120, 20)
-	opponent_scene_label.rect_position = opponent_scene.rect_position \
-			+ Vector2(10, opponent_scene.rect_size.y - 24)
+	_layout_opponent_field(scene_grid, player_field_y, right_column_x,
+			resources_column_x, discard)
 
 
-# The mirrored field keeps only the boxes that carry information. The deck box,
-# the resources box and the "Ver" buttons overlapped the HUD and the right
-# column, and the deck count now travels with the hand label. The resources
-# count becomes a plain caption under the HUD, and the prize caption and its
-# energy share the bottom line of the small prize box.
-func _hide_opponent_field_extras() -> void:
-	for node_name in [
-			"OpponentDeck", "OpponentDeckLabel", "OpponentResourcesView",
-			"OpponentResourcesBackground", "OpponentPrizesView",
-			"OpponentFieldLabel"]:
-		var node = get_node_or_null("OpponentFieldVisual/" + node_name)
-		if node:
-			node.visible = false
-	var resources_label: Label = get_node(
-			"OpponentFieldVisual/OpponentResourcesLabel")
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+# The opponent half is the local half seen from across the table: the side
+# columns swap left and right, and every box is derived from the same numbers
+# the local side uses instead of the fixed rects saved in the scene.
+func _layout_opponent_field(
+		scene_grid: BoardPlacementGrid,
+		player_field_y: float,
+		right_column_x: float,
+		resources_column_x: float,
+		discard: Pile) -> void:
+	var visual: Control = get_node("OpponentFieldVisual")
+	var grid_size: Vector2 = scene_grid.rect_size
+	var grid_x: float = scene_grid.rect_position.x
+	var strip_bottom := 80.0
+	var available := player_field_y - strip_bottom
+	var column_width := 120.0
+	var side_width := 156.0
+
+	visual.margin_bottom = player_field_y
+	var background: Control = visual.get_node("OpponentFieldBackground")
+	background.rect_position = Vector2(0, strip_bottom)
+	background.rect_size = Vector2(
+			visual.rect_size.x, player_field_y - strip_bottom)
+
+	var hand_bg: Control = visual.get_node("OpponentHandBackground")
+	hand_bg.rect_position = Vector2(grid_x, 2)
+	hand_bg.rect_size = Vector2(grid_size.x, strip_bottom - 4)
+	var hand_label: Label = visual.get_node("OpponentHandLabel")
+	hand_label.rect_position = Vector2(grid_x, strip_bottom - 24)
+	hand_label.rect_size = Vector2(grid_size.x, 22)
+
+	var scene: Control = visual.get_node("OpponentScene")
+	scene.rect_position = Vector2(grid_x, strip_bottom)
+	scene.rect_size = grid_size
+	var scene_label: Label = visual.get_node("OpponentSceneLabel")
+	scene_label.rect_size = Vector2(120, 20)
+	scene_label.rect_position = scene.rect_position + Vector2(10, 4)
+
+	# Left column mirrors the local right column: scenario above prizes.
+	var scenario_height := available * 0.48
+	var scenario: Control = visual.get_node("OpponentScenario")
+	scenario.rect_position = Vector2(0, strip_bottom)
+	scenario.rect_size = Vector2(column_width, scenario_height)
+	var scenario_label: Label = visual.get_node("OpponentScenarioLabel")
+	scenario_label.rect_size = Vector2(column_width - 4, 20)
+	scenario_label.rect_position = scenario.rect_position \
+			+ Vector2(2, scenario_height - 22)
+	var prizes: Control = visual.get_node("OpponentPrizes")
+	prizes.rect_position = Vector2(0, strip_bottom + scenario_height + 4)
+	prizes.rect_size = Vector2(column_width, available - scenario_height - 22)
+	var prizes_label: Label = visual.get_node("OpponentPrizesLabel")
+	prizes_label.rect_size = Vector2(56, 16)
+	prizes_label.rect_position = prizes.rect_position \
+			+ Vector2(4, prizes.rect_size.y - 46)
+	var prizes_energy: Label = visual.get_node("OpponentPrizesEnergy")
+	prizes_energy.rect_size = Vector2(56, 16)
+	prizes_energy.rect_position = prizes.rect_position \
+			+ Vector2(60, prizes.rect_size.y - 46)
+
+	# Right column mirrors the local left column: resources under the deck box.
+	var resources: Control = visual.get_node("OpponentResourcesBackground")
+	resources.anchor_left = 0.0
+	resources.anchor_right = 0.0
+	var resources_height: float = discard.get_node("Control").rect_size.y
+	resources.rect_position = Vector2(resources_column_x,
+			2.0 * player_field_y - (discard.position.y + resources_height))
+	resources.rect_size = Vector2(side_width, resources_height)
+	var resources_label: Label = visual.get_node("OpponentResourcesLabel")
 	resources_label.anchor_left = 0.0
 	resources_label.anchor_right = 0.0
-	resources_label.rect_position = Vector2(viewport_size.x - 152, 93)
 	resources_label.rect_size = Vector2(148, 18)
+	resources_label.rect_position = resources.rect_position \
+			+ Vector2(4, resources.rect_size.y - 22)
 	resources_label.align = Label.ALIGN_RIGHT
 	resources_label.autowrap = false
-	var prizes_label: Label = get_node(
-			"OpponentFieldVisual/OpponentPrizesLabel")
-	prizes_label.rect_position = Vector2(22, 306)
-	prizes_label.rect_size = Vector2(56, 16)
-	prizes_label.align = Label.ALIGN_LEFT
-	var prizes_energy: Label = get_node(
-			"OpponentFieldVisual/OpponentPrizesEnergy")
-	prizes_energy.rect_position = Vector2(62, 306)
-	prizes_energy.rect_size = Vector2(77, 16)
-	prizes_energy.align = Label.ALIGN_RIGHT
+	var resources_view: Button = visual.get_node("OpponentResourcesView")
+	resources_view.rect_size = Vector2(60, 22)
+	resources_view.rect_position = resources.rect_position \
+			+ Vector2(92, resources.rect_size.y - 24)
+	var deck_box: Control = visual.get_node("OpponentDeck")
+	deck_box.rect_position = Vector2(resources_column_x, 2)
+	deck_box.rect_size = Vector2(
+			side_width, max(24.0, resources.rect_position.y - 6))
+	var deck_label: Label = visual.get_node("OpponentDeckLabel")
+	deck_label.rect_size = Vector2(148, 22)
+	deck_label.rect_position = deck_box.rect_position \
+			+ Vector2(4, deck_box.rect_size.y - 24)
+	var prizes_view: Button = visual.get_node("OpponentPrizesView")
+	prizes_view.rect_size = Vector2(59, 20)
+	prizes_view.rect_position = prizes.rect_position \
+			+ Vector2(4, prizes.rect_size.y - 24)
+	var field_label: Label = visual.get_node("OpponentFieldLabel")
+	field_label.rect_size = Vector2(grid_size.x, 20)
+	field_label.rect_position = Vector2(grid_x, player_field_y - 22)
 
 
 func _on_board_viewport_size_changed() -> void:

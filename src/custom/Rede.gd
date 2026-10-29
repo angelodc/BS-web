@@ -24,6 +24,7 @@ signal message_received(data)
 
 var is_connected := false
 var is_searching := false
+var is_solo := false
 var peer_tag := ""
 var player_username := ""
 var opponent_username := ""
@@ -129,6 +130,28 @@ func join_room(address: String, username: String, room_code: String) -> bool:
 				"username": username.strip_edges(),
 			},
 			"Entrando na sala " + code + "...")
+
+
+# The hotseat session runs both seats inside this process. The relay is never
+# contacted: the room is fake and send_message() drops everything because there
+# is no client, so the session code keeps walking the same paths as a real match.
+func start_solo(username: String) -> bool:
+	var cleaned := username.strip_edges()
+	if cleaned.empty():
+		_set_status("Digite um username para jogar sozinho.")
+		return false
+	disconnect_game()
+	is_solo = true
+	peer_tag = "H"
+	player_username = cleaned
+	opponent_username = cleaned
+	room_id = "SOLO"
+	match_mode = "match"
+	game_id = "SOLO-" + str(OS.get_ticks_usec())
+	match_participants = [cleaned, cleaned]
+	_set_status("Partida solo: voce controla os dois assentos.")
+	emit_signal("match_found", opponent_username)
+	return true
 
 
 func cancel_search() -> void:
@@ -313,6 +336,7 @@ func _close_socket() -> void:
 
 
 func _reset_match() -> void:
+	is_solo = false
 	peer_tag = ""
 	opponent_username = ""
 	room_id = ""

@@ -23,7 +23,7 @@ signal lobby_ready()
 const CheckpointStore = preload("res://src/custom/CheckpointStore.gd")
 
 enum State { IDLE, PREPARING, STARTING, PLAYING, WAITING, ENDED }
-enum Mode { NONE, MATCH, RESUME }
+enum Mode { NONE, MATCH, RESUME, SOLO }
 
 const DECK_SIZE := 60
 const START_HAND_SIZE := 10
@@ -76,6 +76,12 @@ var last_error := ""
 var opponent_counts := {"hand": 0, "deck": 0}
 var local_display := {}
 var opponent_display := {}
+# Hotseat only: which seat the deck picker is choosing for, the deck of each
+# seat, and the cards of the seat that is currently mirrored. The mirrored seat
+# is kept as data because its Card nodes only exist once the player swaps in.
+var solo_pick_slot := 1
+var solo_decks := {}
+var _solo_hidden := {}
 
 var _board: Control
 var _hud: Control
@@ -155,6 +161,10 @@ func is_ended() -> bool:
 	return state == State.ENDED
 
 
+func is_solo() -> bool:
+	return mode == Mode.SOLO
+
+
 func is_authority() -> bool:
 	return Rede.is_host() and state != State.IDLE
 
@@ -164,10 +174,14 @@ func is_frozen() -> bool:
 
 
 func get_my_username() -> String:
+	if mode == Mode.SOLO:
+		return get_slot_username(my_slot)
 	return Rede.player_username
 
 
 func get_opponent_username() -> String:
+	if mode == Mode.SOLO:
+		return get_slot_username(opponent_slot)
 	return Rede.opponent_username
 
 
@@ -195,7 +209,10 @@ func get_actor_username() -> String:
 
 
 func is_my_phase() -> bool:
-	return state == State.PLAYING and get_actor_slot() == my_slot
+	if state != State.PLAYING:
+		return false
+	# In the hotseat the human is both seats, so the phase never blocks them.
+	return mode == Mode.SOLO or get_actor_slot() == my_slot
 
 
 func get_phase_label() -> String:
@@ -211,10 +228,15 @@ func are_both_decks_ready() -> bool:
 
 
 func is_local_deck_ready() -> bool:
+	if mode == Mode.SOLO:
+		return _count_deck_cards(solo_decks.get(solo_pick_slot, {})) == DECK_SIZE
 	return local_deck_count == DECK_SIZE
 
 
 func get_deck_summary() -> String:
+	if mode == Mode.SOLO:
+		return get_slot_username(1) + ": " + _solo_deck_text(1) \
+				+ " · " + get_slot_username(2) + ": " + _solo_deck_text(2)
 	var mine := str(local_deck_count) + "/" + str(DECK_SIZE)
 	var theirs := str(opponent_deck_count) + "/" + str(DECK_SIZE)
 	if opponent_deck_count == 0 and opponent_deck_name.empty():
@@ -222,6 +244,14 @@ func get_deck_summary() -> String:
 	elif opponent_deck_ready:
 		theirs += " pronto"
 	return "Seu deck: " + mine + " · Oponente: " + theirs
+
+
+func _solo_deck_text(slot: int) -> String:
+	var deck: Dictionary = solo_decks.get(slot, {})
+	if deck.empty():
+		return "aguardando"
+	return str(deck.get("name", "Deck")) + " " \
+			+ str(_count_deck_cards(deck)) + "/" + str(DECK_SIZE)
 
 
 func get_rolls_text() -> String:
@@ -276,6 +306,8 @@ func register_board(board: Control, hud: Control, sync_node: Control) -> void:
 func select_deck(deck: Dictionary) -> Dictionary:
 	if state != State.PREPARING:
 		return {"ok": false, "reason": "A partida não está em preparação."}
+	if mode == Mode.SOLO:
+		return _select_solo_deck(solo_pick_slot, deck)
 	var count := _count_deck_cards(deck)
 	local_deck = deck
 	local_deck_name = str(deck.get("name", "Deck"))
@@ -284,6 +316,34 @@ func select_deck(deck: Dictionary) -> Dictionary:
 	emit_signal("prep_changed")
 	_send_prep()
 	_log("Deck selecionado: " + local_deck_name + " (" + str(count) + "/60).")
+	return {"ok": true, "count": count}
+
+
+func set_solo_pick_slot(slot: int) -> void:
+	if mode != Mode.SOLO or slot < 1 or slot > 2:
+		return
+	solo_pick_slot = slot
+	emit_signal("prep_changed")
+
+
+# The hotseat picks one deck per seat; both are known locally from the start, so
+# the second deck never travels and only its counts are shown while mirrored.
+func _select_solo_deck(slot: int, deck: Dictionary) -> Dictionary:
+	var count := _count_deck_cards(deck)
+	var deck_name := str(deck.get("name", "Deck"))
+	solo_decks[slot] = deck
+	_merge_definitions(deck.get("definitions", {}))
+	if slot == my_slot:
+		local_deck = deck
+		local_deck_name = deck_name
+		local_deck_count = count
+	else:
+		opponent_deck_name = deck_name
+		opponent_deck_count = count
+		opponent_deck_ready = count == DECK_SIZE
+	emit_signal("prep_changed")
+	_log("Deck de " + get_slot_username(slot) + ": " + deck_name + " ("
+			+ str(count) + "/" + str(DECK_SIZE) + ").")
 	return {"ok": true, "count": count}
 
 
@@ -303,7 +363,7 @@ func request_start() -> bool:
 func advance_phase() -> bool:
 	if state != State.PLAYING:
 		return false
-	if get_actor_slot() != my_slot:
+	if mode != Mode.SOLO and get_actor_slot() != my_slot:
 		return false
 	if is_authority():
 		_advance_as_authority()
@@ -401,6 +461,22 @@ func begin_join(
 	if not Rede.join_room(address, cleaned, room_code):
 		mode = Mode.NONE
 		return {"ok": false, "reason": Rede.get_status()}
+	return {"ok": true, "reason": ""}
+
+
+# The hotseat session starts synchronously: Rede.start_solo emits match_found
+# before returning, so the preparation state is ready when this call ends.
+func begin_solo(username: String) -> Dictionary:
+	var cleaned := username.strip_edges()
+	if cleaned.empty():
+		return {"ok": false, "reason": "Digite seu username."}
+	reset_session()
+	if not Rede.start_solo(cleaned):
+		mode = Mode.NONE
+		return {"ok": false, "reason": Rede.get_status()}
+	if mode != Mode.SOLO:
+		mode = Mode.NONE
+		return {"ok": false, "reason": "A partida solo não abriu."}
 	return {"ok": true, "reason": ""}
 
 
@@ -506,13 +582,28 @@ func _on_rede_match_found(_opponent: String) -> void:
 		local_deck = kept_deck
 		local_deck_name = kept_name
 		local_deck_count = kept_count
-	mode = Mode.RESUME if Rede.match_mode == "resume" else Mode.MATCH
+	if Rede.is_solo:
+		mode = Mode.SOLO
+	else:
+		mode = Mode.RESUME if Rede.match_mode == "resume" else Mode.MATCH
 	game_id = Rede.game_id
 	_id_prefix = (Rede.peer_tag if not Rede.peer_tag.empty() else "P") \
 			+ str(OS.get_ticks_usec())
 	opponent_counts = {"hand": 0, "deck": 0}
 	var my_name := Rede.player_username
-	if mode == Mode.MATCH:
+	if mode == Mode.SOLO:
+		my_slot = 1
+		opponent_slot = 2
+		solo_pick_slot = 1
+		solo_decks = {}
+		_solo_hidden = {}
+		p1_username = "P1"
+		p2_username = "P2"
+		state = State.PREPARING
+		_set_resume_state_before_wait(State.PREPARING)
+		_log("Partida solo: " + my_name + " controla P1 e P2. "
+				+ "Escolha os dois decks.")
+	elif mode == Mode.MATCH:
 		my_slot = 1 if Rede.is_host() else 2
 		opponent_slot = 3 - my_slot
 		p1_username = my_name if my_slot == 1 else Rede.opponent_username
@@ -849,11 +940,20 @@ func _apply_start(data: Dictionary) -> void:
 	if not _build_local_start(seed_text):
 		_abort_match("Não foi possível montar seu deck para a partida.")
 		return
+	if mode == Mode.SOLO and not _build_solo_opponent(seed_text):
+		_abort_match("Não foi possível montar o deck do segundo jogador.")
+		return
 	_start_applied = true
 	state = State.PLAYING
 	_update_pause()
+	if _sync.has_method("set_solo_preview"):
+		_sync.set_solo_preview(mode == Mode.SOLO)
 	if _sync.has_method("start_mirroring"):
 		_sync.start_mirroring()
+	if mode == Mode.SOLO:
+		# Mirroring starts with the counts at zero because a real peer has not
+		# reported yet; the hotseat already knows the other seat's deck.
+		set_opponent_counts(opponent_counts)
 	_send_board_ready()
 	if _sync.has_method("send_snapshot"):
 		_sync.send_snapshot()
@@ -902,6 +1002,128 @@ func _build_local_start(seed_text: String) -> bool:
 	hand.re_place()
 	hand.call_deferred("re_place")
 	return true
+
+
+#-----------------------------------------------------------------------------
+# Solo hotseat
+#-----------------------------------------------------------------------------
+
+# The seat that is not being controlled keeps its cards as data only: its Card
+# nodes are created when the player swaps into it and freed when they swap out.
+func _build_solo_opponent(seed_text: String) -> bool:
+	var deck: Dictionary = solo_decks.get(opponent_slot, {})
+	if _count_deck_cards(deck) != DECK_SIZE:
+		return false
+	var payload := _solo_hidden_payload(deck, opponent_slot, seed_text)
+	if payload.empty():
+		return false
+	_solo_hidden[opponent_slot] = payload
+	set_opponent_counts({
+		"hand": payload["hand"].size(),
+		"deck": payload["deck"].size(),
+	})
+	_opponent_board_counts_received = true
+	return true
+
+
+func _solo_hidden_payload(
+		deck: Dictionary, slot: int, seed_text: String) -> Dictionary:
+	var names: Array = deck.get("cards", {}).keys()
+	names.sort()
+	var pool := []
+	for card_name in names:
+		for _i in range(int(deck.cards[card_name])):
+			pool.append(str(card_name))
+	if pool.size() != DECK_SIZE:
+		return {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(seed_text + "|seat" + str(slot))
+	for index in range(pool.size() - 1, 0, -1):
+		var pick := rng.randi_range(0, index)
+		var held = pool[index]
+		pool[index] = pool[pick]
+		pool[pick] = held
+	var hand := []
+	var rest := []
+	for index in range(pool.size()):
+		var entry := {
+			"id": "SOLO" + str(slot) + "_" + str(index + 1),
+			"name": pool[index],
+		}
+		if index < START_HAND_SIZE:
+			hand.append(entry)
+		else:
+			rest.append(entry)
+	return {"hand": hand, "deck": rest, "definitions": {}}
+
+
+# Swapping seats rebuilds the table from the state that a checkpoint restore
+# would use, so the hotseat shows exactly what the other client would show.
+func swap_solo_seat() -> bool:
+	if mode != Mode.SOLO or state != State.PLAYING:
+		return false
+	if not _board or not is_instance_valid(_board) or not _sync:
+		return false
+	var target_slot := opponent_slot
+	if _solo_hidden.get(target_slot, {}).empty():
+		_log("O assento " + get_slot_username(target_slot)
+				+ " ainda não tem cartas.")
+		return false
+	var public_state := _build_public_state(sequence)
+	_solo_hidden[my_slot] = _build_private_payload()
+	my_slot = target_slot
+	opponent_slot = 3 - target_slot
+	_rebuild_solo_board(public_state)
+	return true
+
+
+func _rebuild_solo_board(public_state: Dictionary) -> void:
+	if _sync.has_method("set_suppressed"):
+		_sync.set_suppressed(true)
+	GameEvents.suppressed = true
+	_solo_clear_local_cards()
+	_restore_own_hidden_cards(_solo_hidden.get(my_slot, {}))
+	_restore_own_public_cards(public_state)
+	if _sync.has_method("apply_public_snapshot"):
+		_sync.apply_public_snapshot(public_state, opponent_slot)
+	GameEvents.suppressed = false
+	if _sync.has_method("set_suppressed"):
+		_sync.set_suppressed(false)
+	var mirrored: Dictionary = _solo_hidden.get(opponent_slot, {})
+	set_opponent_counts({
+		"hand": _entry_count(mirrored.get("hand", [])),
+		"deck": _entry_count(mirrored.get("deck", [])),
+	})
+	if _sync.has_method("reconcile_scenarios"):
+		_sync.reconcile_scenarios(public_state)
+	emit_signal("phase_changed")
+	emit_signal("session_changed")
+	_log("Você agora controla " + get_slot_username(my_slot) + ".")
+
+
+func _entry_count(entries) -> int:
+	return entries.size() if typeof(entries) == TYPE_ARRAY else 0
+
+
+func _solo_clear_local_cards() -> void:
+	for card in get_tree().get_nodes_in_group("cards"):
+		if not (card is Card) or not is_instance_valid(card) or card.network_mirror:
+			continue
+		var slot = card._placement_slot
+		if slot and is_instance_valid(slot):
+			slot.occupying_card = null
+		card._placement_slot = null
+		var parent = card.get_parent()
+		if parent:
+			parent.remove_child(card)
+		card.queue_free()
+	for pile_name in ["deck", "discard"]:
+		var pile = cfc.NMAP.get(pile_name, null)
+		if pile and pile.has_method("reorganize_stack"):
+			pile.reorganize_stack()
+	var prizes: Pile = _prizes_pile()
+	if prizes and prizes.has_method("reorganize_stack"):
+		prizes.reorganize_stack()
 
 
 func _send_board_ready() -> void:
@@ -1121,15 +1343,15 @@ func _build_private_payload() -> Dictionary:
 	if cfc.NMAP.has("hand"):
 		for card in _local_cards_in(cfc.NMAP.hand):
 			ensure_card_id(card)
-			hand_entries.append({"id": card.network_id, "name": card.canonical_name})
-			definitions[card.canonical_name] = \
-					cfc.card_definitions.get(card.canonical_name, {})
+			hand_entries.append({"id": card.network_id, "name": card.definition_key()})
+			definitions[card.definition_key()] = \
+					cfc.card_definitions.get(card.definition_key(), {})
 	if cfc.NMAP.has("deck"):
 		for card in _local_cards_in(cfc.NMAP.deck):
 			ensure_card_id(card)
-			deck_entries.append({"id": card.network_id, "name": card.canonical_name})
-			definitions[card.canonical_name] = \
-					cfc.card_definitions.get(card.canonical_name, {})
+			deck_entries.append({"id": card.network_id, "name": card.definition_key()})
+			definitions[card.definition_key()] = \
+					cfc.card_definitions.get(card.definition_key(), {})
 	return {
 		"hand": hand_entries,
 		"deck": deck_entries,
@@ -1139,6 +1361,10 @@ func _build_private_payload() -> Dictionary:
 
 func _send_private_envelope(seq: int) -> void:
 	if seq < 0 or Rede.player_username.empty():
+		return
+	# A hotseat has no peer to send to and both seats share one username, so a
+	# checkpoint could never hold two distinct envelopes.
+	if mode == Mode.SOLO:
 		return
 	var payload := _build_private_payload()
 	var envelope := CheckpointStore.protect_payload(
@@ -1259,6 +1485,9 @@ func _try_save_checkpoint(seq: int) -> void:
 # envelopes of every sequence, so the current checkpoint can be written again
 # on demand without any extra network round.
 func save_current_game() -> Dictionary:
+	if mode == Mode.SOLO:
+		return {"ok": false,
+				"message": "A partida solo não salva checkpoints."}
 	if sequence < 0 or not _public_states.has(sequence):
 		return {"ok": false,
 				"message": "Ainda não há estado da partida para salvar."}
@@ -1632,10 +1861,12 @@ func _apply_pending_restore() -> void:
 			set_opponent_counts(restored_counts)
 	if _sync.has_method("set_suppressed"):
 		_sync.set_suppressed(true)
+	GameEvents.suppressed = true
 	_restore_own_hidden_cards(payload)
 	if _sync.has_method("apply_public_snapshot"):
 		_sync.apply_public_snapshot(public_state, opponent_slot)
 	_restore_own_public_cards(public_state)
+	GameEvents.suppressed = false
 	if _sync.has_method("set_suppressed"):
 		_sync.set_suppressed(false)
 	if _sync.has_method("start_mirroring"):
@@ -1662,6 +1893,14 @@ func _restore_own_hidden_cards(payload: Dictionary) -> void:
 	var hand_entries = payload.get("hand", [])
 	if typeof(deck_entries) != TYPE_ARRAY or typeof(hand_entries) != TYPE_ARRAY:
 		return
+	# A seat can only be rebuilt while its own definitions are still registered,
+	# which is not the case after a set changes between sessions.
+	var definitions = payload.get("definitions", {})
+	if typeof(definitions) == TYPE_DICTIONARY:
+		for card_name in definitions:
+			if typeof(definitions[card_name]) == TYPE_DICTIONARY \
+					and not definitions[card_name].empty():
+				cfc.card_definitions[str(card_name)] = definitions[card_name]
 	for entry in deck_entries:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
@@ -1726,6 +1965,8 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 				var slot: BoardPlacementSlot = null
 				if zone == "scenario":
 					slot = _scenario_placement_slot()
+				elif zone == "board":
+					slot = _scene_placement_slot(int(entry.get("slot", -1)))
 				if slot:
 					card.global_position = slot.rect_global_position
 					card._placement_slot = slot
@@ -1736,7 +1977,7 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 									float(entry.get("y", 0.5))))
 				card.set_state(Card.CardState.ON_PLAY_BOARD)
 				card.set_card_rotation(
-						int(entry.get("rot", 0)), false, false, false)
+						int(entry.get("rot", 0)), false, true, false)
 		var host_id := str(entry.get("host", ""))
 		if not host_id.empty():
 			pending_attachments.append({"card": card, "host": host_id})
@@ -1783,8 +2024,10 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 
 func _instance_restored_card(card_name: String) -> Card:
 	if card_name.empty():
+		push_warning("Carta restaurada sem nome; assento pode ficar incompleto.")
 		return null
 	if not cfc.card_definitions.has(card_name):
+		push_warning("Carta restaurada fora das definições: '" + card_name + "'")
 		return null
 	return cfc.instance_card(card_name)
 
@@ -1800,6 +2043,20 @@ func _scenario_placement_slot() -> BoardPlacementSlot:
 	if not grid or grid.get_slot_count() == 0:
 		return null
 	var slot: BoardPlacementSlot = grid.get_slot(0)
+	if slot.occupying_card:
+		return null
+	return slot
+
+
+# A restored scene card only takes its slot back while the slot is still free,
+# so two entries can never end up sharing the same spot.
+func _scene_placement_slot(index: int) -> BoardPlacementSlot:
+	if index < 0:
+		return null
+	var grid: BoardPlacementGrid = _board.get_node_or_null("PlacementGridDemo")
+	if not grid or index >= grid.get_slot_count():
+		return null
+	var slot: BoardPlacementSlot = grid.get_slot(index)
 	if slot.occupying_card:
 		return null
 	return slot
@@ -1912,6 +2169,9 @@ func _clear_session_fields() -> void:
 	local_display = {}
 	opponent_display = {}
 	_display_checked = false
+	solo_pick_slot = 1
+	solo_decks = {}
+	_solo_hidden = {}
 
 
 func _store_opponent_display(data: Dictionary) -> void:

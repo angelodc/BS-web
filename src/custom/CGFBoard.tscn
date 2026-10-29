@@ -55,10 +55,12 @@ position = Vector2( 0, 360 )
 script = ExtResource( 4 )
 placement = 0
 pile_name = "Deck"
-card_size = Vector2( 120, 168 )
-card_display_scale = 0.55
+card_size = Vector2( 150, 210 )
+card_display_scale = 0.66
+show_manipulation_buttons = false
 
 [node name="VBoxContainer" parent="Deck/Control/CenterContainer" index="0"]
+visible = false
 margin_right = 68.0
 margin_bottom = 109.0
 
@@ -75,6 +77,9 @@ margin_right = 68.0
 
 [node name="CardCount" parent="Deck/Control/CenterContainer/VBoxContainer/PanelContainer/CenterContainer" index="0"]
 margin_right = 45.0
+
+[node name="ManipulationButtons" parent="Deck/Control" index="2"]
+visible = false
 
 [node name="View" parent="Deck/Control/ManipulationButtons" index="0"]
 visible = false

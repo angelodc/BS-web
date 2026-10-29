@@ -403,6 +403,7 @@ Rede="*res://src/custom/Rede.gd"
 Multiplayer="*res://src/custom/Multiplayer.gd"
 LocalRelay="*res://src/custom/LocalRelay.gd"
 DisplayMode="*res://src/custom/DisplayMode.gd"
+GameEvents="*res://src/custom/GameEvents.gd"
 
 [display]
 

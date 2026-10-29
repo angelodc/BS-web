@@ -2,13 +2,12 @@
 #
 # Only hand and deck are private. Prizes, resources, scenario and board are
 # public and mirrored. Board coordinates travel normalized so both clients can
-# use different viewport sizes. The remote cursor shows only the pointer.
+# use different viewport sizes. The remote presence reveals only which zone
+# the opponent mouse is in, drawn as a lens over the mirrored zone.
 extends Control
 
 const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
 const DRAG_SEND_INTERVAL := 0.08
-const CURSOR_SEND_INTERVAL := 0.1
-const CURSOR_HIDE_AFTER := 3.0
 const COUNTS_SEND_DELAY := 0.12
 const HIDDEN_SWEEP_INTERVAL := 1.5
 const HIDDEN_ZONES := ["hand", "deck"]
@@ -32,6 +31,8 @@ const SCENARIO_LABEL_MARGIN := 22.0
 const RESOURCES_HOVER_SCALE := 0.35
 const RESOURCES_HOVER_MAX := 6
 const RESOURCES_HOVER_WIDTH := 176.0
+# The zone lens pulses so a still frame still reads as "someone is here".
+const LENS_PULSE_SPEED := 5.0
 
 var _active := false
 var _suppressed := false
@@ -45,9 +46,11 @@ var _sent_visible := {}
 var _pending_cards := {}
 var _resources_hover := false
 var _hand_placeholders := []
-var _cursor: Control
-var _cursor_hide_timer := 0.0
-var _cursor_send_timer := 0.0
+var _lens: Panel
+var _lens_time := 0.0
+var _remote_zone := ""
+var _sent_zone := ""
+var _solo_preview := false
 var _drag_timer := 0.0
 var _counts_timer := 0.0
 var _sweep_timer := 0.0
@@ -64,7 +67,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if cfc.ut:
 		return
-	_build_cursor()
+	_build_lens()
 	# warning-ignore:return_value_discarded
 	Rede.connect("message_received", self, "_on_network_message")
 	# warning-ignore:return_value_discarded
@@ -93,8 +96,10 @@ func stop_mirroring() -> void:
 	_remote_drag_card = null
 	_clear_remote_cards()
 	_clear_hand_placeholders()
-	if _cursor and is_instance_valid(_cursor):
-		_cursor.visible = false
+	_remote_zone = ""
+	_sent_zone = ""
+	_solo_preview = false
+	_hide_lens()
 
 
 func set_suppressed(value: bool) -> void:
@@ -103,11 +108,14 @@ func set_suppressed(value: bool) -> void:
 
 func _process(delta: float) -> void:
 	_update_remote_drag()
-	_update_cursor_receiver(delta)
+	_update_lens(delta)
 	_update_resources_hover()
+	if _solo_preview:
+		_preview_zone_presence()
+		return
 	if not _can_send():
 		return
-	_send_cursor(delta)
+	_send_zone_presence()
 	_send_pending_counts(delta)
 	_send_dragged_card(delta)
 	_sweep_hidden_cards(delta)
@@ -193,7 +201,7 @@ func _send_card_state(card: Card, zone: String, dragging := false) -> void:
 		"t": "mp_card",
 		"id": net_id,
 		"zone": zone,
-		"name": card.canonical_name,
+		"name": card.definition_key(),
 		"face": 1 if card.is_faceup else 0,
 		"rot": int(card.card_rotation),
 		"drag": 1 if dragging else 0,
@@ -205,11 +213,14 @@ func _send_card_state(card: Card, zone: String, dragging := false) -> void:
 		var normalized := _normalize_board_position(card.global_position)
 		payload["x"] = normalized.x
 		payload["y"] = normalized.y
+		# A dragged card has left its slot, so only a settled card names one.
+		if not dragging:
+			payload["slot"] = _slot_index(card._placement_slot)
 	if zone == "scenario":
 		payload["claim"] = int(_scenario_claims.get(net_id, 0))
 	if card.current_host_card and is_instance_valid(card.current_host_card):
 		payload["host"] = Multiplayer.ensure_card_id(card.current_host_card)
-	var definition = cfc.card_definitions.get(card.canonical_name, {})
+	var definition = cfc.card_definitions.get(card.definition_key(), {})
 	if typeof(definition) == TYPE_DICTIONARY and not definition.empty():
 		payload["definition"] = definition
 	Rede.send_message(payload)
@@ -272,7 +283,7 @@ func send_card_to_opponent_prizes(card: Card) -> bool:
 		"t": "mp_card",
 		"id": net_id,
 		"zone": "opponent_prizes",
-		"name": card.canonical_name,
+		"name": card.definition_key(),
 		"face": 1,
 		"rot": 0,
 		"drag": 0,
@@ -281,7 +292,7 @@ func send_card_to_opponent_prizes(card: Card) -> bool:
 		"y": 0.5,
 		"claim": 0,
 	}
-	var definition = cfc.card_definitions.get(card.canonical_name, {})
+	var definition = cfc.card_definitions.get(card.definition_key(), {})
 	if typeof(definition) == TYPE_DICTIONARY and not definition.empty():
 		payload["definition"] = definition
 	Rede.send_message(payload)
@@ -308,8 +319,8 @@ func _on_network_message(data: Dictionary) -> void:
 			_send_definition(str(data.get("name", "")))
 		"mp_sync_request":
 			send_snapshot()
-		"mp_cursor":
-			_apply_remote_cursor(data)
+		"mp_zone":
+			_apply_remote_zone(str(data.get("zone", "")))
 		"mp_card_move_request":
 			_apply_move_request(data)
 
@@ -345,7 +356,7 @@ func _apply_remote_card(data: Dictionary) -> void:
 		_apply_remote_card(resource_data)
 		return
 	var card: Card = _remote_cards.get(net_id)
-	if is_instance_valid(card) and card.canonical_name != card_name:
+	if is_instance_valid(card) and card.definition_key() != card_name:
 		_discard_remote_card(net_id)
 		card = null
 	if not is_instance_valid(card):
@@ -353,11 +364,16 @@ func _apply_remote_card(data: Dictionary) -> void:
 	if not is_instance_valid(card):
 		return
 	var travel := Vector2(float(data.get("x", 0.5)), float(data.get("y", 0.5)))
+	var slot_index := int(data.get("slot", -1))
 	var rotation := int(data.get("rot", 0))
 	var face := int(data.get("face", 1)) == 1
 	var host_id := str(data.get("host", ""))
-	_remember_remote_meta(
-			net_id, zone, card_name, travel, rotation, face, host_id, claim)
+	var previous_meta = _remote_meta.get(net_id, {})
+	var previous_zone := ""
+	if typeof(previous_meta) == TYPE_DICTIONARY:
+		previous_zone = str(previous_meta.get("zone", ""))
+	_remember_remote_meta(net_id, zone, card_name, travel, rotation, face,
+			host_id, claim, slot_index)
 	_configure_remote_card(card)
 	_set_remote_card_interactive(card, zone)
 	var host: Card = _remote_cards.get(host_id)
@@ -368,7 +384,7 @@ func _apply_remote_card(data: Dictionary) -> void:
 			card.attach_to_host(host, false, ["net"])
 	elif card.current_host_card:
 		card._clear_attachment_status(["net"])
-	var target := _position_for_remote(zone, travel, net_id)
+	var target := _target_for_remote(zone, travel, net_id, slot_index)
 	if card.get_parent() != cfc.NMAP.board:
 		if card.get_parent():
 			card.get_parent().remove_child(card)
@@ -380,14 +396,18 @@ func _apply_remote_card(data: Dictionary) -> void:
 	card.set_is_faceup(face, true, false, ["net"])
 	card.scale = Vector2(1, 1) * _scale_for_zone(zone)
 	# The mirror is seen from the other side of the table, so it is shown
-	# upside down like a real opponent's card.
+	# upside down like a real opponent's card. The rotation only reaches the
+	# drawn control through the tween, so it has to start here.
 	# warning-ignore:return_value_discarded
-	card.set_card_rotation((rotation + 180) % 360, false, false, false, ["net"])
+	card.set_card_rotation((rotation + 180) % 360, false, true, false, ["net"])
 	if card.attachments.size() > 0:
 		card._organize_attachments()
 	_update_remote_zone_labels()
-	if _cursor and is_instance_valid(_cursor):
-		_cursor.raise()
+	# Drag ticks repeat the same zone many times per second, so only a zone
+	# change is worth a line in the log.
+	if int(data.get("drag", 0)) == 0 and previous_zone != zone:
+		GameEvents.record_remote_card(zone, card_name, face,
+				host.canonical_name if is_instance_valid(host) else "")
 
 
 # The opponent sent one of their characters to this player's prize area. It
@@ -417,6 +437,7 @@ func _apply_remote_card_to_local_prizes(net_id: String, card_name: String) -> vo
 	# warning-ignore:return_value_discarded
 	card.set_is_faceup(true, true, false, ["net"])
 	card.card_rotation = 0
+	GameEvents.record_remote_card("opponent_prizes", card_name, true)
 	_send_card_state(card, "prizes")
 	if board.has_method("_update_prize_energy"):
 		board._update_prize_energy()
@@ -464,28 +485,127 @@ func _update_remote_drag() -> void:
 	var card := _remote_drag_card
 	_remote_drag_card = null
 	card.z_index = 0
-	if not _can_send():
-		return
 	var meta = _remote_meta.get(str(card.network_id), {})
 	var zone := str(meta.get("zone", "board"))
 	if not zone in ["board", "scenario"]:
 		return
 	var travel := Vector2(0.5, 0.5)
+	var slot_index := -1
 	if zone == "board":
-		var grid: Control = cfc.NMAP.board.get_node_or_null(
-				"PlacementGridDemo")
-		if grid and grid.rect_size.x > 0 and grid.rect_size.y > 0:
-			travel = (card.global_position - grid.rect_global_position) \
-					/ grid.rect_size
-			travel.x = clamp(travel.x, 0.0, 1.0)
-			travel.y = clamp(travel.y, 0.0, 1.0)
-	Rede.send_message({
+		travel = _owner_travel_for_mirror(card.global_position)
+		slot_index = _mirror_slot_at(card.global_position)
+	if _drop_mirror_locally(card, zone, slot_index):
+		return
+	if not _can_send():
+		return
+	var request := {
 		"t": "mp_card_move_request",
 		"id": str(card.network_id),
 		"zone": zone,
 		"x": travel.x,
 		"y": travel.y,
-	})
+	}
+	if slot_index >= 0:
+		request["slot"] = slot_index
+	Rede.send_message(request)
+
+
+# The mirror lives in the opponent band, which is the owner grid turned 180
+# degrees, so a drop has to be reported in the owner's own frame. The dragged
+# position is the corner of a slot-sized card, hence the half slot shift.
+func _owner_travel_for_mirror(point: Vector2) -> Vector2:
+	var scene := _opponent_scene()
+	var grid := _scene_grid()
+	if not scene or not grid or scene.rect_size.x <= 0.0 \
+			or scene.rect_size.y <= 0.0:
+		return Vector2(0.5, 0.5)
+	var travel: Vector2 = (point + _half_slot(grid) \
+			- scene.rect_global_position) / scene.rect_size
+	return Vector2(clamp(1.0 - travel.x, 0.0, 1.0),
+			clamp(1.0 - travel.y, 0.0, 1.0))
+
+
+# Slot of the opponent band a mirrored drop lines up with, or -1 when the card
+# was released outside the band.
+func _mirror_slot_at(point: Vector2) -> int:
+	var scene := _opponent_scene()
+	var grid := _scene_grid()
+	if not scene or not grid:
+		return -1
+	var center := point + _half_slot(grid)
+	if not Rect2(scene.rect_global_position, scene.rect_size).has_point(center):
+		return -1
+	var best := -1
+	var best_distance := INF
+	for index in range(grid.get_slot_count()):
+		var mirrored := _mirrored_slot_rect(index)
+		if mirrored.size.x <= 0.0:
+			continue
+		var distance: float = (mirrored.position + mirrored.size * 0.5) \
+				.distance_to(center)
+		if distance < best_distance:
+			best_distance = distance
+			best = index
+	return best
+
+
+# A mirrored scene card is drawn at the slot size, and the dragged position is
+# its corner, so the corner plus half a slot is the point both sides agree on.
+func _half_slot(grid: BoardPlacementGrid) -> Vector2:
+	if grid.get_slot_count() == 0:
+		return Vector2.ZERO
+	return grid.get_slot(0).rect_size * 0.5
+
+
+# Normalized centre of a local scene slot in the owner's frame, so the travel
+# that accompanies a slot always agrees with it.
+func _slot_travel(index: int) -> Vector2:
+	var grid := _scene_grid()
+	if not grid or index < 0 or index >= grid.get_slot_count():
+		return Vector2(0.5, 0.5)
+	var slot: Control = grid.get_slot(index)
+	return _normalize_board_position(slot.rect_global_position \
+			+ slot.rect_size * 0.5)
+
+
+# In the hotseat both seats live in this process, so there is no owner to ask:
+# the ghost settles on the slot it was dropped on and the slot travels with the
+# public state when the seats are swapped. Returns true when the drop was
+# handled here and no request should cross the relay.
+func _drop_mirror_locally(card: Card, zone: String, slot_index: int) -> bool:
+	if not Multiplayer.is_solo() or _suppressed or not _active \
+			or not Multiplayer.is_playing():
+		return false
+	if zone != "board" or slot_index < 0:
+		_restore_mirror_position(card)
+		return true
+	var meta = _remote_meta.get(str(card.network_id), {})
+	if typeof(meta) != TYPE_DICTIONARY:
+		return true
+	var mirrored := _mirrored_slot_rect(slot_index)
+	if mirrored.size.x <= 0.0:
+		return true
+	card.global_position = mirrored.position
+	card._target_position = mirrored.position
+	meta["slot"] = slot_index
+	var travel := _slot_travel(slot_index)
+	meta["x"] = travel.x
+	meta["y"] = travel.y
+	return true
+
+
+# A mirrored drop that misses every slot goes back to where the recorded state
+# keeps it, instead of staying stranded between the two bands.
+func _restore_mirror_position(card: Card) -> void:
+	var meta = _remote_meta.get(str(card.network_id), {})
+	if typeof(meta) != TYPE_DICTIONARY:
+		return
+	var zone := str(meta.get("zone", "board"))
+	var travel := Vector2(float(meta.get("x", 0.5)), float(meta.get("y", 0.5)))
+	var target := _target_for_remote(zone, travel, str(card.network_id),
+			int(meta.get("slot", -1)))
+	card.global_position = target
+	card._target_position = target
 
 
 func _apply_move_request(data: Dictionary) -> void:
@@ -510,23 +630,7 @@ func _apply_move_request(data: Dictionary) -> void:
 		var grid: BoardPlacementGrid = board.get_node_or_null(
 				"PlacementGridDemo")
 		if grid:
-			var travel := Vector2(
-					clamp(float(data.get("x", 0.5)), 0.0, 1.0),
-					clamp(float(data.get("y", 0.5)), 0.0, 1.0))
-			var target := grid.rect_global_position \
-					+ Vector2(travel.x * grid.rect_size.x,
-							travel.y * grid.rect_size.y)
-			var best_distance := INF
-			for candidate_slot in grid.get_all_slots():
-				if candidate_slot.occupying_card \
-						and candidate_slot.occupying_card != card:
-					continue
-				var center: Vector2 = candidate_slot.rect_global_position \
-						+ candidate_slot.rect_size * 0.5
-				var distance := center.distance_to(target)
-				if distance < best_distance:
-					best_distance = distance
-					slot = candidate_slot
+			slot = _requested_board_slot(grid, data, card)
 	else:
 		var scenario_grid: BoardPlacementGrid = board.get_node_or_null(
 				"ModifiedLabelGrid")
@@ -545,6 +649,39 @@ func _apply_move_request(data: Dictionary) -> void:
 	card.global_position = slot.rect_global_position
 	card._target_position = card.global_position
 	_send_card_state(card, zone)
+
+
+# The mirror names the slot its drop lined up with. The normalized travel is
+# only the fallback for a drop that missed every slot of the opponent band, or
+# for a request coming from a client whose grid has a different shape.
+func _requested_board_slot(grid: BoardPlacementGrid, data: Dictionary,
+		card: Card) -> BoardPlacementSlot:
+	var slots := grid.get_all_slots()
+	var wanted := int(data.get("slot", -1))
+	if wanted >= 0 and wanted < slots.size():
+		var requested: BoardPlacementSlot = slots[wanted]
+		if is_instance_valid(requested) \
+				and (not requested.occupying_card \
+						or requested.occupying_card == card):
+			return requested
+	var travel := Vector2(
+			clamp(float(data.get("x", 0.5)), 0.0, 1.0),
+			clamp(float(data.get("y", 0.5)), 0.0, 1.0))
+	var target := grid.rect_global_position \
+			+ Vector2(travel.x * grid.rect_size.x, travel.y * grid.rect_size.y)
+	var best: BoardPlacementSlot = null
+	var best_distance := INF
+	for candidate_slot in slots:
+		if candidate_slot.occupying_card \
+				and candidate_slot.occupying_card != card:
+			continue
+		var center: Vector2 = candidate_slot.rect_global_position \
+				+ candidate_slot.rect_size * 0.5
+		var distance := center.distance_to(target)
+		if distance < best_distance:
+			best_distance = distance
+			best = candidate_slot
+	return best
 
 
 func _connect_view_button(node_name: String, zone: String) -> void:
@@ -619,7 +756,8 @@ func _remember_remote_meta(
 		rotation: int,
 		face: bool,
 		host_id: String,
-		claim := 0) -> void:
+		claim := 0,
+		slot := -1) -> void:
 	var previous = _remote_meta.get(net_id, {})
 	if typeof(previous) == TYPE_DICTIONARY:
 		var old_zone := str(previous.get("zone", ""))
@@ -630,6 +768,7 @@ func _remember_remote_meta(
 		"name": card_name,
 		"x": travel.x,
 		"y": travel.y,
+		"slot": slot,
 		"rot": rotation,
 		"face": 1 if face else 0,
 		"host": host_id,
@@ -648,61 +787,125 @@ func _apply_remote_counts(data: Dictionary) -> void:
 	Multiplayer.set_opponent_counts({"hand": hand, "deck": deck})
 
 
-func _apply_remote_cursor(data: Dictionary) -> void:
-	if not _active or not is_instance_valid(_cursor):
+func _apply_remote_zone(zone: String) -> void:
+	if not _active:
 		return
-	if int(data.get("v", 1)) != 1:
-		_cursor.visible = false
+	if zone == _remote_zone:
 		return
+	_remote_zone = zone
+	_place_lens()
+
+
+# The opponent pointer never leaves their own half, so presence travels as a
+# zone name only and is drawn as a lens over the mirrored box on this side.
+func _send_zone_presence() -> void:
+	var zone := _local_mouse_zone()
+	if zone == _sent_zone:
+		return
+	_sent_zone = zone
+	Rede.send_message({"t": "mp_zone", "zone": zone})
+
+
+func set_solo_preview(value: bool) -> void:
+	_solo_preview = value
+	if not value:
+		_hide_lens()
+
+
+# The hotseat has no peer to report to, so the local zone drives the lens
+# directly: hovering a zone shows what the other client would draw over the
+# mirrored box of that same zone.
+func _preview_zone_presence() -> void:
+	if not _active:
+		return
+	_apply_remote_zone(_local_mouse_zone())
+
+
+func _local_mouse_zone() -> String:
 	var board: Control = cfc.NMAP.board
 	if not board:
-		return
-	var x := clamp(float(data.get("x", 0.5)), 0.0, 1.0)
-	var y := clamp(float(data.get("y", 0.5)), 0.0, 1.0)
-	_cursor.rect_position = mirror_remote_point(
-			Vector2(x, y), board.rect_size)
-	_cursor.visible = true
-	_cursor.raise()
-	_cursor_hide_timer = 0.0
+		return ""
+	return _zone_at(board.get_global_mouse_position())
 
 
-# The board is seen from the opposite side, so the opponent pointer is rotated
-# 180 degrees onto the top half instead of appearing on top of the local field.
-func mirror_remote_point(normalized: Vector2, board_size: Vector2) -> Vector2:
-	return Vector2(
-			(1.0 - normalized.x) * board_size.x,
-			(1.0 - normalized.y) * board_size.y)
-
-
-func _update_cursor_receiver(delta: float) -> void:
-	if not is_instance_valid(_cursor) or not _cursor.visible:
-		return
-	_cursor_hide_timer += delta
-	if _cursor_hide_timer >= CURSOR_HIDE_AFTER:
-		_cursor.visible = false
-
-
-func _send_cursor(delta: float) -> void:
-	_cursor_send_timer += delta
-	if _cursor_send_timer < CURSOR_SEND_INTERVAL:
-		return
-	_cursor_send_timer = 0.0
+# The local piles are matched before the hand because the hand band stretches
+# under them, so a point over the deck belongs to the deck and not the hand.
+func _zone_at(point: Vector2) -> String:
 	var board: Control = cfc.NMAP.board
-	if not board or board.rect_size.x <= 0 or board.rect_size.y <= 0:
+	if not board:
+		return ""
+	var scenario: Control = board.get_node_or_null("ModifiedLabelGrid")
+	if _contains_global(scenario, point):
+		return "scenario"
+	if _contains_global(_container_area(board.get_node_or_null("Prêmios")), point):
+		return "prizes"
+	for entry in [["deck", "deck"], ["discard", "resources"], ["hand", "hand"]]:
+		if _contains_global(_container_area(cfc.NMAP.get(entry[0], null)), point):
+			return entry[1]
+	return ""
+
+
+# Hand and piles are Area2D containers whose clickable box is a Control child.
+func _container_area(container) -> Control:
+	if container is Control:
+		return container
+	if container and container.has_node("Control"):
+		return container.get_node("Control") as Control
+	return null
+
+
+func _contains_global(area: Control, point: Vector2) -> bool:
+	if not area:
+		return false
+	return Rect2(area.rect_global_position, area.rect_size).has_point(point)
+
+
+func _place_lens() -> void:
+	var target := _lens_target()
+	if not target:
+		_hide_lens()
 		return
-	var local_mouse := board.get_global_mouse_position() \
-			- board.rect_global_position
-	var normalized := Vector2(
-			local_mouse.x / board.rect_size.x,
-			local_mouse.y / board.rect_size.y)
-	var inside := normalized.x >= 0.0 and normalized.x <= 1.0 \
-			and normalized.y >= 0.0 and normalized.y <= 1.0
-	Rede.send_message({
-		"t": "mp_cursor",
-		"x": clamp(normalized.x, 0.0, 1.0),
-		"y": clamp(normalized.y, 0.0, 1.0),
-		"v": 1 if inside else 0,
-	})
+	_lens.rect_global_position = target.rect_global_position - Vector2(4, 4)
+	_lens.rect_size = target.rect_size + Vector2(8, 8)
+	_lens.modulate.a = 1.0
+	_lens_time = 0.0
+	_lens.visible = true
+	_lens.raise()
+
+
+func _hide_lens() -> void:
+	if _lens and is_instance_valid(_lens):
+		_lens.visible = false
+
+
+func _lens_target() -> Control:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return null
+	var visual: Control = board.get_node_or_null("OpponentFieldVisual")
+	if not visual:
+		return null
+	match _remote_zone:
+		"hand":
+			return visual.get_node_or_null(
+					"OpponentHandBackground") as Control
+		"deck":
+			return visual.get_node_or_null("OpponentDeck") as Control
+		"resources":
+			return visual.get_node_or_null(
+					"OpponentResourcesBackground") as Control
+		"prizes":
+			return visual.get_node_or_null("OpponentPrizes") as Control
+		"scenario":
+			return visual.get_node_or_null("OpponentScenario") as Control
+	return null
+
+
+func _update_lens(delta: float) -> void:
+	if not is_instance_valid(_lens) or not _lens.visible:
+		return
+	_lens_time += delta
+	_lens.modulate.a = 0.65 + 0.35 * sin(_lens_time * LENS_PULSE_SPEED)
 
 
 #-----------------------------------------------------------------------------
@@ -720,7 +923,7 @@ func build_public_card_entries(my_slot: int, opponent_slot: int) -> Dictionary:
 		if zone in HIDDEN_ZONES:
 			continue
 		cards.append(_local_entry(card, zone, my_slot))
-		_add_definition(definitions, card.canonical_name)
+		_add_definition(definitions, card.definition_key())
 	for net_id in _remote_cards:
 		var card = _remote_cards[net_id]
 		if not is_instance_valid(card):
@@ -731,7 +934,7 @@ func build_public_card_entries(my_slot: int, opponent_slot: int) -> Dictionary:
 		var zone := str(meta.get("zone", "board"))
 		if zone in HIDDEN_ZONES:
 			continue
-		var card_name := str(meta.get("name", card.canonical_name))
+		var card_name := str(meta.get("name", card.definition_key()))
 		cards.append({
 			"id": net_id,
 			"owner": opponent_slot,
@@ -739,6 +942,7 @@ func build_public_card_entries(my_slot: int, opponent_slot: int) -> Dictionary:
 			"name": card_name,
 			"x": float(meta.get("x", 0.5)),
 			"y": float(meta.get("y", 0.5)),
+			"slot": int(meta.get("slot", -1)),
 			"rot": int(meta.get("rot", 0)),
 			"face": int(meta.get("face", 1)),
 			"host": str(meta.get("host", "")),
@@ -830,8 +1034,8 @@ func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
 
 
 func _on_peer_disconnected() -> void:
-	if _cursor and is_instance_valid(_cursor):
-		_cursor.visible = false
+	_remote_zone = ""
+	_hide_lens()
 
 
 func _on_session_ended(_message: String) -> void:
@@ -915,7 +1119,7 @@ func _move_remote_scenario_to_resources(net_id: String) -> void:
 		"t": "mp_card",
 		"id": net_id,
 		"zone": "resources",
-		"name": card.canonical_name,
+		"name": card.definition_key(),
 		"x": 0.5,
 		"y": 0.5,
 		"rot": int(card.card_rotation),
@@ -1064,6 +1268,93 @@ func _normalize_board_position(global_pos: Vector2) -> Vector2:
 	return Vector2(clamp(relative.x, 0.0, 1.0), clamp(relative.y, 0.0, 1.0))
 
 
+func _scene_grid() -> BoardPlacementGrid:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return null
+	return board.get_node_or_null("PlacementGridDemo") as BoardPlacementGrid
+
+
+func _opponent_scene() -> Control:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return null
+	var visual: Control = board.get_node_or_null("OpponentFieldVisual")
+	if not visual:
+		return null
+	return visual.get_node_or_null("OpponentScene") as Control
+
+
+# Index of a slot inside the local scene grid, or -1 for a card that is not
+# sitting on one.
+func _slot_index(slot) -> int:
+	var grid := _scene_grid()
+	if not grid or not is_instance_valid(slot) \
+			or not (slot is BoardPlacementSlot):
+		return -1
+	return grid.get_all_slots().find(slot)
+
+
+# The two scene bands are the same box seen from opposite sides of the table,
+# so a slot mirrors by turning 180 degrees around the box centre. The owner's
+# front row, nearest the middle line on their screen, lands on the row nearest
+# the middle line here, which is what makes the two fields face each other.
+# An empty rect means the slot could not be mirrored.
+func _mirrored_slot_rect(index: int) -> Rect2:
+	var grid := _scene_grid()
+	var scene := _opponent_scene()
+	if not grid or not scene or index < 0 \
+			or grid.rect_size.x <= 0.0 or grid.rect_size.y <= 0.0:
+		return Rect2()
+	var slots := grid.get_all_slots()
+	if index >= slots.size():
+		return Rect2()
+	var slot: Control = slots[index]
+	if not is_instance_valid(slot):
+		return Rect2()
+	var offset: Vector2 = slot.rect_global_position - grid.rect_global_position
+	return Rect2(scene.rect_global_position + scene.rect_size - offset \
+			- slot.rect_size, slot.rect_size)
+
+
+# A scene card that sits in one of the owner's slots is mirrored into the
+# matching slot of the opponent band, so both fields keep the same geometry.
+# A card that is not resting on a slot still lives in the owner's table space,
+# so its mirror is the same box turned 180 degrees; only a travelling card
+# without any table geometry falls back to the zone stack.
+func _target_for_remote(zone: String, travel: Vector2, net_id: String,
+		slot_index: int) -> Vector2:
+	if zone == "board":
+		if slot_index >= 0:
+			var mirrored := _mirrored_slot_rect(slot_index)
+			if mirrored.size.x > 0.0:
+				return mirrored.position
+		var point := _mirrored_board_point(travel,
+				CFConst.CARD_SIZE * BOARD_SCALE)
+		if point != Vector2.INF:
+			return point
+	return _position_for_remote(zone, travel, net_id)
+
+
+# Point reflection of a table-space coordinate through the centre of the scene
+# box, minus the room the drawn card takes on this side of the table. An INF
+# result means the two bands are not laid out yet.
+func _mirrored_board_point(travel: Vector2, display_size: Vector2) -> Vector2:
+	var grid := _scene_grid()
+	var scene := _opponent_scene()
+	if not grid or not scene or not is_instance_valid(grid) \
+			or not is_instance_valid(scene) or grid.rect_size.x <= 0.0 \
+			or grid.rect_size.y <= 0.0 or scene.rect_size.x <= 0.0 \
+			or scene.rect_size.y <= 0.0:
+		return Vector2.INF
+	var scaled := Vector2(
+			display_size.x * scene.rect_size.x / grid.rect_size.x,
+			display_size.y * scene.rect_size.y / grid.rect_size.y)
+	return scene.rect_global_position + scene.rect_size \
+			- Vector2(travel.x * scene.rect_size.x,
+					travel.y * scene.rect_size.y) - scaled
+
+
 func _position_for_remote(zone: String, travel: Vector2, net_id: String) -> Vector2:
 	var board: Control = cfc.NMAP.board
 	if not board:
@@ -1175,7 +1466,7 @@ func _update_resources_hover() -> void:
 	if hover == _resources_hover:
 		return
 	_resources_hover = hover
-	area.margin_left = -RESOURCES_HOVER_WIDTH if hover else -156.0
+	area.rect_size.x = RESOURCES_HOVER_WIDTH if hover else 156.0
 	_relayout_remote_resources()
 
 
@@ -1416,9 +1707,10 @@ func _local_entry(card: Card, zone: String, owner: int) -> Dictionary:
 		"id": net_id,
 		"owner": owner,
 		"zone": zone,
-		"name": card.canonical_name,
+		"name": card.definition_key(),
 		"x": 0.5,
 		"y": 0.5,
+		"slot": -1,
 		"rot": int(card.card_rotation),
 		"face": 1 if card.is_faceup else 0,
 		"host": "",
@@ -1427,6 +1719,7 @@ func _local_entry(card: Card, zone: String, owner: int) -> Dictionary:
 		var normalized := _normalize_board_position(card.global_position)
 		entry["x"] = normalized.x
 		entry["y"] = normalized.y
+		entry["slot"] = _slot_index(card._placement_slot)
 	if zone == "scenario":
 		entry["claim"] = int(_scenario_claims.get(net_id, 0))
 	if card.current_host_card and is_instance_valid(card.current_host_card):
@@ -1442,6 +1735,7 @@ func _entry_as_message(entry: Dictionary) -> Dictionary:
 		"name": str(entry.get("name", "")),
 		"x": float(entry.get("x", 0.5)),
 		"y": float(entry.get("y", 0.5)),
+		"slot": int(entry.get("slot", -1)),
 		"rot": int(entry.get("rot", 0)),
 		"face": int(entry.get("face", 1)),
 		"host": str(entry.get("host", "")),
@@ -1482,33 +1776,20 @@ func _dummy_card_name() -> String:
 
 
 #-----------------------------------------------------------------------------
-# Cursor
+# Zone lens
 #-----------------------------------------------------------------------------
 
-func _build_cursor() -> void:
+func _build_lens() -> void:
 	if not cfc.NMAP.has("board"):
 		return
-	_cursor = Control.new()
-	_cursor.name = "OpponentCursor"
-	_cursor.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_cursor.visible = false
-	var dot := ColorRect.new()
-	dot.rect_size = Vector2(10, 10)
-	dot.color = Color(1.0, 0.9, 0.2, 0.95)
-	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_cursor.add_child(dot)
-	var outline := ColorRect.new()
-	outline.rect_position = Vector2(-2, -2)
-	outline.rect_size = Vector2(14, 14)
-	outline.color = Color(0, 0, 0, 0.6)
-	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_cursor.add_child(outline)
-	_cursor.move_child(outline, 0)
-	var label := Label.new()
-	label.rect_position = Vector2(14, 8)
-	label.text = Multiplayer.get_opponent_username()
-	label.add_color_override("font_color", Color(1.0, 0.9, 0.2))
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_cursor.add_child(label)
-	cfc.NMAP.board.add_child(_cursor)
-	_cursor.raise()
+	_lens = Panel.new()
+	_lens.name = "OpponentZoneLens"
+	_lens.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_lens.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1.0, 0.83, 0.47, 0.10)
+	style.border_color = Color(1.0, 0.83, 0.47, 0.95)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(12)
+	_lens.add_stylebox_override("panel", style)
+	cfc.NMAP.board.add_child(_lens)

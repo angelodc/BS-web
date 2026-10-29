@@ -11,6 +11,7 @@ onready var join_room_button := $MainMenu/VBox/Center/VButtons/JoinRow/JoinRoom
 onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
 onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
 onready var single_player_button := $MainMenu/VBox/Center/VButtons/SinglePlayerDemo
+onready var solo_match_button := $MainMenu/VBox/Center/VButtons/SoloMatch
 onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
 onready var resume_button := $MainMenu/VBox/Center/VButtons/ResumeGame
 
@@ -50,6 +51,17 @@ func on_button_pressed(_button_name : String) -> void:
 			cfc.current_deck = {}
 			# warning-ignore:return_value_discarded
 			get_tree().change_scene(CFConst.PATH_CUSTOM + 'CGFMain.tscn')
+		"SoloMatch":
+			if _lobby_busy:
+				return
+			var solo_identity := _prepare_identity()
+			if not solo_identity.get("ok", false):
+				return
+			# begin_solo entra no jogo sozinho: o lobby_ready chega dentro dele.
+			var solo_result := Multiplayer.begin_solo(
+					solo_identity["username"])
+			if not solo_result.get("ok", false):
+				_show_action_error(str(solo_result.get("reason", "")))
 		"CreateMatch":
 			if _lobby_busy:
 				return
@@ -158,8 +170,8 @@ func _set_lobby_busy(busy: bool) -> void:
 	relay_address_input.editable = not busy
 	room_code_input.editable = not busy
 	for button in [
-			single_player_button, create_match_button, join_room_button,
-			resume_button]:
+			single_player_button, solo_match_button, create_match_button,
+			join_room_button, resume_button]:
 		button.disabled = busy
 	_update_lobby_controls()
 

@@ -32,7 +32,7 @@ func test_placement_slots():
 	assert_eq(CFConst.TARGET_HOVER_COLOUR,
 			grid.get_slot(2).get_node("Highlight").modulate,
 			"Third slot highlighted with new colour")
-	yield(move_mouse(Vector2(510,300)), 'completed')
+	yield(move_mouse(Vector2(560,300)), 'completed')
 	assert_eq(grid.get_highlighted_slot(), grid.get_slot(3),
 			"Fourth slot highlighted")
 	yield(move_mouse(Vector2(250,300)), 'completed')
@@ -223,15 +223,15 @@ func test_scenario_grid_matches_card_size():
 	var scenario_grid = add_child_autoqfree(
 			load("res://src/custom/CGFModifiedLabelGrid.tscn").instance())
 	yield(yield_for(0.1), YIELD)
-	# The active scenario is shown at full card size, unlike the regular board
-	# cards that use the play area scale.
-	var card_area: Vector2 = CFConst.CARD_SIZE
+	# The active scenario uses its own scale so it stays smaller than the
+	# regular board cards.
+	var card_area: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
 	assert_eq(scenario_grid.name_label.text, "Cenário Ativo",
 			"Scenario grid keeps its label")
 	assert_eq(scenario_grid.rect_size, card_area,
-			"Scenario grid is exactly the size of a full card")
+			"Scenario grid matches the scenario card size")
 	assert_eq(scenario_grid.get_slot(0).rect_size, card_area,
-			"Scenario slot is exactly the size of a full card")
+			"Scenario slot matches the scenario card size")
 
 
 func test_scene_grid_is_three_by_two():
@@ -247,10 +247,10 @@ func test_scene_grid_is_three_by_two():
 			"Scene grid holds six cards for the active player")
 	assert_eq(scene_grid.get_slot(0).rect_size, slot_size,
 			"Scene slot matches the size of a card on the board")
-	assert_eq(scene_grid.rect_size, Vector2(
+	assert_almost_eq(scene_grid.rect_size, Vector2(
 			3 * slot_size.x + 2 * separation,
 			2 * slot_size.y + MousePointer.MOUSE_RADIUS * 2 + 1)
-			+ Vector2(4, 4),
+			+ Vector2(4, 4), Vector2(0.01, 0.01),
 			"Scene grid fits two rows of three sideways-wide slots")
 
 
@@ -262,14 +262,14 @@ func test_scene_grid_uses_all_available_width():
 	var separation: int = int(scene_grid.get_node("GridContainer").get_constant(
 			"hseparation"))
 	var slot_size: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
-	assert_eq(scene_grid.get_node("GridContainer").columns, 8,
-			"Eight sideways-wide columns fit in the central area")
-	assert_eq(scene_grid.get_slot_count(), 16,
-			"Eight columns become two rows of eight slots")
-	assert_eq(scene_grid.rect_size, Vector2(
-			8 * slot_size.x + 7 * separation,
+	assert_eq(scene_grid.get_node("GridContainer").columns, 7,
+			"Seven sideways-wide columns fit in the central area")
+	assert_eq(scene_grid.get_slot_count(), 14,
+			"Seven columns become two rows of seven slots")
+	assert_almost_eq(scene_grid.rect_size, Vector2(
+			7 * slot_size.x + 6 * separation,
 			2 * slot_size.y + MousePointer.MOUSE_RADIUS * 2 + 1)
-			+ Vector2(4, 4),
+			+ Vector2(4, 4), Vector2(0.01, 0.01),
 			"Scene grid covers the widest central area")
 
 
@@ -311,13 +311,15 @@ func test_scene_grid_auto_placement_starts_at_center():
 	assert_eq(scene_grid.get_auto_placement_slot(), scene_grid.get_slot(3),
 			"First automatic card goes to the front center")
 	scene_grid.get_slot(3).occupying_card = cards[0]
+	# Seven columns leave one exact center, so the order walks left first:
+	# 3, 2, 4, 1, 5, 0, 6.
 	assert_eq(scene_grid.get_auto_placement_slot(cards[1]),
-			scene_grid.get_slot(4),
+			scene_grid.get_slot(2),
 			"Next card fills the front row from the center outwards")
-	for index in range(8):
+	for index in range(7):
 		scene_grid.get_slot(index).occupying_card = cards[0]
 	assert_eq(scene_grid.get_auto_placement_slot(cards[1]),
-			scene_grid.get_slot(11),
+			scene_grid.get_slot(10),
 			"Cards move to the back center after the front row is full")
 	for slot in scene_grid.get_all_slots():
 		slot.occupying_card = null
@@ -333,7 +335,7 @@ func test_support_prefers_back_center_with_characters_in_front():
 	scene_grid.get_slot(3).occupying_card = cards[0]
 	var support_slot: BoardPlacementSlot = \
 			scene_grid.get_auto_placement_slot(cards[1])
-	assert_eq(support_slot, scene_grid.get_slot(11),
+	assert_eq(support_slot, scene_grid.get_slot(10),
 			"Support starts at the back center when characters hold the front")
 	scene_grid.get_slot(3).occupying_card = null
 
@@ -554,15 +556,27 @@ func test_scenario_claim_resolution():
 			"A tie discards the guest scenario")
 
 
-func test_opponent_cursor_is_mirrored_to_top_half():
+func test_zone_presence_maps_board_points_to_zones():
 	var sync = autofree(load("res://src/custom/MultiplayerSync.gd").new())
-	var board_size := Vector2(1280, 720)
-	var mirrored: Vector2 = sync.mirror_remote_point(
-			Vector2(0.25, 0.75), board_size)
-	assert_eq(mirrored, Vector2(960, 180),
-			"Opponent pointer is rotated 180 degrees on the local board")
-	assert_true(mirrored.y < board_size.y / 2.0,
-			"Opponent pointer in their field appears in the top half")
+	var deck_area: Control = deck.get_node("Control")
+	var deck_center: Vector2 = deck_area.rect_global_position \
+			+ deck_area.rect_size * 0.5
+	assert_eq(sync._zone_at(deck_center), "deck",
+			"A point over the deck reports the deck zone")
+	var discard_area: Control = discard.get_node("Control")
+	var discard_center: Vector2 = discard_area.rect_global_position \
+			+ discard_area.rect_size * 0.5
+	assert_eq(sync._zone_at(discard_center), "resources",
+			"A point over the discard pile reports the resources zone")
+	var hand_area: Control = hand.get_node("Control")
+	var hand_point := Vector2(640.0,
+			hand_area.rect_global_position.y + hand_area.rect_size.y * 0.5)
+	assert_eq(sync._zone_at(hand_point), "hand",
+			"A point over the hand band reports the hand zone")
+	assert_eq(sync._zone_at(Vector2(640, 20)), "",
+			"A point outside every box reports no zone")
+	assert_true(sync._local_mouse_zone() is String,
+			"The live mouse lookup always answers with a zone name")
 
 
 func test_remote_board_positions_are_mirrored_and_contained():
@@ -608,4 +622,65 @@ func test_remote_scenario_position_is_centered():
 	assert_true(position.y + display.y \
 			<= area.rect_global_position.y + area.rect_size.y,
 			"Remote scenario fits inside its area")
+
+
+func test_scene_slots_mirror_into_the_opponent_band():
+	var sync = autofree(load("res://src/custom/MultiplayerSync.gd").new())
+	var scene_grid: BoardPlacementGrid = \
+			load("res://src/custom/CGFPlacementGridDemo.tscn").instance()
+	scene_grid.name = "PlacementGridDemo"
+	board.add_child(scene_grid)
+	autofree(scene_grid)
+	var visual := Control.new()
+	visual.name = "OpponentFieldVisual"
+	board.add_child(visual)
+	autofree(visual)
+	var scene := Control.new()
+	scene.name = "OpponentScene"
+	visual.add_child(scene)
+	yield(yield_for(0.2), YIELD)
+	scene_grid.rect_position = Vector2(400, 400)
+	scene.rect_size = scene_grid.rect_size
+	scene.rect_global_position = scene_grid.rect_global_position \
+			- Vector2(0, scene_grid.rect_size.y)
+	yield(yield_for(0.1), YIELD)
+
+	var first: BoardPlacementSlot = scene_grid.get_slot(0)
+	var mirrored: Rect2 = sync._mirrored_slot_rect(0)
+	assert_eq(mirrored.size, first.rect_size,
+			"A mirrored slot keeps the size of a scene slot")
+	var slot_offset: Vector2 = first.rect_global_position \
+			+ first.rect_size * 0.5 - scene_grid.rect_global_position
+	assert_almost_eq(
+			mirrored.position + mirrored.size * 0.5 - scene.rect_global_position,
+			scene.rect_size - slot_offset, Vector2(0.01, 0.01),
+			"A slot mirrors by turning 180 degrees inside the opponent band")
+	var middle_y: float = scene.rect_global_position.y + scene.rect_size.y * 0.5
+	assert_true(mirrored.position.y + mirrored.size.y * 0.5 > middle_y,
+			"The owner front row lands on the row nearest the middle line")
+	var last: Rect2 = sync._mirrored_slot_rect(scene_grid.get_slot_count() - 1)
+	assert_true(last.position.y + last.size.y * 0.5 < middle_y,
+			"The owner back row lands on the row farthest from the middle line")
+	assert_true(sync._mirrored_slot_rect(99).size.x <= 0.0,
+			"An unknown slot cannot be mirrored")
+
+	var travel: Vector2 = sync._owner_travel_for_mirror(mirrored.position)
+	var target: Vector2 = scene_grid.rect_global_position \
+			+ Vector2(travel.x * scene_grid.rect_size.x,
+					travel.y * scene_grid.rect_size.y)
+	assert_true(Rect2(first.rect_global_position, first.rect_size) \
+			.has_point(target),
+			"The travel sent back lands inside the slot the owner used")
+	assert_eq(sync._mirror_slot_at(mirrored.position), 0,
+			"A drop on a mirrored slot asks for the matching owner slot")
+	assert_eq(sync._mirror_slot_at(Vector2(10, 10)), -1,
+			"A drop outside the opponent band asks for no slot")
+
+	var card: Card = cards[0]
+	card._placement_slot = first
+	assert_eq(int(sync._local_entry(card, "board", 1)["slot"]), 0,
+			"A settled scene card advertises its slot")
+	card._placement_slot = null
+	assert_eq(int(sync._local_entry(card, "board", 1)["slot"]), -1,
+			"A card outside the scene grid advertises no slot")
 

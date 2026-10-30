@@ -22,10 +22,13 @@ no anfitrião (cliente Godot); ele não valida jogadas.
 - O cliente Godot já envia `join_room` (menu “Entrar com código”), lê
   `?room=CODIGO` no build web e usa `wss://` por padrão. O desktop continua
   podendo usar o relay LAN embutido e o `tools/ws_relay.py`.
+- O site está em produção em https://battle-scenes.netlify.app (deploy manual da
+  CLI, sem Git CD). O lobby lê o `RELAY_URL` configurado no Netlify pelo
+  `/api/salas` e anexa `?relay=` sozinho no link do jogo.
 - Pendente: hostname fixo (domínio na conta Cloudflare ou provedor always-on),
-  trocar o placeholder `wss://relay.exemplo.com` em [Rede.gd](../src/custom/Rede.gd)
-  pelo endereço real, publicar o site (hoje o celular depende de `ssh -R` para
-  alcançar o PC) e validar dois navegadores em redes diferentes.
+  tirar o placeholder `wss://relay.exemplo.com` de [Rede.gd](../src/custom/Rede.gd)
+  — ele só aparece quando a página é aberta sem `?relay=` — e validar dois
+  navegadores em redes diferentes.
 - Uma instância basta para a v1. Escalar horizontalmente exigiria estado
   compartilhado (Redis) e não está no escopo.
 
@@ -231,8 +234,8 @@ Layout no aparelho:
 ```
 
 Sessões tmux: `bs-relay` (Node na 9080), `cf-relay` (túnel do relay) e
-`cf-site` (túnel do site, só quando a 8888 está alcançável — hoje o site vem do
-PC por `ssh -R 8888:localhost:8888`).
+`cf-site` (túnel do site, só para testar o build local quando a 8888 está
+alcançável por `ssh -R 8888:localhost:8888`; a produção é o Netlify).
 
 ```bash
 ssh termux-pelada
@@ -241,10 +244,11 @@ bash ~/projetos/bs-relay/iniciar-tudo.sh      # idempotente
 curl -sS http://127.0.0.1:9080/healthz
 ```
 
-O player aponta o cliente para o hostname do túnel:
-`https://<site>.trycloudflare.com/game/?relay=<relay>.trycloudflare.com&room=CODIGO`.
-O `?relay=` é necessário porque o padrão web em `Rede.WEB_DEFAULT_ADDRESS` ainda
-é placeholder.
+O player abre o site em https://battle-scenes.netlify.app e clica em “Abrir o
+jogo”; o lobby já monta o link com
+`?relay=<relay>.trycloudflare.com`. Um link direto para `/game/` continua
+funcionando, mas precisa desse parâmetro, porque o padrão web em
+`Rede.WEB_DEFAULT_ADDRESS` ainda é placeholder.
 
 Limites dessa rota: o hostname `*.trycloudflare.com` **muda a cada reinício do
 túnel**; o quick tunnel não tem SLA e o Android pode matar o processo em Doze

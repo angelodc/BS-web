@@ -241,7 +241,9 @@ hospedagem, e Supabase/AWS serverless não sustentam WebSocket. O transporte é
 enquanto: hostname efêmero, sem SLA e risco de Doze — ver a seção
 “Celular (Termux + cloudflared)” em [relay/README.md](./relay/README.md).
 Domínios próprios (`play.` / `relay.`) e túnel nomeado ficam para quando houver
-contas externas; o site ainda depende do PC via `ssh -R 8888`.
+contas externas. O site de produção está no Netlify (deploy manual da CLI,
+`battle-scenes.netlify.app`); o `ssh -R 8888` só serve para testar o build local
+pelo túnel.
 
 ### Fase 1 — Build web funcional (1–2 dias)
 
@@ -470,9 +472,10 @@ Critério de aceite: página lista salas reais, remove expiradas, não vaza IPs 
 o link abre o jogo já com o código preenchido.
 
 **Status:** Function `GET /api/salas`, página `/salas` e `netlify.toml` estão
-implementados no repositório e funcionam localmente com `netlify dev` + relay.
-O cliente Godot já lê `/game/?room=CODIGO` e preenche o código no menu, e o
-build HTML5 local já foi gerado. Falta publicar o site e o relay.
+publicados em https://battle-scenes.netlify.app (deploy manual da CLI). O
+`RELAY_URL` aponta para o túnel do relay e o `/api/salas` devolve esse endereço,
+então o lobby anexa `?relay=` sozinho ao link do jogo; o cliente Godot segue
+lendo `/game/?room=CODIGO` e preenchendo o código no menu.
 
 ### Fase 4 — Integração no cliente (2–5 dias)
 

@@ -35,7 +35,7 @@ __meta__ = {
 }
 
 [node name="Control" type="Panel" parent="."]
-self_modulate = Color( 1, 1, 1, 0.5 )
+self_modulate = Color( 1, 1, 1, 0 )
 mouse_filter = 1
 custom_styles/panel = SubResource( 1 )
 __meta__ = {

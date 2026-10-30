@@ -1,7 +1,10 @@
 extends Panel
 
+const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
+
 onready var v_buttons := $MainMenu/VBox/Center/VButtons
 onready var main_menu := $MainMenu
+onready var backdrop := $MainMenu/Backdrop
 onready var checkpoint_list := $CheckpointList
 onready var action_error := $ActionError
 onready var player_name_input := $MainMenu/VBox/Center/VButtons/PlayerName
@@ -10,7 +13,6 @@ onready var room_code_input := $MainMenu/VBox/Center/VButtons/JoinRow/RoomCode
 onready var join_room_button := $MainMenu/VBox/Center/VButtons/JoinRow/JoinRoom
 onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
 onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
-onready var single_player_button := $MainMenu/VBox/Center/VButtons/SinglePlayerDemo
 onready var solo_match_button := $MainMenu/VBox/Center/VButtons/SoloMatch
 onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
 onready var resume_button := $MainMenu/VBox/Center/VButtons/ResumeGame
@@ -37,20 +39,25 @@ func _ready() -> void:
 	Multiplayer.connect("session_ended", self, "_on_session_ended")
 	Multiplayer.connect("resume_status", self, "_on_resume_status")
 	match_status.text = Rede.get_status()
+	_apply_backdrop()
 	_update_lobby_controls()
 	# warning-ignore:return_value_discarded
 	get_viewport().connect("size_changed", self, '_on_Menu_resized')
 
 
+# The menu shows the same artwork that the board uses as its default playmat.
+# Loading it here instead of referencing it in the scene keeps working before
+# the editor has imported the file, which is the state right after art arrives.
+func _apply_backdrop() -> void:
+	var texture := PlaymatCatalog.texture_for_path(PlaymatCatalog.BACKDROP_PATH)
+	# A missing artwork leaves the plain dark panel instead of breaking the menu.
+	if texture == null:
+		return
+	backdrop.texture = texture
+
+
 func on_button_pressed(_button_name : String) -> void:
 	match _button_name:
-		"SinglePlayerDemo":
-			if _lobby_busy:
-				return
-			Multiplayer.leave_session()
-			cfc.current_deck = {}
-			# warning-ignore:return_value_discarded
-			get_tree().change_scene(CFConst.PATH_CUSTOM + 'CGFMain.tscn')
 		"SoloMatch":
 			if _lobby_busy:
 				return
@@ -170,8 +177,8 @@ func _set_lobby_busy(busy: bool) -> void:
 	relay_address_input.editable = not busy
 	room_code_input.editable = not busy
 	for button in [
-			single_player_button, solo_match_button, create_match_button,
-			join_room_button, resume_button]:
+			solo_match_button, create_match_button, join_room_button,
+			resume_button]:
 		button.disabled = busy
 	_update_lobby_controls()
 

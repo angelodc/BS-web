@@ -253,6 +253,11 @@ text = "Playmat"
 [node name="PlaymatOptions" type="OptionButton" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
 rect_min_size = Vector2( 210, 38 )
 
+[node name="PlaymatUpload" type="Button" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
+rect_min_size = Vector2( 170, 38 )
+hint_tooltip = "Escolha uma imagem do seu computador. Sugestão: 1920x1080 (16:9), JPG ou PNG."
+text = "Subir playmat"
+
 [node name="Spacer" type="Control" parent="PreparePanel/Margin/VBox"]
 size_flags_vertical = 3
 mouse_filter = 2

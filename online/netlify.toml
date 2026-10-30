@@ -14,17 +14,21 @@
     X-Content-Type-Options = "nosniff"
     Permissions-Policy = "fullscreen=(self)"
 
+# O shell do Godot 3.4 pede index.pck e index.wasm sem query de versao, e toda
+# exportacao reescreve esses mesmos nomes. Com cache immutable por um ano o
+# navegador de quem ja jogou continuaria no build antigo; com must-revalidate
+# ele confere o ETag (304 quando nada mudou) e pega o build novo na hora.
 [[headers]]
   for = "/game/*.wasm"
   [headers.values]
     Content-Type = "application/wasm"
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/game/*.pck"
   [headers.values]
     Content-Type = "application/octet-stream"
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/game/index.html"

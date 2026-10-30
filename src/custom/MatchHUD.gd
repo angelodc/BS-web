@@ -11,6 +11,12 @@ const MENU_LEAVE := 1
 const CARD_LINK_COLOR := "#ffd479"
 const ACTIVE_SEAT_COLOR := Color(1.0, 0.85, 0.45)
 const IDLE_SEAT_COLOR := Color(0.82, 0.86, 0.92)
+const PLAYMAT_UPLOAD_HINT := "Playmat: use uma imagem 16:9, de preferência 1920x1080."
+const PLAYMAT_WEB_MAX_BYTES := 12 * 1024 * 1024
+# The browser has no file dialog Godot can open, so the artwork is picked by a
+# hidden <input type="file"> and handed over as base64. GDScript reads it in
+# chunks, which keeps the frames short while a large photo comes across.
+const WEB_CHUNK_SIZE := 262144
 
 onready var _top_bar: PanelContainer = $TopBar
 onready var _phase_label: Label = $TopBar/Margin/VBox/PhaseLabel
@@ -33,6 +39,8 @@ onready var _saved_decks: MenuButton = $PreparePanel/Margin/VBox/DeckButtons/Sav
 onready var _link_deck_button: Button = $PreparePanel/Margin/VBox/DeckButtons/LinkDeck
 onready var _playmat_options: OptionButton = \
 		$PreparePanel/Margin/VBox/PlaymatButtons/PlaymatOptions
+onready var _playmat_upload: Button = \
+		$PreparePanel/Margin/VBox/PlaymatButtons/PlaymatUpload
 onready var _start_button: Button = $PreparePanel/Margin/VBox/StartButton
 onready var _cancel_button: Button = $PreparePanel/Margin/VBox/CancelButton
 onready var _overlay: ColorRect = $Overlay
@@ -51,6 +59,11 @@ var _solo_deck_popup: PopupMenu
 var _preview_name := ""
 var _preview_card: Card = null
 var _preview_owned := {}
+var _playmat_dialog: FileDialog
+var _playmat_poll: Timer
+var _playmat_chunk := ""
+var _playmat_offset := 0
+var _playmat_total := -1
 
 
 func _ready() -> void:
@@ -69,6 +82,7 @@ func _ready() -> void:
 	match_popup.connect("id_pressed", self, "_on_match_menu_pressed")
 	_link_deck_button.connect("pressed", self, "_on_link_deck_pressed")
 	_playmat_options.connect("item_selected", self, "_on_playmat_selected")
+	_playmat_upload.connect("pressed", self, "_on_playmat_upload_pressed")
 	_populate_playmats()
 	_start_button.connect("pressed", self, "_on_start_pressed")
 	_cancel_button.connect("pressed", self, "_on_leave_pressed")
@@ -110,6 +124,10 @@ func _exit_tree() -> void:
 		if is_instance_valid(card):
 			card.queue_free()
 	_preview_owned.clear()
+	# The file dialog hangs off the window, so leaving the tree takes it along.
+	if is_instance_valid(_playmat_dialog):
+		_playmat_dialog.queue_free()
+		_playmat_dialog = null
 
 
 #-----------------------------------------------------------------------------
@@ -199,9 +217,219 @@ func _on_playmat_selected(index: int) -> void:
 		return
 	var playmat_id := str(_playmat_list[index].get("id", ""))
 	PlaymatCatalog.remember_id(playmat_id)
+	_apply_playmat(playmat_id)
+
+
+func _apply_playmat(playmat_id: String) -> void:
 	var board := get_parent()
 	if board and board.has_method("apply_playmat"):
 		board.apply_playmat(playmat_id)
+
+
+#-----------------------------------------------------------------------------
+# Own playmat: the artwork comes from the player's machine, which lets the web
+# build ship without any bundled image.
+#-----------------------------------------------------------------------------
+
+func _on_playmat_upload_pressed() -> void:
+	if OS.has_feature("web"):
+		_begin_web_playmat_pick()
+		return
+	_open_playmat_dialog()
+
+
+func _open_playmat_dialog() -> void:
+	if _playmat_dialog == null:
+		_playmat_dialog = FileDialog.new()
+		_playmat_dialog.name = "PlaymatFileDialog"
+		_playmat_dialog.mode = FileDialog.MODE_OPEN_FILE
+		_playmat_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		_playmat_dialog.filters = PoolStringArray(
+				["*.png, *.jpg, *.jpeg, *.webp ; Imagens"])
+		_playmat_dialog.connect("file_selected", self,
+				"_on_playmat_file_selected")
+		# Parented to the window so the dialog opens centered on screen.
+		get_tree().root.add_child(_playmat_dialog)
+	_playmat_dialog.popup_centered(Vector2(760, 500))
+
+
+func _on_playmat_file_selected(path: String) -> void:
+	var image := Image.new()
+	if image.load(path) != OK:
+		_playmat_note("Não foi possível ler " + path.get_file() + ".")
+		return
+	_store_playmat(image)
+
+
+# Assembled at call time instead of kept as a constant: the size limit stays in
+# one place, and a GDScript constant expression cannot call str().
+static func web_picker_js() -> String:
+	return PoolStringArray([
+		"window.__bsPlaymat = window.__bsPlaymat || {",
+		"  data: '', name: '', error: '', busy: false };",
+		"window.__bsPlaymatStatus = function () {",
+		"  var state = window.__bsPlaymat;",
+		"  if (state.busy) { return 'busy'; }",
+		"  if (state.error) { return state.error; }",
+		"  return state.data.length > 0 ? 'ready' : 'idle';",
+		"};",
+		"window.__bsPlaymatLength = function () {",
+		"  return window.__bsPlaymat.data.length;",
+		"};",
+		"window.__bsPlaymatChunk = function (offset, size) {",
+		"  return window.__bsPlaymat.data.substring(offset, offset + size);",
+		"};",
+		"window.__bsPlaymatReset = function () {",
+		"  var state = window.__bsPlaymat;",
+		"  state.data = ''; state.name = ''; state.error = ''; state.busy = false;",
+		"  return 'ok';",
+		"};",
+		"window.__bsPlaymatPick = function () {",
+		"  var state = window.__bsPlaymat;",
+		"  state.data = ''; state.name = ''; state.error = ''; state.busy = true;",
+		"  var input = document.createElement('input');",
+		"  input.type = 'file';",
+		"  input.accept = 'image/png,image/jpeg,image/webp';",
+		"  input.style.display = 'none';",
+		"  input.onchange = function () {",
+		"    var file = input.files && input.files[0];",
+		"    if (!file) { state.busy = false; state.error = 'cancel'; return; }",
+		"    if (file.size > " + str(PLAYMAT_WEB_MAX_BYTES) + ") {",
+		"      state.busy = false; state.error = 'big'; return;",
+		"    }",
+		"    var reader = new FileReader();",
+		"    reader.onload = function () {",
+		"      var text = String(reader.result || '');",
+		"      var comma = text.indexOf(',');",
+		"      state.name = file.name;",
+		"      state.data = comma >= 0 ? text.substring(comma + 1) : '';",
+		"      state.busy = false;",
+		"      if (state.data.length === 0) { state.error = 'read'; }",
+		"    };",
+		"    reader.onerror = function () {",
+		"      state.busy = false; state.error = 'read';",
+		"    };",
+		"    reader.readAsDataURL(file);",
+		"  };",
+		"  input.oncancel = function () {",
+		"    state.busy = false; state.error = 'cancel';",
+		"  };",
+		"  document.body.appendChild(input);",
+		"  input.click();",
+		"  setTimeout(function () {",
+		"    if (input.parentNode) { input.parentNode.removeChild(input); }",
+		"  }, 300000);",
+		"  return 'ok';",
+		"};",
+	]).join("\n")
+
+
+func _begin_web_playmat_pick() -> void:
+	JavaScript.eval(web_picker_js(), true)
+	var started := str(JavaScript.eval("window.__bsPlaymatPick()", true))
+	if started != "ok":
+		_playmat_note(_web_pick_note(started))
+		return
+	_playmat_chunk = ""
+	_playmat_offset = 0
+	_playmat_total = -1
+	_playmat_note(PLAYMAT_UPLOAD_HINT)
+	if _playmat_poll == null:
+		_playmat_poll = Timer.new()
+		_playmat_poll.name = "PlaymatPickPoll"
+		_playmat_poll.wait_time = 0.2
+		add_child(_playmat_poll)
+		_playmat_poll.connect("timeout", self, "_poll_web_playmat")
+	_playmat_poll.start()
+
+
+# One chunk per tick: a photo can arrive as a few megabytes of base64, and taking
+# it all in a single frame would stall the board behind this panel.
+func _poll_web_playmat() -> void:
+	if _playmat_total < 0:
+		var status := str(JavaScript.eval("window.__bsPlaymatStatus()", true))
+		if status == "busy":
+			return
+		if status != "ready":
+			_stop_playmat_poll()
+			_playmat_note(_web_pick_note(status))
+			return
+		_playmat_total = int(JavaScript.eval("window.__bsPlaymatLength()", true))
+		if _playmat_total <= 0:
+			_stop_playmat_poll()
+			_playmat_note("A imagem escolhida veio vazia.")
+			return
+	var chunk := str(JavaScript.eval(
+			"window.__bsPlaymatChunk(%d, %d)" % [_playmat_offset, WEB_CHUNK_SIZE],
+			true))
+	if chunk.empty():
+		_stop_playmat_poll()
+		_playmat_note("Não foi possível ler a imagem do navegador.")
+		return
+	_playmat_chunk += chunk
+	_playmat_offset += chunk.length()
+	if _playmat_offset < _playmat_total:
+		return
+	_stop_playmat_poll()
+	var image := _web_playmat_image(_playmat_chunk)
+	JavaScript.eval("window.__bsPlaymatReset()", true)
+	_playmat_chunk = ""
+	if image == null:
+		_playmat_note("Use uma imagem PNG, JPG ou WebP.")
+		return
+	_store_playmat(image)
+
+
+func _stop_playmat_poll() -> void:
+	if _playmat_poll:
+		_playmat_poll.stop()
+
+
+func _web_pick_note(status: String) -> String:
+	match status:
+		"cancel", "idle":
+			return "Escolha do playmat cancelada."
+		"big":
+			return "Arquivo grande demais: use uma imagem de até 12 MB."
+		"read":
+			return "O navegador não conseguiu ler o arquivo."
+	return "Não foi possível abrir o seletor de imagens."
+
+
+# The magic bytes choose the decoder, so a wrong guess does not fill the log
+# with loader errors.
+func _web_playmat_image(base64: String) -> Image:
+	var buffer := Marshalls.base64_to_raw(base64)
+	if buffer.size() < 12:
+		return null
+	var image := Image.new()
+	if buffer[0] == 0x89 and buffer[1] == 0x50:
+		return image if image.load_png_from_buffer(buffer) == OK else null
+	if buffer[0] == 0xFF and buffer[1] == 0xD8:
+		return image if image.load_jpg_from_buffer(buffer) == OK else null
+	if buffer[0] == 0x52 and buffer[1] == 0x49:
+		return image if image.load_webp_from_buffer(buffer) == OK else null
+	return null
+
+
+func _store_playmat(image: Image) -> void:
+	var result := PlaymatCatalog.save_custom(image)
+	if not result.get("ok", false):
+		_playmat_note(str(result.get("reason",
+				"Não foi possível salvar o playmat.")))
+		return
+	# Remembered before the list is rebuilt so the dropdown lands on the upload.
+	PlaymatCatalog.remember_id(PlaymatCatalog.CUSTOM_ID)
+	_populate_playmats()
+	_apply_playmat(PlaymatCatalog.CUSTOM_ID)
+	var size: Vector2 = result.get("size", Vector2.ZERO)
+	_playmat_note("Playmat salvo com %d x %d px. Ele fica só neste aparelho."
+			% [int(size.x), int(size.y)])
+
+
+func _playmat_note(text: String) -> void:
+	_hint_label.text = text
+	_append_log(text)
 
 
 func _choose_deck(deck: Dictionary, path: String = "", slot: int = 0) -> void:

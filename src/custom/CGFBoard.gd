@@ -3,6 +3,11 @@ extends Board
 
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 
+# The playmat covers the whole play area edge to edge; the TextureRect uses the
+# cover stretch mode, so a window whose ratio differs from the artwork's crops a
+# little of it instead of leaving empty bands.
+const PLAYMAT_FILL := 1.0
+
 var _last_prize_energy := -1
 var _last_hand_count := -1
 var _last_deck_count := -1
@@ -91,6 +96,16 @@ func apply_playmat(playmat_id: String) -> void:
 	var texture: Texture = PlaymatCatalog.texture_for_id(playmat_id)
 	playmat.texture = texture
 	playmat.visible = texture != null
+	_fit_playmat(playmat)
+
+
+func _fit_playmat(playmat: TextureRect) -> void:
+	var area: Vector2 = get_viewport().get_visible_rect().size
+	var size: Vector2 = area * PLAYMAT_FILL
+	playmat.anchor_right = 0.0
+	playmat.anchor_bottom = 0.0
+	playmat.rect_size = size
+	playmat.rect_position = (area - size) * 0.5
 
 
 # Solo keeps the deck builder and the way back to the menu, but the dev toggles
@@ -219,6 +234,9 @@ func resources_base_width() -> float:
 
 
 func _on_board_viewport_size_changed() -> void:
+	var playmat: TextureRect = get_node_or_null("Playmat")
+	if playmat and playmat.texture:
+		_fit_playmat(playmat)
 	call_deferred("_apply_battle_scenes_layout")
 
 

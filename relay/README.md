@@ -15,14 +15,17 @@ no anfitrião (cliente Godot); ele não valida jogadas.
   handshake de protocolo, `/healthz`, `/rooms`, limite de frame/conexões/salas
   por IP, rate limit, heartbeat, allowlist de Origin, expiração de 120 s e logs
   estruturados. A suíte tem 21 testes com clientes `ws` reais.
-- Ainda não publicado em nenhum provedor. O `fly.toml` é um modelo com
-  `app`/`primary_region` de exemplo.
+- Publicado no S20 FE (Termux + quick tunnel Cloudflare) desde 30/10/2026, com
+  `wss://` e `/healthz` acessíveis de fora. É rota de teste: hostname
+  efêmero, sem SLA. O `fly.toml` continua um modelo com `app`/`primary_region`
+  de exemplo, para quando houver provedor fixo.
 - O cliente Godot já envia `join_room` (menu “Entrar com código”), lê
   `?room=CODIGO` no build web e usa `wss://` por padrão. O desktop continua
   podendo usar o relay LAN embutido e o `tools/ws_relay.py`.
-- Pendente: publicar o relay com TLS, trocar o placeholder
-  `wss://relay.exemplo.com` em [Rede.gd](../src/custom/Rede.gd) pelo domínio real
-  e validar dois navegadores.
+- Pendente: hostname fixo (domínio na conta Cloudflare ou provedor always-on),
+  trocar o placeholder `wss://relay.exemplo.com` em [Rede.gd](../src/custom/Rede.gd)
+  pelo endereço real, publicar o site (hoje o celular depende de `ssh -R` para
+  alcançar o PC) e validar dois navegadores em redes diferentes.
 - Uma instância basta para a v1. Escalar horizontalmente exigiria estado
   compartilhado (Redis) e não está no escopo.
 
@@ -185,6 +188,71 @@ valores atuais, `bs-web-relay` e `gru`, são apenas um exemplo).
 O lobby do Netlify precisa da URL **HTTP(S)** do relay em `RELAY_URL`
 (`https://relay.exemplo.com`), porque a Function chama `GET /rooms`; o cliente
 do jogo usa a mesma máquina com `wss://`.
+
+### Celular (Termux + cloudflared) — rota em uso hoje
+
+O relay roda em um Samsung S20 FE (aarch64, sem root) servindo como servidor
+sempre ligado. Não há mudança de código: `src/server.js` roda no Node nativo do
+Termux (v24) e o TLS público vem de um túnel Cloudflare.
+
+Decisões que só valem nesse ambiente:
+
+- **Processo persistente mora no Termux, não no container.** `tmux` dentro de
+  `proot-distro` morre junto com o processo `proot` que o iniciou. O relay e as
+  sessões tmux rodam nativos no Termux; apenas binários glibc (o `cloudflared`)
+  executam dentro do Debian 13.
+- **Loopback é compartilhado** entre Termux e Debian: o túnel no container vê
+  `127.0.0.1:9080` do relay nativo.
+- **`--protocol http2` é obrigatório.** Com QUIC (padrão) o túnel nunca
+  registrava e o handshake WebSocket devolvia erro 1033/530.
+- **Não dá para listar portas.** `ss -ltn` e `netstat -ltn` retornam vazio no
+  Termux e no Debian; a checagem é por sonda (`curl /healthz`).
+- **Sem `TRUST_PROXY=1` o túnel colapsa todos os jogadores no IP `127.0.0.1`.**
+  O relay vê o socket do `cloudflared`, não o do jogador, então os tetos por IP
+  viram tetos globais: com `MAX_CONNECTIONS_PER_IP=10` e duas janelas já
+  conectadas, a 9ª conexão pública recebeu `HTTP 503` e a 3ª sala do mesmo
+  endereço recebeu “Você já tem salas abertas” — medido em 30/10/2026 pela URL
+  pública. Confirmei no mesmo aparelho que o `cloudflared` repassa
+  `x-forwarded-for` (com o IP real) tanto em GET quanto no upgrade de
+  WebSocket, inclusive com `--protocol http2`. Portanto **publique com
+  `TRUST_PROXY=1`** quando o túnel for a frente do relay; atrás dele o cabeçalho
+  é escrito pela Cloudflare e não é forjável. Clientes desktop sem `X-Forwarded-For`
+  caem no endereço do socket e continuam funcionando em LAN.
+
+Layout no aparelho:
+
+```text
+~/projetos/bs-relay/
+├── package.json  src/  test/   copiado do repo (LF preservado)
+├── node_modules/               npm install dentro do Termux
+├── iniciar-tudo.sh             sobe relay + tuneis, idempotente
+├── relay.log  cf-relay.log  boot.log
+~/.termux/boot/bs-relay.sh      Termux:Boot: wake-lock + sshd + iniciar-tudo
+```
+
+Sessões tmux: `bs-relay` (Node na 9080), `cf-relay` (túnel do relay) e
+`cf-site` (túnel do site, só quando a 8888 está alcançável — hoje o site vem do
+PC por `ssh -R 8888:localhost:8888`).
+
+```bash
+ssh termux-pelada
+tmux attach -t bs-relay
+bash ~/projetos/bs-relay/iniciar-tudo.sh      # idempotente
+curl -sS http://127.0.0.1:9080/healthz
+```
+
+O player aponta o cliente para o hostname do túnel:
+`https://<site>.trycloudflare.com/game/?relay=<relay>.trycloudflare.com&room=CODIGO`.
+O `?relay=` é necessário porque o padrão web em `Rede.WEB_DEFAULT_ADDRESS` ainda
+é placeholder.
+
+Limites dessa rota: o hostname `*.trycloudflare.com` **muda a cada reinício do
+túnel**; o quick tunnel não tem SLA e o Android pode matar o processo em Doze
+(`termux-wake-lock` atenua, não resolve). Um hostname fixo exige um domínio na
+conta Cloudflare e `cloudflared tunnel --config` com túnel nomeado. Reiniciar o
+celular hoje só recupera os serviços se o APK **Termux:Boot** estiver instalado
+na mesma fonte do Termux (o hook já está escrito em `~/.termux/boot/`). Para
+produção estável, a rota continua sendo Fly.io/Docker acima.
 
 ### Docker
 

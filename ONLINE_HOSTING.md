@@ -231,6 +231,18 @@ Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
 Critério de aceite: domínios e provedor definidos, protocolo versionado e
 decisão registrada neste documento.
 
+**Status (30/10/2026): decidido e em operação.** O provedor inicial é o
+**S20 FE (Termux) com túnel Cloudflare**, não Workers nem Fly. A razão é de
+custo de migração: o relay Node já roda como processo sempre ligado e só
+precisa de `wss://` na frente; Workers/Durable Objects exigiriam reescrever a
+hospedagem, e Supabase/AWS serverless não sustentam WebSocket. O transporte é
+`cloudflared tunnel --protocol http2 --url http://127.0.0.1:9080`
+(`*.trycloudflare.com`, sem conta e sem domínio). Consequências aceitas por
+enquanto: hostname efêmero, sem SLA e risco de Doze — ver a seção
+“Celular (Termux + cloudflared)” em [relay/README.md](./relay/README.md).
+Domínios próprios (`play.` / `relay.`) e túnel nomeado ficam para quando houver
+contas externas; o site ainda depende do PC via `ssh -R 8888`.
+
 ### Fase 1 — Build web funcional (1–2 dias)
 
 - Verificar os templates de exportação do Godot 3.4.4 e gerar o build HTML5 em
@@ -355,8 +367,16 @@ check responde; limites e protocolo inválido são recusados.
 **Status:** a Opção A está implementada em [relay/](./relay/README.md), com
 `join_room` por código, `hello`/`protocol`, `/healthz`, `/rooms`, limites,
 heartbeat, allowlist de Origin, expiração e 21 testes com clientes `ws` reais.
-Faltam o deploy em um provedor e a validação em dois navegadores, que dependem
-da exportação HTML5 (Fase 1) e da integração do cliente (Fase 4).
+O deploy saiu do papel em 30/10/2026, mas no celular: o relay roda no S20 FE
+(Termux, Node v24, tmux `bs-relay`, porta 9080) atrás de um quick tunnel
+Cloudflare, com `wss://` funcionando no navegador e `/healthz` respondendo pelo
+hostname público. Dois navegadores abriram o jogo pelo túnel do site,
+parearam por sala e jogaram sem erro de console.
+
+Faltam para fechar o critério de aceite: o mesmo teste entre **redes
+diferentes** (4G/fora do Wi-Fi), `rejoin_room` no meio de uma partida dentro da
+janela de 120 s, recusa de terceiro jogador e código inválido pela URL pública, e
+a página de lobby apontando para o relay publicado.
 
 ### Fase 3 — Lobby no Netlify (1–3 dias)
 

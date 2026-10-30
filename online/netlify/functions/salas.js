@@ -13,8 +13,10 @@ function reply(statusCode, body) {
   };
 }
 
+// O endereco vai junto mesmo quando o relay nao responde: o lobby usa essa URL
+// para montar os links do jogo, e assim so falta arrumar o relay, nao o link.
 function offline() {
-  return reply(503, { rooms: [], relay: { online: false } });
+  return reply(503, { rooms: [], relay: { online: false, url: RELAY_URL } });
 }
 
 function sanitize(room) {
@@ -49,7 +51,11 @@ exports.handler = async () => {
     const rooms = Array.isArray(data.rooms) ? data.rooms.map(sanitize) : [];
     return reply(200, {
       rooms,
-      relay: { online: true, version: String(data.version || "") },
+      relay: {
+        online: true,
+        url: RELAY_URL,
+        version: String(data.version || ""),
+      },
     });
   } catch (_error) {
     return offline();

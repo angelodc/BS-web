@@ -69,14 +69,28 @@
   const status = document.getElementById("status");
   const REFRESH_MS = 5000;
 
-  // Em teste local o lobby pode receber ?relay=; repassa para o jogo para
-  // que ele nao caia no relay padrao de producao.
+  // Em teste local o lobby pode receber ?relay=; em producao o endereco vem do
+  // /api/salas, que le o RELAY_URL configurado no Netlify. Nos dois casos o link
+  // do jogo ja sai com o relay certo.
   const relayParam = new URLSearchParams(location.search).get("relay");
+  let relayAddress = relayParam || "";
+
+  // O jogo recebe o relay como host e no navegador escolhe wss:// sozinho. Uma
+  // URL completa (https://host) e reduzida ao host antes de virar parametro.
+  function relayHost() {
+    if (!relayAddress) return "";
+    try {
+      return new URL(relayAddress).host;
+    } catch (_error) {
+      return relayAddress;
+    }
+  }
 
   function withRelay(url) {
-    if (!relayParam) return url;
+    const host = relayHost();
+    if (!host) return url;
     const target = new URL(url, location.href);
-    target.searchParams.set("relay", relayParam);
+    target.searchParams.set("relay", host);
     return target.pathname + target.search;
   }
 
@@ -128,6 +142,12 @@
       const response = await fetch("/api/salas", { headers: { Accept: "application/json" } });
       const data = await response.json();
       const online = data.relay && data.relay.online;
+      // O ?relay= da URL manda; sem ele, o endereco configurado no Netlify
+      // completa os links assim que a primeira consulta responde.
+      if (!relayParam && data.relay && data.relay.url) {
+        relayAddress = data.relay.url;
+        document.getElementById("open-game").href = withRelay("/game/");
+      }
       status.textContent = online ? "servidor online" : "servidor offline";
       status.classList.toggle("offline", !online);
       render(Array.isArray(data.rooms) ? data.rooms : []);

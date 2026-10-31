@@ -2074,7 +2074,11 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 						int(entry.get("rot", 0)), false, true, false)
 		var host_id := str(entry.get("host", ""))
 		if not host_id.empty():
-			pending_attachments.append({"card": card, "host": host_id})
+			pending_attachments.append({
+				"card": card,
+				"host": host_id,
+				"offset": int(entry.get("offset", -1)),
+			})
 	if cfc.NMAP.has("discard"):
 		cfc.NMAP.discard.reorganize_stack()
 	var prizes: Pile = _prizes_pile()
@@ -2088,9 +2092,15 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 				and is_instance_valid(attachment["card"]):
 			attachment["card"].attachment_mode = \
 					Card.AttachmentMode.ATTACH_BEHIND
+			var offset := int(attachment.get("offset", -1))
 			attachment["card"].attachment_offset = \
-					Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+					offset if offset >= 0 \
+					else Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
 			attachment["card"].attach_to_host(host, false, ["net"])
+			# The snapshot lists the resources before the character, so the
+			# restored cards are not in drop order and the plain organize is
+			# not enough: rebuild the pile with the host on top.
+			host.arrange_attachment_stack()
 	if not _sync or not _sync.has_method("find_remote_card"):
 		return
 	# Opponent attachments were mirrored before the local hosts existed, so their
@@ -2112,8 +2122,11 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 		if not host or host == card or card.current_host_card == host:
 			continue
 		card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
-		card.attachment_offset = Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		var offset := int(entry.get("offset", -1))
+		card.attachment_offset = offset if offset >= 0 \
+				else Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
 		card.attach_to_host(host, false, ["net"])
+		host.arrange_attachment_stack()
 
 
 func _instance_restored_card(card_name: String) -> Card:

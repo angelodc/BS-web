@@ -538,6 +538,10 @@ func select_resource_for_host(resource: Card) -> void:
 	resource.attachment_offset = \
 			Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
 	resource.attach_to_host(pending_resource_host)
+	# The resource comes from the popup, so it lands as the newest child and
+	# would draw over the character it pays for. Put the pile back in card
+	# order right away: the character on top, one strip per resource below.
+	pending_resource_host._organize_attachments()
 	cfc.NMAP.discard.pre_sorted_order.erase(resource)
 	cfc.NMAP.discard.card_count_label.text = \
 			str(get_available_resource_count())
@@ -608,6 +612,9 @@ func swap_attached_resource(resource: Card) -> bool:
 	replacement.attachment_offset = \
 			Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
 	replacement.attach_to_host(host)
+	# Same as select_resource_for_host: the replacement also comes from the
+	# popup and lands above the pile until the host is organized again.
+	host._organize_attachments()
 	cfc.NMAP.discard.card_count_label.text = \
 			str(get_available_resource_count())
 	return true

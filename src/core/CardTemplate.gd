@@ -1409,12 +1409,11 @@ func move_to(targetHost: Node,
 				set_state(CardState.DROPPING_TO_BOARD)
 			elif current_host_card:
 				var attach_index = current_host_card.attachments.find(self)
+				var attach_offset := _attachment_offset_vector()
 				_target_position = (current_host_card.global_position
 						+ Vector2(
-						(attach_index + 1) * card_size.x
-						* CFConst.ATTACHMENT_OFFSET[attachment_offset].x,
-						(attach_index + 1)* card_size.y
-						* CFConst.ATTACHMENT_OFFSET[attachment_offset].y))
+						(attach_index + 1) * card_size.x * attach_offset.x,
+						(attach_index + 1) * card_size.y * attach_offset.y))
 				# This attachment was dropped away from its host. Tween it back
 				# to its slot instead of leaving it where the mouse released it.
 				set_state(CardState.DROPPING_TO_BOARD)
@@ -1670,12 +1669,11 @@ func attach_to_host(
 		# We offset our position below the host based on a percentage of
 		# the card size, times the index among other attachments
 		var attach_index = current_host_card.attachments.find(self)
+		var attach_offset := _attachment_offset_vector()
 		_target_position = (current_host_card.global_position
 				+ Vector2(
-				(attach_index + 1) * card_size.x
-				* CFConst.ATTACHMENT_OFFSET[attachment_offset].x,
-				(attach_index + 1)* card_size.y
-				* CFConst.ATTACHMENT_OFFSET[attachment_offset].y))
+				(attach_index + 1) * card_size.x * attach_offset.x,
+				(attach_index + 1) * card_size.y * attach_offset.y))
 		emit_signal("card_attached",
 				self,
 				"card_attached",
@@ -1990,6 +1988,43 @@ func _get_formatted_text(value) -> String:
 	return(str(value))
 
 
+# The opponent sees the table from the other side, so an attachment that peeks
+# out under its host on the owner's screen has to peek out above it here. The
+# drawn card is already turned around; flipping the offset keeps the stack on
+# the same edge of the card in both views.
+func _attachment_offset_vector() -> Vector2:
+	var offset: Vector2 = CFConst.ATTACHMENT_OFFSET[attachment_offset]
+	if network_mirror:
+		return -offset
+	return offset
+
+
+# Rebuilds the pile's drawing order from scratch: the host on top and the
+# attachments right behind it, the nearest one drawn last so every card keeps
+# its strip visible. Dropping a card appends it after its host and
+# `_organize_attachments` only pulls cards that sit above the host, but a
+# rebuilt table can list the attachments first (the public snapshot follows
+# the deck order, not the drop order). Without this the newest attachment ends
+# up over the whole pile and hides the host and the other strips.
+func arrange_attachment_stack() -> void:
+	if get_parent() != cfc.NMAP.board:
+		return
+	var board := get_parent()
+	var stack := []
+	for card in attachments:
+		if is_instance_valid(card) and card.get_parent() == board \
+				and card.attachment_mode == AttachmentMode.ATTACH_BEHIND:
+			stack.append(card)
+	if stack.empty():
+		_organize_attachments()
+		return
+	board.move_child(self, board.get_child_count() - 1)
+	var host_index: int = get_index()
+	for index in range(stack.size()):
+		board.move_child(stack[index], host_index - (index + 1))
+	_organize_attachments()
+
+
 # Makes attachments always move with their parent around the board
 func _organize_attachments() -> void:
 	# We only do this if the parent is still on the board
@@ -2013,14 +2048,11 @@ func _organize_attachments() -> void:
 			if not card.get_node('Tween').is_active() and \
 					card.state in \
 					[CardState.ON_PLAY_BOARD,CardState.FOCUSED_ON_BOARD]:
+				var attach_offset: Vector2 = card._attachment_offset_vector()
 				card.global_position = global_position + \
 						Vector2(
-						(attach_index + 1) * card_size.x
-						* CFConst.ATTACHMENT_OFFSET[
-								card.attachment_offset].x,
-						(attach_index + 1) * card_size.y \
-						* CFConst.ATTACHMENT_OFFSET[
-								card.attachment_offset].y)
+						(attach_index + 1) * card_size.x * attach_offset.x,
+						(attach_index + 1) * card_size.y * attach_offset.y)
 
 # Returns the global mouse position but ensures it does not exit the
 # viewport limits when including the card rect

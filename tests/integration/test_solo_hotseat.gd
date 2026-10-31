@@ -369,6 +369,153 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 				"The card returns upright")
 
 
+# The owner sees the attachment peeking below the character, so the other side
+# of the table has to see it peeking above: the stack mirrors with the field
+# instead of covering its own host.
+func test_mirror_stacks_the_attachment_on_the_opposite_edge():
+	yield(_start_solo_match({}, {}, true), "completed")
+
+	var host := _place_scene_card(0)
+	assert_not_null(host, "A character reaches the slot")
+	var stack := []
+	var stack_ids := []
+	for _i in range(3):
+		var attached := _take_hand_card()
+		assert_not_null(attached, "A card is available to attach")
+		cfc.NMAP.hand.remove_child(attached)
+		board.add_child(attached)
+		attached.set_is_faceup(true, true)
+		attached.set_state(Card.CardState.ON_PLAY_BOARD)
+		# Resources paid onto a character use this edge in the real game.
+		attached.attachment_offset = Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		attached.attach_to_host(host)
+		attached.global_position = host.global_position \
+				+ CFConst.CARD_SIZE * attached._attachment_offset_vector() \
+				* float(host.attachments.find(attached) + 1)
+		attached._target_position = attached.global_position
+		stack.append(attached)
+		stack_ids.append(str(Multiplayer.ensure_card_id(attached)))
+		host._organize_attachments()
+	assert_eq(host.attachments.size(), 3, "The host holds the stack")
+	var host_id := str(Multiplayer.ensure_card_id(host))
+	var local_gaps := []
+	for index in range(stack.size()):
+		local_gaps.append(stack[index].global_position.y - host.global_position.y)
+		assert_true(local_gaps[index] > 0.0,
+				"The owner sees the stack below the host")
+		if index > 0:
+			assert_true(local_gaps[index] > local_gaps[index - 1],
+					"Each attachment peeks further below the previous one")
+	yield(_settle(), "completed")
+
+	assert_true(Multiplayer.swap_solo_seat(), "The swap shows the other seat")
+	yield(yield_for(0.7), YIELD)
+	var mirrored_host: Card = null
+	var mirrored_stack := []
+	for _i in range(stack_ids.size()):
+		mirrored_stack.append(null)
+	for card in _mirrored_field_cards():
+		if str(card.network_id) == host_id:
+			mirrored_host = card
+			continue
+		var stack_index: int = stack_ids.find(str(card.network_id))
+		if stack_index >= 0:
+			mirrored_stack[stack_index] = card
+	assert_not_null(mirrored_host, "The host has a mirror")
+	for index in range(mirrored_stack.size()):
+		var mirrored_attach: Card = mirrored_stack[index]
+		assert_not_null(mirrored_attach, "Attachment %s has a mirror" % index)
+		if not mirrored_attach:
+			continue
+		var mirrored_gap: float = mirrored_attach.global_position.y \
+				- mirrored_host.global_position.y
+		assert_almost_eq(mirrored_gap, -local_gaps[index], 2.0,
+				"The mirror stacks the attachment on the opposite edge")
+		# Later siblings draw on top, so the attachment has to sit before the
+		# host in the board children or it covers the card it belongs to.
+		assert_true(mirrored_attach.get_index() < mirrored_host.get_index(),
+				"The mirrored attachment is drawn behind its host")
+		# The nearest attachment draws last, exactly like the owner's stack,
+		# so both sides show the same card in the same strip.
+		if index > 0 and mirrored_stack[index - 1]:
+			assert_true(mirrored_stack[index - 1].get_index() \
+					> mirrored_attach.get_index(),
+					"The mirrored stack keeps the owner's strip order")
+
+	assert_true(Multiplayer.swap_solo_seat(), "The swap returns to the owner")
+	yield(yield_for(0.7), YIELD)
+	var restored_host: Card = null
+	var restored_stack := []
+	for _i in range(stack_ids.size()):
+		restored_stack.append(null)
+	for card in _local_field_cards():
+		if str(card.network_id) == host_id:
+			restored_host = card
+			continue
+		var stack_index: int = stack_ids.find(str(card.network_id))
+		if stack_index >= 0:
+			restored_stack[stack_index] = card
+	assert_not_null(restored_host, "The host returns to its seat")
+	for index in range(restored_stack.size()):
+		var restored_attach: Card = restored_stack[index]
+		assert_not_null(restored_attach, "Attachment %s returns" % index)
+		if not restored_attach:
+			continue
+		assert_almost_eq(restored_attach.global_position.y \
+				- restored_host.global_position.y, local_gaps[index], 2.0,
+				"The restored stack keeps the owner's edges")
+		assert_true(restored_attach.get_index() < restored_host.get_index(),
+				"The restored attachment is drawn behind its host")
+		if index > 0 and restored_stack[index - 1]:
+			assert_true(restored_stack[index - 1].get_index() \
+					> restored_attach.get_index(),
+					"The restored stack keeps the owner's strip order")
+
+
+# A rebuilt table can reach the board with the resources already behind the
+# character in the children list instead of after it (a snapshot follows the
+# cards group, not the drop order). The plain organize only pulls cards that
+# sit above the host, so rebuilding the pile has to work from either side.
+func test_arrange_attachment_stack_recovers_a_pile_listed_before_its_host():
+	yield(_start_solo_match({}, {}, true), "completed")
+
+	var host := _place_scene_card(0)
+	assert_not_null(host, "A character reaches the slot")
+	var stack := []
+	for _i in range(3):
+		var attached := _take_hand_card()
+		assert_not_null(attached, "A card is available to attach")
+		cfc.NMAP.hand.remove_child(attached)
+		board.add_child(attached)
+		attached.set_is_faceup(true, true)
+		attached.set_state(Card.CardState.ON_PLAY_BOARD)
+		attached.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
+		attached.attachment_offset = Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		attached.attach_to_host(host)
+		# List the resource before its character, as the snapshot does when the
+		# resource re-entered the tree after the character was dealt.
+		board.move_child(attached, 0)
+		stack.append(attached)
+	assert_eq(host.attachments.size(), 3, "The host holds the stack")
+	for card in stack:
+		assert_true(card.get_index() < host.get_index(),
+				"The resources sit behind the character before the rebuild")
+
+	host.arrange_attachment_stack()
+
+	assert_eq(host.get_index(), board.get_child_count() - 1,
+			"The rebuild leaves the character on top of the table")
+	for index in range(stack.size()):
+		var card: Card = stack[index]
+		assert_eq(card.get_index(), host.get_index() - (index + 1),
+				"The nearest resource draws last, one strip per card")
+		assert_almost_eq(card.global_position.y - host.global_position.y,
+				float(index + 1) * CFConst.CARD_SIZE.y \
+				* CFConst.ATTACHMENT_OFFSET[
+						Card.AttachmentOffset.BATTLE_SCENES_BOTTOM].y, 1.0,
+				"Each resource peeks out below the one before it")
+
+
 # The resource mini grid is the local grid reflected through the middle line, so
 # each miniature turns with its cell: what reads upright on the owner's side has
 # to read upside down on the other side, like a card held across the table.

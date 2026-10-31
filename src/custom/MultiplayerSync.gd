@@ -262,6 +262,7 @@ func _send_card_state(card: Card, zone: String, dragging := false) -> void:
 		"rot": int(card.card_rotation),
 		"drag": 1 if dragging else 0,
 		"host": "",
+		"offset": int(card.attachment_offset),
 		"x": 0.5,
 		"y": 0.5,
 	}
@@ -437,20 +438,26 @@ func _apply_remote_card(data: Dictionary) -> void:
 	var face := int(data.get("face", 1)) == 1
 	var host_id := str(data.get("host", ""))
 	var pile_index := int(data.get("pile", -1))
+	var offset := int(data.get("offset", -1))
 	var previous_meta = _remote_meta.get(net_id, {})
 	var previous_zone := ""
 	if typeof(previous_meta) == TYPE_DICTIONARY:
 		previous_zone = str(previous_meta.get("zone", ""))
 	_remember_remote_meta(net_id, zone, card_name, travel, rotation, face,
-			host_id, claim, slot_index, pile_index)
+			host_id, claim, slot_index, pile_index, offset)
 	_configure_remote_card(card)
 	_set_remote_card_interactive(card, zone)
 	var host: Card = _remote_cards.get(host_id)
 	if is_instance_valid(host) and host != card:
 		card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
-		card.attachment_offset = Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		card.attachment_offset = _mirror_attachment_offset(offset)
 		if card.current_host_card != host:
 			card.attach_to_host(host, false, ["net"])
+			# A mirror never runs its own ON_PLAY_BOARD step (that would lay
+			# the table out from the wrong side), so the host has to put the
+			# stack back in card order here. The snapshot lists the resources
+			# before the character, so this cannot rely on drop order.
+			host.arrange_attachment_stack()
 	elif card.current_host_card:
 		card._clear_attachment_status(["net"])
 	if host_id.empty():
@@ -509,11 +516,24 @@ func _attach_pending_hosts() -> void:
 		_pending_host_links.erase(net_id)
 		if card.current_host_card == host:
 			continue
+		var meta = _remote_meta.get(net_id, {})
+		var offset := -1
+		if typeof(meta) == TYPE_DICTIONARY:
+			offset = int(meta.get("offset", -1))
 		card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
-		card.attachment_offset = Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		card.attachment_offset = _mirror_attachment_offset(offset)
 		card.attach_to_host(host, false, ["net"])
-		host._organize_attachments()
+		host.arrange_attachment_stack()
 	_resolving_hosts = false
+
+
+# The owner names the edge an attachment uses; the mirror draws the same edge
+# from the opposite side. Older peers do not send the edge, so the battle
+# scenes bottom (the resource stack) is the one that has always been mirrored.
+func _mirror_attachment_offset(offset: int) -> int:
+	if offset >= 0 and offset < CFConst.ATTACHMENT_OFFSET.size():
+		return offset
+	return Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
 
 
 # The hotseat keeps the knocked-out character as a mirror in the opponent prize
@@ -925,7 +945,8 @@ func _remember_remote_meta(
 		host_id: String,
 		claim := 0,
 		slot := -1,
-		pile := -1) -> void:
+		pile := -1,
+		offset := -1) -> void:
 	var previous = _remote_meta.get(net_id, {})
 	if typeof(previous) == TYPE_DICTIONARY:
 		var old_zone := str(previous.get("zone", ""))
@@ -942,6 +963,7 @@ func _remember_remote_meta(
 		"host": host_id,
 		"claim": claim,
 		"pile": pile,
+		"offset": offset,
 	}
 	if zone in _remote_zone_order \
 			and not net_id in _remote_zone_order[zone]:
@@ -1120,6 +1142,7 @@ func build_public_card_entries(my_slot: int, opponent_slot: int,
 				"host": str(meta.get("host", "")),
 				"claim": int(meta.get("claim", 0)),
 				"pile": int(meta.get("pile", -1)),
+				"offset": int(meta.get("offset", -1)),
 			})
 			if include_definitions:
 				_add_definition(definitions, card_name)
@@ -1222,6 +1245,7 @@ func _snapshot_entry_matches(net_id: String, entry: Dictionary) -> bool:
 			and int(meta.get("face", 1)) == int(entry.get("face", 1)) \
 			and str(meta.get("host", "")) == str(entry.get("host", "")) \
 			and int(meta.get("pile", -1)) == int(entry.get("pile", -1)) \
+			and int(meta.get("offset", -1)) == int(entry.get("offset", -1)) \
 			and float(meta.get("x", 0.5)) == float(entry.get("x", 0.5)) \
 			and float(meta.get("y", 0.5)) == float(entry.get("y", 0.5))
 
@@ -2201,6 +2225,9 @@ func _local_entry(card: Card, zone: String, owner: int) -> Dictionary:
 		"rot": int(card.card_rotation),
 		"face": 1 if card.is_faceup else 0,
 		"host": "",
+		# The edge the owner's attachments peek out of. The mirror flips the
+		# vector, so it needs the same edge the owner used to land opposite.
+		"offset": int(card.attachment_offset),
 	}
 	if zone == "board":
 		var normalized := _normalize_board_position(card.global_position)
@@ -2233,6 +2260,7 @@ func _entry_as_message(entry: Dictionary) -> Dictionary:
 		"host": str(entry.get("host", "")),
 		"claim": int(entry.get("claim", 0)),
 		"pile": int(entry.get("pile", -1)),
+		"offset": int(entry.get("offset", -1)),
 	}
 
 

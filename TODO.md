@@ -1,7 +1,7 @@
 # 🦸‍♂️ Battle Scenes Web - Painel de Controle e Tarefas
-> **Ambiente de Desenvolvimento do Douglas**
+> **Ambiente de Desenvolvimento**
 > Caminho do Projeto: Criado a partir do fork de `db0/godot-card-game-framework`
-> Caminho das Imagens (Local): `C:\Users\doug\Projetos\bsdb-imagens`
+> Caminho das Imagens (Local): `../bsdb-imagens` (pasta irmã deste repositório)
 > Documento de Arquitetura e Regras: Ver `BATTLE_SCENES_DESIGN.md`
 
 ---
@@ -9,7 +9,7 @@
 ## 🕹️ 1. Diretrizes do Projeto
 
 ### Como vamos conduzir o desenvolvimento
-*   Antes de cada etapa, alinhar o plano e esclarecer decisões pendentes com o Douglas.
+*   Antes de cada etapa, alinhar o plano e esclarecer decisões pendentes com o usuário.
 *   Usar este arquivo para acompanhar prioridades, tarefas, decisões e progresso; detalhar regras e decisões técnicas em `BATTLE_SCENES_DESIGN.md`.
 *   Atualizar os documentos quando uma decisão ou mudança de progresso justificar, sem registrar suposições como decisões confirmadas.
 
@@ -19,7 +19,7 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 *   **Ações:** Menu de ações ao passar o mouse sobre personagens em campo; capacitar/incapacitar serão as primeiras opções, sem comandos de teclado.
 
 ### B. Arquitetura de Imagens (CDN Comunitária)
-*   **Em Desenvolvimento Local:** Os arquivos em `C:\Users\doug\Projetos\bsdb-imagens` servem como referência de IDs, nomes de arquivos e testes rápidos de ícones.
+*   **Em Desenvolvimento Local:** Os arquivos em `../bsdb-imagens` servem como referência de IDs, nomes de arquivos e testes rápidos de ícones.
 *   **No Jogo Final (Navegador):** A Godot não armazenará imagens localmente para evitar problemas de copyright. O nó `HTTPRequest` fará o download das cartas em tempo real usando a CDN do GitHub:
     `https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main[IMAGEM]`
 *   **Dados das cartas:** Usar `dados/cards.json` no repositório local de referência. O campo `TIPO` identifica categorias como `Personagem` e será mapeado para `_tipo` nas propriedades internas do framework; `IMAGEM` fornece o caminho relativo à raiz das imagens para montar a URL da CDN.

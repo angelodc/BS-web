@@ -29,8 +29,8 @@ online/netlify/functions/node_modules/
 # Rascunho local do agente: drivers de teste, logs e segredos gerados
 .run/
 
-# Skill bs-web-site (PIDs e logs locais)
-.qoder/skills/bs-web-site/.run/
+# Skills locais do agente (fluxo e caminhos da maquina), fora do versionamento
+.qoder/skills/
 
 # Prints locais de validação de layout
 .prints/

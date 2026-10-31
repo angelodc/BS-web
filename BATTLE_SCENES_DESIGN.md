@@ -63,14 +63,14 @@ No Battle Scenes físico, as cartas inclinam para indicar uso. No jogo, a capaci
 ## 🔗 Notas da API e Banco de Dados (BSDB)
 
 ### Padrão de Nomenclatura das Pastas Locais
-Para testar os IDs locais na pasta `C:\Users\doug\Projetos\bsdb-imagens`, as siglas das coleções oficiais são:
+Para testar os IDs locais na pasta `../bsdb-imagens` (pasta irmã deste repositório), as siglas das coleções oficiais são:
 *   `bsca` = Confronto Aracnídeo (Ex: *Aberração Klyntar* é `BSCA_004.png`)
 *   `bsaq` = Ascensão e Queda
 *   `bsds` = Despertar Sombrio
 *   `bset` = Evolução Tática
 
 ### Estrutura dos Dados de Cartas (BSDB)
-*   A referência local dos dados é `C:\Users\doug\Projetos\bsdb-imagens\dados\cards.json`.
+*   A referência local dos dados é `../bsdb-imagens/dados/cards.json`.
 *   O campo `TIPO` identifica a categoria da carta (por exemplo, `Personagem`); mapear esse valor para `_tipo` nas propriedades internas do framework. Não confundir com `Type` nas cartas de demonstração, que escolhe uma cena/cor.
 *   O campo `IMAGEM` contém o caminho relativo à raiz do repositório de imagens. Para a CDN, concatenar esse valor a `https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main`.
 *   As cartas do deck de teste usam o valor `IMAGEM` como caminho relativo e carregam o scan completo da carta em tempo de execução pela CDN; o cache local fica em `user://CardImages/`. Os arquivos de imagem não são copiados para este repositório.

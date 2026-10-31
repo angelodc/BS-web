@@ -98,7 +98,7 @@ retomada são privadas e ficam de fora. O formato alimenta diretamente o proxy
   "rooms": [
     {
       "code": "K7M2QX",
-      "host": "doug",
+      "host": "jogador",
       "mode": "match",
       "players": 1,
       "status": "waiting",
@@ -246,7 +246,7 @@ testar o build local quando a 8888 está alcançável por `ssh -R 8888:localhost
 a produção é o Netlify).
 
 ```bash
-ssh termux-pelada
+ssh <alias-do-celular>                        # alias do Termux no seu ~/.ssh/config
 tmux attach -t bs-relay
 bash ~/projetos/bs-relay/iniciar-tudo.sh      # idempotente
 curl -sS http://127.0.0.1:9080/healthz

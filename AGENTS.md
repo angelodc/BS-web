@@ -31,10 +31,11 @@ autorizacao clara, mantenha o jogo aberto e pergunte antes.
 
 O script pode ser chamado pelo PowerShell com a excecao temporaria de politica.
 No Git Bash, `-File` nao repassa o caminho corretamente, entao use `-Command`
-com o caminho absoluto e `-Confirm:$false`:
+com o caminho absoluto e `-Confirm:$false`. Rode a partir da raiz do projeto:
+`$(pwd -W)` resolve o caminho absoluto sem fixar a maquina no documento.
 
 ```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& 'C:\Users\doug\Projetos\BS-web\restart-godot-game.ps1' -Confirm:\$false"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& '$(pwd -W)/restart-godot-game.ps1' -Confirm:\$false"
 ```
 
 Em PowerShell nativo, a forma equivalente e:

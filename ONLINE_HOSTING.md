@@ -481,7 +481,7 @@ GET /api/salas
   "rooms": [
     {
       "code": "K7M2QX",
-      "host": "doug",
+      "host": "jogador",
       "mode": "match",
       "players": 1,
       "status": "waiting",
@@ -641,7 +641,7 @@ redes diferentes depois de publicar.
 ## Perguntas em aberto
 
 - ~~Provedor e região do relay; quem opera e paga.~~ Decidido em 30/10/2026:
-  S20 FE do Douglas (Termux + túnel Cloudflare), sem custo; migração para um
+  S20 FE (Termux + túnel Cloudflare), sem custo; migração para um
   endereço permanente fica na v3 do TODO.
 - Quando trocar o relay de endereço fixo, o registrador do celular é desligado e
   só o `RELAY_URL` passa a valer?

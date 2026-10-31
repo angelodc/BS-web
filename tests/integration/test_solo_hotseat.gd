@@ -163,17 +163,29 @@ func _start_solo_match(deck: Dictionary = {}, extra_definitions: Dictionary = {}
 	autofree(grid)
 	yield(yield_for(0.2), YIELD)
 	if opponent_band:
+		# The band is laid out like the shipped scene: the opponent visual ends
+		# on the middle line and the local grid starts there, so the mirror has
+		# the same middle line the production board uses.
 		var visual := Control.new()
 		visual.name = "OpponentFieldVisual"
 		board.add_child(visual)
 		autofree(visual)
+		visual.rect_size = Vector2(1280, 366.2)
 		var scene := Control.new()
 		scene.name = "OpponentScene"
 		visual.add_child(scene)
+		# The resources box sits in the deck column, under the opponent deck. The
+		# mirror grid reads its rect, so the test authors the shipped geometry.
+		var resources := ColorRect.new()
+		resources.name = "OpponentResourcesBackground"
+		visual.add_child(resources)
+		resources.rect_position = Vector2(1124, 144.2)
+		resources.rect_size = Vector2(156, 216)
+		yield(yield_for(0.1), YIELD)
+		grid.rect_position = Vector2(156, 366.2)
 		yield(yield_for(0.1), YIELD)
 		scene.rect_size = grid.rect_size
-		scene.rect_global_position = Vector2(grid.rect_global_position.x,
-				grid.rect_global_position.y - grid.rect_size.y - 40.0)
+		scene.rect_global_position = Vector2(grid.rect_global_position.x, 80)
 		yield(yield_for(0.1), YIELD)
 	_free_all_cards()
 	yield(yield_for(0.2), YIELD)
@@ -302,6 +314,10 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 	yield(_settle(), "completed")
 	var placed: Card = _local_field_cards()[0]
 	var placed_slot: int = Multiplayer._sync._slot_index(placed._placement_slot)
+	var placed_rect := Rect2(placed.global_position,
+			CFConst.CARD_SIZE * Multiplayer._sync.BOARD_SCALE)
+	var free_rect := Rect2(free.global_position,
+			CFConst.CARD_SIZE * Multiplayer._sync.BOARD_SCALE)
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap shows the other seat")
 	yield(yield_for(0.7), YIELD)
@@ -324,6 +340,11 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 		assert_true(expected.size.x > 0.0, "The slot mirrors into the other band")
 		assert_almost_eq(slotted.global_position, expected.position,
 				Vector2(2, 2), "The mirror sits on the mirrored slot")
+		# Parity with the drawn box: the other field is exactly the local box
+		# turned around the middle line, not an approximation of it.
+		assert_almost_eq(slotted.global_position,
+				Multiplayer._sync.mirror_rect(placed_rect).position,
+				Vector2(2, 2), "The slotted mirror is the local box reflected")
 	if loose:
 		var travel: Vector2 = Multiplayer._sync._normalize_board_position(
 				free.global_position)
@@ -331,6 +352,9 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 				travel, CFConst.CARD_SIZE * Multiplayer._sync.BOARD_SCALE)
 		assert_almost_eq(loose.global_position, point, Vector2(2, 2),
 				"A loose card mirrors through the table centre")
+		assert_almost_eq(loose.global_position,
+				Multiplayer._sync.mirror_rect(free_rect).position,
+				Vector2(2, 2), "The loose mirror is the local box reflected")
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swapping back returns the seat")
 	yield(_settle(), "completed")
@@ -343,6 +367,45 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 				placed_slot, "The card returns to the slot it was placed on")
 		assert_eq(int(card.get_node("Control").rect_rotation), 0,
 				"The card returns upright")
+
+
+# The resource mini grid is the local grid reflected through the middle line, so
+# each miniature turns with its cell: what reads upright on the owner's side has
+# to read upside down on the other side, like a card held across the table.
+func test_mirror_of_a_resource_card_turns_with_the_grid():
+	yield(_start_solo_match({}, {}, true), "completed")
+	discard.position = Vector2(0, 372.2)
+	discard._layout_panel()
+	var card := _take_hand_card()
+	assert_not_null(card, "A card reaches the hand")
+	var card_id := str(Multiplayer.ensure_card_id(card))
+	cfc.NMAP.hand.remove_child(card)
+	discard.add_child(card)
+	card.state = Card.CardState.IN_PILE
+	yield(_settle(), "completed")
+
+	assert_true(Multiplayer.swap_solo_seat(), "The swap shows the other seat")
+	yield(yield_for(0.7), YIELD)
+	var mirror: Card = null
+	for candidate in get_tree().get_nodes_in_group("remote_cards"):
+		if candidate is Card and is_instance_valid(candidate) \
+				and str(candidate.network_id) == card_id:
+			mirror = candidate
+	assert_not_null(mirror, "The other side shows the resource mirror")
+	if mirror:
+		assert_almost_eq(float(mirror.get_node("Control").rect_rotation), 180.0,
+				0.5, "The resource mirror is drawn upside down")
+		var sync = Multiplayer._sync
+		var index: int = sync._resources_in_pile_order().find(card_id)
+		assert_true(index >= 0, "The mirror keeps its place in the pile")
+		if index >= 0:
+			var cell: Rect2 = sync._resource_cell_rect(index)
+			assert_almost_eq(mirror.global_position, cell.position,
+					Vector2(2, 2),
+					"The upside-down card stays in the reflected cell")
+			var label_band := Rect2(Vector2(1124, 144.2), Vector2(156, 22))
+			assert_false(cell.intersects(label_band),
+					"The cell never reaches into the resources label")
 
 
 func test_three_solo_swaps_keep_both_fields_populated():

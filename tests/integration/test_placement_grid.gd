@@ -635,11 +635,17 @@ func test_scene_slots_mirror_into_the_opponent_band():
 	visual.name = "OpponentFieldVisual"
 	board.add_child(visual)
 	autofree(visual)
+	# The band ends on the middle line, which is the axis both halves are
+	# reflected through, exactly like the shipped board.
+	visual.rect_size = Vector2(1280, 400)
 	var scene := Control.new()
 	scene.name = "OpponentScene"
 	visual.add_child(scene)
 	yield(yield_for(0.2), YIELD)
-	scene_grid.rect_position = Vector2(400, 400)
+	# The grid sits centred horizontally, so it is its own reflection; the
+	# scene is the same box on the other side of the middle line.
+	var grid_width: float = scene_grid.rect_size.x
+	scene_grid.rect_position = Vector2(640.0 - grid_width * 0.5, 400)
 	scene.rect_size = scene_grid.rect_size
 	scene.rect_global_position = scene_grid.rect_global_position \
 			- Vector2(0, scene_grid.rect_size.y)

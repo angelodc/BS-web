@@ -9,6 +9,11 @@ extends Control
 const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
 const DRAG_SEND_INTERVAL := 0.08
 const COUNTS_SEND_DELAY := 0.12
+# A settled change travels as one complete public snapshot instead of a stream of
+# per-card messages. The small delay coalesces a cascade (a character and the
+# resources it carries, for instance) into a single rebuild on the other side,
+# which is the same state a hotseat swap restores.
+const SNAPSHOT_SEND_DELAY := 0.12
 const HIDDEN_SWEEP_INTERVAL := 1.5
 const HIDDEN_ZONES := ["hand", "deck"]
 const VISIBLE_ZONES := ["board", "scenario", "resources", "prizes"]
@@ -57,6 +62,11 @@ var _solo_preview := false
 var _drag_timer := 0.0
 var _counts_timer := 0.0
 var _sweep_timer := 0.0
+var _snapshot_dirty := false
+var _snapshot_timer := 0.0
+# The rects the mirror laid out for each remote card, reused by the hover test
+# so it reads the same geometry the card was drawn on.
+var _remote_layout_rects := {}
 var _counts_dirty := false
 var _last_sent_counts := {"hand": -1, "deck": -1}
 var _last_hidden_counts := {"hand": -1, "deck": -1}
@@ -129,6 +139,7 @@ func _process(delta: float) -> void:
 		return
 	_send_zone_presence()
 	_send_pending_counts(delta)
+	_send_snapshot_tick(delta)
 	_send_dragged_card(delta)
 	_sweep_hidden_cards(delta)
 
@@ -146,15 +157,48 @@ func send_snapshot() -> void:
 	if not _can_send():
 		return
 	_last_sent_counts = {"hand": -1, "deck": -1}
-	for card in get_tree().get_nodes_in_group("cards"):
-		if not (card is Card) or not is_instance_valid(card) \
-				or not card.is_inside_tree() or card.network_mirror:
-			continue
-		var zone := _zone_for_card(card)
-		if zone in HIDDEN_ZONES:
-			continue
-		_send_card_state(card, zone)
+	_snapshot_dirty = false
+	_snapshot_timer = 0.0
+	_send_public_snapshot(true)
 	send_counts()
+
+
+# Every settled change is rebuilt from the whole public state, exactly like the
+# hotseat rebuild. Per-card messages only carry the live drag, so the other side
+# never has to reconcile a sequence of partial updates.
+func _mark_snapshot_dirty() -> void:
+	_snapshot_dirty = true
+	_snapshot_timer = 0.0
+
+
+func _send_snapshot_tick(delta: float) -> void:
+	if not _snapshot_dirty:
+		return
+	_snapshot_timer += delta
+	if _snapshot_timer < SNAPSHOT_SEND_DELAY:
+		return
+	_snapshot_dirty = false
+	_snapshot_timer = 0.0
+	_send_public_snapshot(false)
+	send_counts()
+
+
+# The definitions ride along only when the peer asked for a full sync, because a
+# settled change usually re-sends the same cards the peer already knows.
+func _send_public_snapshot(with_definitions: bool) -> void:
+	var state := build_public_card_entries(Multiplayer.my_slot,
+			Multiplayer.opponent_slot, false, with_definitions)
+	var counts := _local_hidden_counts()
+	var payload := {
+		"t": "mp_snapshot",
+		"slot": Multiplayer.my_slot,
+		"cards": state.get("cards", []),
+		"hand": int(counts["hand"]),
+		"deck": int(counts["deck"]),
+	}
+	if with_definitions:
+		payload["definitions"] = state.get("definitions", {})
+	Rede.send_message(payload)
 
 
 func send_counts() -> void:
@@ -279,15 +323,6 @@ func _sweep_hidden_cards(delta: float) -> void:
 				_send_hidden_card(card)
 
 
-func _send_card_state_soon(card: Card) -> void:
-	if not is_instance_valid(card):
-		return
-	yield(get_tree().create_timer(0.2), "timeout")
-	if not is_instance_valid(card) or not card.is_inside_tree():
-		return
-	_send_card_state(card, _zone_for_card(card))
-
-
 # Sends a local character to the opponent's prize area. The card leaves the
 # local field; the receiver hosts it as one of its own prize cards.
 func send_card_to_opponent_prizes(card: Card) -> bool:
@@ -329,6 +364,8 @@ func _on_network_message(data: Dictionary) -> void:
 	match str(data.get("t", "")):
 		"mp_card":
 			_apply_remote_card(data)
+		"mp_snapshot":
+			_apply_remote_snapshot(data)
 		"mp_remove":
 			_remove_remote_card(str(data.get("id", "")))
 		"mp_counts":
@@ -361,7 +398,17 @@ func _apply_remote_card(data: Dictionary) -> void:
 	if not cfc.card_definitions.has(card_name):
 		if not _pending_cards.has(card_name):
 			_pending_cards[card_name] = []
-		_pending_cards[card_name].append(data.duplicate(true))
+		var parked: Array = _pending_cards[card_name]
+		# Snapshot retries park the same card again; keep the latest copy only,
+		# so the list does not grow while the definition is on its way.
+		var replaced := false
+		for index in range(parked.size()):
+			if str(parked[index].get("id", "")) == net_id:
+				parked[index] = data.duplicate(true)
+				replaced = true
+				break
+		if not replaced:
+			parked.append(data.duplicate(true))
 		Rede.send_message({"t": "mp_def_request", "name": card_name})
 		return
 	if zone == "opponent_prizes":
@@ -418,17 +465,21 @@ func _apply_remote_card(data: Dictionary) -> void:
 		cfc.NMAP.board.add_child(card)
 	card.global_position = target
 	card._target_position = target
+	if zone != "resources":
+		# Remember the box the mirror was laid out in; the resource grid keeps
+		# its own rects fresh every frame.
+		_remote_layout_rects[net_id] = Rect2(
+				target, CFConst.CARD_SIZE * _scale_for_zone(zone))
 	card.set_state(Card.CardState.ON_PLAY_BOARD)
 	# warning-ignore:return_value_discarded
 	card.set_is_faceup(face, true, false, ["net"])
 	card.scale = Vector2(1, 1) * _scale_for_zone(zone)
 	# The mirror is seen from the other side of the table, so it is shown
-	# upside down like a real opponent's card. A pile grid is read the same way
-	# on both sides, so its miniatures stay upright. The rotation only reaches
-	# the drawn control through the tween, so it has to start here.
-	var mirror_rotation := rotation
-	if zone != "resources":
-		mirror_rotation = (rotation + 180) % 360
+	# upside down like a real opponent's card, the resource miniatures
+	# included: their grid is already reflected, so the card has to turn with
+	# it or the two sides would only half match. The rotation only reaches the
+	# drawn control through the tween, so it has to start here.
+	var mirror_rotation := (rotation + 180) % 360
 	# warning-ignore:return_value_discarded
 	card.set_card_rotation(mirror_rotation, false, true, false, ["net"])
 	if card.attachments.size() > 0:
@@ -480,6 +531,8 @@ func _hold_prize_card_locally(card: Card, net_id: String) -> bool:
 	var target := _target_for_remote("prizes", Vector2(0.5, 0.5), net_id, -1)
 	mirror.global_position = target
 	mirror._target_position = target
+	_remote_layout_rects[net_id] = Rect2(
+			target, CFConst.CARD_SIZE * _scale_for_zone("prizes"))
 	mirror.set_state(Card.CardState.ON_PLAY_BOARD)
 	# warning-ignore:return_value_discarded
 	mirror.set_is_faceup(true, true, false, ["net"])
@@ -1028,7 +1081,8 @@ func _update_lens(delta: float) -> void:
 # Public snapshot for checkpoints and restoration
 #-----------------------------------------------------------------------------
 
-func build_public_card_entries(my_slot: int, opponent_slot: int) -> Dictionary:
+func build_public_card_entries(my_slot: int, opponent_slot: int,
+		include_remote := true, include_definitions := true) -> Dictionary:
 	var cards := []
 	var definitions := {}
 	for card in get_tree().get_nodes_in_group("cards"):
@@ -1039,48 +1093,83 @@ func build_public_card_entries(my_slot: int, opponent_slot: int) -> Dictionary:
 		if zone in HIDDEN_ZONES:
 			continue
 		cards.append(_local_entry(card, zone, my_slot))
-		_add_definition(definitions, card.definition_key())
-	for net_id in _remote_cards:
-		var card = _remote_cards[net_id]
-		if not is_instance_valid(card):
-			continue
-		var meta = _remote_meta.get(net_id, {})
-		if typeof(meta) != TYPE_DICTIONARY:
-			continue
-		var zone := str(meta.get("zone", "board"))
-		if zone in HIDDEN_ZONES:
-			continue
-		var card_name := str(meta.get("name", card.definition_key()))
-		cards.append({
-			"id": net_id,
-			"owner": opponent_slot,
-			"zone": zone,
-			"name": card_name,
-			"x": float(meta.get("x", 0.5)),
-			"y": float(meta.get("y", 0.5)),
-			"slot": int(meta.get("slot", -1)),
-			"rot": int(meta.get("rot", 0)),
-			"face": int(meta.get("face", 1)),
-			"host": str(meta.get("host", "")),
-			"claim": int(meta.get("claim", 0)),
-			"pile": int(meta.get("pile", -1)),
-		})
-		_add_definition(definitions, card_name)
+		if include_definitions:
+			_add_definition(definitions, card.definition_key())
+	if include_remote:
+		for net_id in _remote_cards:
+			var card = _remote_cards[net_id]
+			if not is_instance_valid(card):
+				continue
+			var meta = _remote_meta.get(net_id, {})
+			if typeof(meta) != TYPE_DICTIONARY:
+				continue
+			var zone := str(meta.get("zone", "board"))
+			if zone in HIDDEN_ZONES:
+				continue
+			var card_name := str(meta.get("name", card.definition_key()))
+			cards.append({
+				"id": net_id,
+				"owner": opponent_slot,
+				"zone": zone,
+				"name": card_name,
+				"x": float(meta.get("x", 0.5)),
+				"y": float(meta.get("y", 0.5)),
+				"slot": int(meta.get("slot", -1)),
+				"rot": int(meta.get("rot", 0)),
+				"face": int(meta.get("face", 1)),
+				"host": str(meta.get("host", "")),
+				"claim": int(meta.get("claim", 0)),
+				"pile": int(meta.get("pile", -1)),
+			})
+			if include_definitions:
+				_add_definition(definitions, card_name)
 	return {"cards": cards, "definitions": definitions}
+
+
+# A settled change from the peer arrives as the whole public state, which is the
+# same shape the hotseat applies on a seat swap. Mirrors missing from the
+# snapshot are dropped, the zone ordering is rebuilt from the snapshot order and
+# cards whose state did not change are left alone, so the rebuild does not
+# interrupt a running tween or a hover.
+func _apply_remote_snapshot(data: Dictionary) -> void:
+	if not Multiplayer.is_session_active():
+		return
+	var opponent_slot := Multiplayer.opponent_slot
+	var owner := int(data.get("slot", opponent_slot))
+	if owner == Multiplayer.my_slot:
+		owner = opponent_slot
+	_apply_definitions(data.get("definitions", {}))
+	var cards = data.get("cards", [])
+	if typeof(cards) != TYPE_ARRAY:
+		cards = []
+	var wanted := {}
+	for entry in cards:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		if int(entry.get("owner", owner)) != owner:
+			continue
+		var net_id := str(entry.get("id", ""))
+		if not net_id.empty():
+			wanted[net_id] = entry
+	for net_id in _remote_cards.keys():
+		if not wanted.has(str(net_id)):
+			_discard_remote_card(str(net_id))
+	for zone in _remote_zone_order:
+		_remote_zone_order[zone] = []
+	_apply_snapshot_entries(cards, owner, true)
+	if data.has("hand") or data.has("deck"):
+		Multiplayer.set_opponent_counts({
+			"hand": int(data.get("hand", 0)),
+			"deck": int(data.get("deck", 0)),
+		})
+	_update_remote_zone_labels()
 
 
 func apply_public_snapshot(public_state: Dictionary, opponent_slot: int) -> void:
 	_clear_remote_cards()
 	_clear_hand_placeholders()
 	_apply_definitions(public_state.get("definitions", {}))
-	var cards = public_state.get("cards", [])
-	if typeof(cards) == TYPE_ARRAY:
-		for entry in cards:
-			if typeof(entry) != TYPE_DICTIONARY:
-				continue
-			if int(entry.get("owner", 0)) != opponent_slot:
-				continue
-			_apply_remote_card(_entry_as_message(entry))
+	_apply_snapshot_entries(public_state.get("cards", []), opponent_slot, false)
 	var hidden = public_state.get("hidden", {})
 	var counts = {}
 	if typeof(hidden) == TYPE_DICTIONARY:
@@ -1088,6 +1177,53 @@ func apply_public_snapshot(public_state: Dictionary, opponent_slot: int) -> void
 	if typeof(counts) != TYPE_DICTIONARY:
 		counts = {}
 	set_hidden_counts(int(counts.get("hand", 0)), int(counts.get("deck", 0)), true)
+
+
+# Applies the entries of a public snapshot that belong to the given owner. The
+# hotseat rebuilds from scratch (skip_unchanged false); the online snapshot
+# keeps the mirrors that already match their entry.
+func _apply_snapshot_entries(cards, owner_slot: int, skip_unchanged: bool) -> void:
+	if typeof(cards) != TYPE_ARRAY:
+		return
+	for entry in cards:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		if int(entry.get("owner", 0)) != owner_slot:
+			continue
+		var net_id := str(entry.get("id", ""))
+		if net_id.empty():
+			continue
+		if skip_unchanged and _snapshot_entry_matches(net_id, entry):
+			# The zone ordering was cleared before the rebuild, so an entry that
+			# needs no new state still has to reclaim its place in the order.
+			_remember_snapshot_order(net_id, str(entry.get("zone", "")))
+			continue
+		_apply_remote_card(_entry_as_message(entry))
+
+
+func _remember_snapshot_order(net_id: String, zone: String) -> void:
+	if not zone in _remote_zone_order:
+		return
+	if not net_id in _remote_zone_order[zone]:
+		_remote_zone_order[zone].append(net_id)
+
+
+func _snapshot_entry_matches(net_id: String, entry: Dictionary) -> bool:
+	var card = _remote_cards.get(net_id)
+	if not is_instance_valid(card):
+		return false
+	var meta = _remote_meta.get(net_id, {})
+	if typeof(meta) != TYPE_DICTIONARY:
+		return false
+	return str(meta.get("zone", "")) == str(entry.get("zone", "")) \
+			and str(meta.get("name", "")) == str(entry.get("name", "")) \
+			and int(meta.get("slot", -1)) == int(entry.get("slot", -1)) \
+			and int(meta.get("rot", 0)) == int(entry.get("rot", 0)) \
+			and int(meta.get("face", 1)) == int(entry.get("face", 1)) \
+			and str(meta.get("host", "")) == str(entry.get("host", "")) \
+			and int(meta.get("pile", -1)) == int(entry.get("pile", -1)) \
+			and float(meta.get("x", 0.5)) == float(entry.get("x", 0.5)) \
+			and float(meta.get("y", 0.5)) == float(entry.get("y", 0.5))
 
 
 func find_remote_card(net_id: String) -> Card:
@@ -1145,15 +1281,20 @@ func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
 			if zone in HIDDEN_ZONES:
 				_send_hidden_card(card)
 			else:
-				_send_card_state_soon(card)
+				_mark_snapshot_dirty()
 		"card_moved_to_board":
-			_send_card_state_soon(card)
+			# The scenario claim has to travel at once: it is what settles which
+			# side keeps the arena. Everything else can wait for the snapshot.
+			var board_zone := _zone_for_card(card)
+			if board_zone == "scenario":
+				_send_card_state(card, board_zone)
+			_mark_snapshot_dirty()
 		"card_rotated", "card_flipped", "card_attached", "card_unattached":
 			var visible_zone := _zone_for_card(card)
 			if visible_zone in HIDDEN_ZONES:
 				_send_hidden_card(card)
 			else:
-				_send_card_state(card, visible_zone)
+				_mark_snapshot_dirty()
 
 
 func _on_peer_disconnected() -> void:
@@ -1418,26 +1559,44 @@ func _slot_index(slot) -> int:
 	return grid.get_all_slots().find(slot)
 
 
+# Both halves of the table are the same play area seen from opposite sides, so
+# an opponent box is this rectangle turned 180 degrees around the middle line
+# and the centre of the board. Every mirrored zone goes through this one
+# reflection, so no zone grows a second copy of the geometry that could drift.
+func mirror_rect(rect: Rect2) -> Rect2:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return rect
+	var axis_x: float = board.rect_global_position.x + board.rect_size.x * 0.5
+	var split_y := _split_line_y(board)
+	return Rect2(Vector2(
+			axis_x * 2.0 - rect.position.x - rect.size.x,
+			split_y * 2.0 - rect.position.y - rect.size.y), rect.size)
+
+
+# The two field bands meet at the bottom of the opponent visual. Falling back to
+# the board centre keeps the reflection usable on a scene that has no band.
+func _split_line_y(board: Control) -> float:
+	var visual: Control = board.get_node_or_null("OpponentFieldVisual")
+	if visual and visual.rect_size.y > 0.0:
+		return visual.rect_global_position.y + visual.rect_size.y
+	return board.rect_global_position.y + board.rect_size.y * 0.5
+
+
 # The two scene bands are the same box seen from opposite sides of the table,
-# so a slot mirrors by turning 180 degrees around the box centre. The owner's
+# so a slot mirrors by turning 180 degrees around the middle line: the owner's
 # front row, nearest the middle line on their screen, lands on the row nearest
 # the middle line here, which is what makes the two fields face each other.
 # An empty rect means the slot could not be mirrored.
 func _mirrored_slot_rect(index: int) -> Rect2:
 	var grid := _scene_grid()
-	var scene := _opponent_scene()
-	if not grid or not scene or index < 0 \
-			or grid.rect_size.x <= 0.0 or grid.rect_size.y <= 0.0:
+	if not grid or index < 0 or index >= grid.get_slot_count():
 		return Rect2()
-	var slots := grid.get_all_slots()
-	if index >= slots.size():
+	var slot: Control = grid.get_slot(index)
+	if not is_instance_valid(slot) or slot.rect_size.x <= 0.0 \
+			or slot.rect_size.y <= 0.0:
 		return Rect2()
-	var slot: Control = slots[index]
-	if not is_instance_valid(slot):
-		return Rect2()
-	var offset: Vector2 = slot.rect_global_position - grid.rect_global_position
-	return Rect2(scene.rect_global_position + scene.rect_size - offset \
-			- slot.rect_size, slot.rect_size)
+	return mirror_rect(Rect2(slot.rect_global_position, slot.rect_size))
 
 
 # A scene card that sits in one of the owner's slots is mirrored into the
@@ -1459,23 +1618,19 @@ func _target_for_remote(zone: String, travel: Vector2, net_id: String,
 	return _position_for_remote(zone, travel, net_id)
 
 
-# Point reflection of a table-space coordinate through the centre of the scene
-# box, minus the room the drawn card takes on this side of the table. An INF
-# result means the two bands are not laid out yet.
+# Point reflection of a table-space coordinate through the middle line, minus
+# the room the drawn card takes on this side of the table. An INF result means
+# the scene grid is not laid out yet.
 func _mirrored_board_point(travel: Vector2, display_size: Vector2) -> Vector2:
 	var grid := _scene_grid()
-	var scene := _opponent_scene()
-	if not grid or not scene or not is_instance_valid(grid) \
-			or not is_instance_valid(scene) or grid.rect_size.x <= 0.0 \
-			or grid.rect_size.y <= 0.0 or scene.rect_size.x <= 0.0 \
-			or scene.rect_size.y <= 0.0:
+	if not grid or not is_instance_valid(grid) or grid.rect_size.x <= 0.0 \
+			or grid.rect_size.y <= 0.0:
 		return Vector2.INF
-	var scaled := Vector2(
-			display_size.x * scene.rect_size.x / grid.rect_size.x,
-			display_size.y * scene.rect_size.y / grid.rect_size.y)
-	return scene.rect_global_position + scene.rect_size \
-			- Vector2(travel.x * scene.rect_size.x,
-					travel.y * scene.rect_size.y) - scaled
+	var local := Rect2(
+			grid.rect_global_position + Vector2(
+					travel.x * grid.rect_size.x, travel.y * grid.rect_size.y),
+			display_size)
+	return mirror_rect(local).position
 
 
 func _position_for_remote(zone: String, travel: Vector2, net_id: String) -> Vector2:
@@ -1487,16 +1642,14 @@ func _position_for_remote(zone: String, travel: Vector2, net_id: String) -> Vect
 		return board.rect_global_position
 	match zone:
 		"resources":
-			var resources: Control = visual.get_node_or_null(
-					"OpponentResourcesBackground")
-			if resources:
-				var order := _resources_in_pile_order()
-				return _resource_slot_position(
-						resources, max(0, order.find(net_id)))
+			var order := _resources_in_pile_order()
+			var cell := _resource_cell_rect(max(0, order.find(net_id)))
+			if cell.size.x > 0.0:
+				return cell.position
 		"prizes":
 			var prizes: Control = visual.get_node_or_null("OpponentPrizes")
 			if prizes:
-				return _stack_position(prizes, "prizes", net_id)
+				return _stack_rect(prizes, "prizes", net_id).position
 		"scenario":
 			var scenario: Control = visual.get_node_or_null("OpponentScenario")
 			if scenario:
@@ -1543,7 +1696,7 @@ func _center_zone_position(
 			top_margin + available_y * 0.5)
 
 
-func _stack_position(area: Control, zone: String, net_id: String) -> Vector2:
+func _stack_rect(area: Control, zone: String, net_id: String) -> Rect2:
 	var order: Array = _remote_zone_order.get(zone, [])
 	var index := order.find(net_id)
 	if index < 0:
@@ -1554,29 +1707,65 @@ func _stack_position(area: Control, zone: String, net_id: String) -> Vector2:
 	var origin := Vector2(6, 0)
 	var column := index % columns
 	var row := int(index / columns)
-	return area.rect_global_position + origin \
-			+ Vector2(column * column_step, row * row_step)
+	return Rect2(area.rect_global_position + origin \
+			+ Vector2(column * column_step, row * row_step),
+			CFConst.CARD_SIZE * PRIZES_SCALE)
 
 
-# The mirrored resources grid uses the numbers of the local panel, asked from
-# the pile itself so the two boxes cannot drift apart. The constants are only the
-# fallback for a pile that has not laid itself out yet.
-func _resource_slot_position(area: Control, index: int) -> Vector2:
+# The mirrored resources grid is the local grid reflected through the middle
+# line: the column order reverses and every cell lands where the owner's cell
+# would if the table were turned around. The local pile exposes the layout, so
+# both boxes draw the same mini grid.
+func _resource_cell_rect(index: int) -> Rect2:
+	if index < 0:
+		return Rect2()
+	if _local_resources_layout().empty():
+		var area := _resources_area()
+		if not area:
+			return Rect2()
+		return Rect2(_fallback_resource_slot(area, index),
+				CFConst.CARD_SIZE * _resources_grid_scale())
+	return mirror_rect(_local_resource_cell_rect(index))
+
+
+# One cell of the local grid, as it is drawn inside the local resources panel.
+# The layout is the pile's own, so the mirror cannot drift from what the player
+# sees on their side.
+func _local_resource_cell_rect(index: int) -> Rect2:
+	var panel: Control = _container_area(cfc.NMAP.get("discard", null))
+	if not panel:
+		return Rect2()
 	var scale := _resources_grid_scale()
-	var cell: Vector2 = CFConst.CARD_SIZE * scale + Vector2(
-			RESOURCES_GRID_GAP, RESOURCES_GRID_GAP)
-	var grid_width := RESOURCES_GRID_COLUMNS * cell.x \
-			- RESOURCES_GRID_GAP
-	var origin := Vector2(
-			max(0.0, (area.rect_size.x - grid_width) * 0.5),
+	var step: Vector2 = CFConst.CARD_SIZE * scale \
+			+ Vector2(RESOURCES_GRID_GAP, RESOURCES_GRID_GAP)
+	var origin := Vector2(RESOURCES_GRID_PADDING,
 			RESOURCES_GRID_PADDING + RESOURCES_LABEL_BAND)
 	var layout := _local_resources_layout()
 	if not layout.empty():
 		origin = layout["origin"]
-		cell = layout["step"]
-	# The local label block is taller than the mirrored band, but a layout that
-	# reported a smaller origin must still leave the label clear.
-	origin.y = max(origin.y, RESOURCES_LABEL_BAND)
+		step = layout["step"]
+	else:
+		var grid_width := RESOURCES_GRID_COLUMNS * step.x - RESOURCES_GRID_GAP
+		var panel_width := max(panel.rect_size.x, _resources_base_width())
+		origin.x = max(0.0, (panel_width - grid_width) * 0.5)
+	var cell := Vector2(
+			index % RESOURCES_GRID_COLUMNS,
+			int(index / RESOURCES_GRID_COLUMNS)) * step
+	return Rect2(panel.rect_global_position + origin + cell,
+			CFConst.CARD_SIZE * scale)
+
+
+# First-frame fallback: the local panel has not laid itself out yet, so the grid
+# is derived from the authored width inside the opponent box. The reflected
+# layout replaces this as soon as the pile runs once.
+func _fallback_resource_slot(area: Control, index: int) -> Vector2:
+	var scale := _resources_grid_scale()
+	var cell: Vector2 = CFConst.CARD_SIZE * scale + Vector2(
+			RESOURCES_GRID_GAP, RESOURCES_GRID_GAP)
+	var grid_width := RESOURCES_GRID_COLUMNS * cell.x - RESOURCES_GRID_GAP
+	var origin := Vector2(
+			max(0.0, (area.rect_size.x - grid_width) * 0.5),
+			RESOURCES_GRID_PADDING + RESOURCES_LABEL_BAND)
 	var column := index % RESOURCES_GRID_COLUMNS
 	var row := int(index / RESOURCES_GRID_COLUMNS)
 	return area.rect_global_position + origin + Vector2(
@@ -1638,14 +1827,26 @@ func _update_resource_preview() -> void:
 		var area := _resources_area()
 		if area:
 			var mouse: Vector2 = area.get_global_mouse_position()
-			var size: Vector2 = CFConst.CARD_SIZE * _resources_grid_scale()
 			for net_id in _resources_in_pile_order():
 				var card: Card = _remote_cards.get(net_id)
 				if not is_instance_valid(card) or not card.visible:
 					continue
-				if Rect2(card.global_position, size).has_point(mouse):
+				# The rect comes from the layout pass, so the hover answers where
+				# the mirror was drawn even before its tween has settled.
+				var cell: Rect2 = _remote_layout_rects.get(
+						str(net_id), _card_screen_rect(card))
+				if cell.has_point(mouse):
 					hovered = card
 	_set_resource_preview(hovered)
+
+
+# The hover has to follow what is actually drawn, not the nominal grid size: a
+# miniature whose scale or rotation has not caught up yet would otherwise answer
+# the pointer from a different spot than its own artwork.
+func _card_screen_rect(card: Card) -> Rect2:
+	var origin: Vector2 = card.global_transform.xform(Vector2.ZERO)
+	var opposite: Vector2 = card.global_transform.xform(CFConst.CARD_SIZE)
+	return Rect2(origin, opposite - origin).abs()
 
 
 # The local grid steps aside while its selection popup is open, and the mirrored
@@ -1686,12 +1887,29 @@ func _resources_base_width() -> float:
 	return 156.0
 
 
+# A mirror that arrived through a path that did not feed the zone order (a
+# restored snapshot, for instance) would stay parked wherever it was dropped,
+# over the panel and outside the hoverable grid. Every resource mirror is
+# adopted before the grid is laid out, so the panel only ever shows those.
+func _adopt_missing_resource_mirrors() -> void:
+	var order: Array = _remote_zone_order["resources"]
+	for net_id in _remote_cards:
+		if net_id in order:
+			continue
+		var meta = _remote_meta.get(net_id, {})
+		if typeof(meta) != TYPE_DICTIONARY:
+			continue
+		if str(meta.get("zone", "")) == "resources":
+			order.append(net_id)
+
+
 # The local grid puts the top of the pile in the first cell, and the top is the
 # highest index because a pile appends every card that arrives. The mirror sorts
 # the same way; arrival order only matches that online, where each card is
 # reported as it moves, while a hotseat rebuild ships the whole pile in spawn
 # order, so the sender includes the pile index with every resource card.
 func _resources_in_pile_order() -> Array:
+	_adopt_missing_resource_mirrors()
 	var entries := []
 	var arrival_order: Array = _remote_zone_order["resources"]
 	for arrival in range(arrival_order.size()):
@@ -1730,16 +1948,22 @@ func _relayout_remote_resources() -> void:
 		var card: Card = _remote_cards.get(order[index])
 		if not is_instance_valid(card):
 			continue
-		if index < order.size() - RESOURCES_GRID_MAX:
+		# The mirror shows the newest cards, exactly like the local grid, which
+		# drops the bottom of the pile first. Order index 0 is the pile top.
+		if index >= RESOURCES_GRID_MAX:
 			card.visible = false
+			_remote_layout_rects.erase(str(order[index]))
 			continue
 		card.visible = true
 		var target_scale := Vector2(card_scale, card_scale)
 		if not card.scale.is_equal_approx(target_scale):
 			card.scale = target_scale
-		# Global like the rest of the mirror: the cell is computed from the
-		# authored panel, so it must not be read as a position inside the board.
-		card.global_position = _resource_slot_position(area, index)
+		# Global like the rest of the mirror: the cell is the local grid cell
+		# reflected through the middle line, so it must not be read as a position
+		# inside the board or the opponent panel.
+		var cell := _resource_cell_rect(index)
+		card.global_position = cell.position
+		_remote_layout_rects[str(order[index])] = cell
 
 
 func _resources_area() -> Control:
@@ -1794,6 +2018,7 @@ func _discard_remote_card(net_id: String) -> void:
 		card.queue_free()
 	_remote_cards.erase(net_id)
 	_remote_meta.erase(net_id)
+	_remote_layout_rects.erase(net_id)
 	_pending_host_links.erase(net_id)
 	for zone in _remote_zone_order:
 		_remote_zone_order[zone].erase(net_id)
@@ -1815,6 +2040,7 @@ func _clear_remote_cards() -> void:
 		_discard_remote_card(net_id)
 	_remote_cards.clear()
 	_remote_meta.clear()
+	_remote_layout_rects.clear()
 	_pending_host_links.clear()
 	_resolving_hosts = false
 	_remote_zone_order = {"resources": [], "prizes": []}
@@ -1980,7 +2206,10 @@ func _local_entry(card: Card, zone: String, owner: int) -> Dictionary:
 		var normalized := _normalize_board_position(card.global_position)
 		entry["x"] = normalized.x
 		entry["y"] = normalized.y
-		entry["slot"] = _slot_index(card._placement_slot)
+		# A dragged card has left its slot; the snapshot only names a slot once
+		# the card has settled, exactly like the live drag message.
+		if cfc.card_drag_ongoing != card:
+			entry["slot"] = _slot_index(card._placement_slot)
 	if zone == "scenario":
 		entry["claim"] = int(_scenario_claims.get(net_id, 0))
 	if zone == "resources":

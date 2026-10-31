@@ -346,3 +346,98 @@ class TestBattleScenesAttachmentStack:
 		assert_eq(discard, attached_card.get_parent())
 		assert_true(host_card.attachments.has(replacement_card))
 		assert_false(board.pending_resource_swap_active)
+
+	# The resource popup is opened with the board pointer switched off, so the
+	# cards inside it never receive the hover focus that the click used to wait
+	# for. The click has to be answered straight from IN_POPUP.
+	func test_clicking_a_resource_pays_the_character() -> void:
+		var host: Card = cards[0]
+		var resource_a: Card = cards[1]
+		var resource_b: Card = cards[2]
+		host.properties["_tipo"] = "Personagem"
+		host.properties["ENERGIA"] = "1"
+		yield(table_move(host, Vector2(300, 200)), "completed")
+		yield(resource_a.move_to(discard), "completed")
+		yield(resource_b.move_to(discard), "completed")
+		yield(yield_for(0.2), YIELD)
+		assert_eq(2, board.get_available_resource_count(),
+				"The pool holds one card more than the cost")
+
+		board.begin_resource_selection(host, 1)
+		assert_eq(host, board.pending_resource_host,
+				"The character waits for its resource")
+		assert_true(discard.is_popup_open, "The resource popup opens")
+
+		var popup_cards := _popup_cards()
+		assert_eq(2, popup_cards.size(), "Both resources are offered")
+		# Production disables the board pointer for the whole pick, so the
+		# popup cards stay in IN_POPUP; reproduce that before clicking.
+		board.mouse_pointer.disable()
+		board.mouse_pointer.forget_focus()
+		var click := InputEventMouseButton.new()
+		click.button_index = BUTTON_LEFT
+		click.pressed = false
+		popup_cards[0]._on_Card_gui_input(click)
+		yield(yield_for(0.3), YIELD)
+
+		assert_eq(1, host.attachments.size(),
+				"The clicked resource goes under the character")
+		assert_eq(host, popup_cards[0].current_host_card,
+				"The resource is attached to the character")
+		assert_eq(Card.AttachmentOffset.BATTLE_SCENES_BOTTOM,
+				popup_cards[0].attachment_offset,
+				"The payment stack shows its bottom edge")
+		assert_null(board.pending_resource_host,
+				"The pick finishes after the cost is paid")
+		assert_false(discard.pile_popup.visible, "The popup closes")
+
+	func _popup_cards() -> Array:
+		var popup_cards := []
+		for slot in discard.get_node("ViewPopup/CardView").get_children():
+			for node in slot.get_children():
+				if node is Card:
+					popup_cards.append(node)
+		return popup_cards
+
+	# Two resources are enough for a cost of two, but the popup only closes
+	# once the player has picked both.
+	func test_clicking_two_resources_finishes_the_payment() -> void:
+		var host: Card = cards[0]
+		var resource_a: Card = cards[1]
+		var resource_b: Card = cards[2]
+		var resource_c: Card = cards[3]
+		host.properties["_tipo"] = "Suporte"
+		host.properties["ENERGIA"] = "2"
+		yield(table_move(host, Vector2(300, 200)), "completed")
+		yield(resource_a.move_to(discard), "completed")
+		yield(resource_b.move_to(discard), "completed")
+		yield(resource_c.move_to(discard), "completed")
+		yield(yield_for(0.2), YIELD)
+		assert_eq(3, board.get_available_resource_count(),
+				"The pool holds one card more than the cost")
+
+		board.begin_resource_selection(host, 2)
+		assert_eq(host, board.pending_resource_host,
+				"The support waits for its resources")
+		board.mouse_pointer.disable()
+		board.mouse_pointer.forget_focus()
+		var click := InputEventMouseButton.new()
+		click.button_index = BUTTON_LEFT
+		click.pressed = false
+		var popup_cards := _popup_cards()
+		popup_cards[0]._on_Card_gui_input(click)
+		yield(yield_for(0.2), YIELD)
+		assert_eq(1, host.attachments.size(), "The first click pays one card")
+		assert_eq(host, board.pending_resource_host,
+				"The pick stays open until the whole cost is paid")
+
+		popup_cards = _popup_cards()
+		assert_eq(2, popup_cards.size(),
+				"The picked card leaves the popup")
+		popup_cards[0]._on_Card_gui_input(click)
+		yield(yield_for(0.3), YIELD)
+		assert_eq(2, host.attachments.size(),
+				"The second click completes the payment")
+		assert_null(board.pending_resource_host,
+				"The pick finishes after the second card")
+		assert_false(discard.pile_popup.visible, "The popup closes")

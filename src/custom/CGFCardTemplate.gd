@@ -194,17 +194,6 @@ func set_card_rotation(
 func _on_Card_gui_input(event) -> void:
 	if network_mirror:
 		return
-	if event is InputEventMouseButton and cfc.NMAP.has("board"):
-		# While the player is picking a resource the popup owns the click. The
-		# field card under the pointer would otherwise swallow the event and the
-		# resource being chosen would never be selected.
-		if not _resource_pick_pending() \
-				and cfc.NMAP.board.mouse_pointer \
-				and cfc.NMAP.board.mouse_pointer.current_focused_card \
-				and cfc.NMAP.board.mouse_pointer.current_focused_card != self:
-			cfc.NMAP.board.mouse_pointer.current_focused_card\
-					._on_Card_gui_input(event)
-			return
 	if event is InputEventMouseButton \
 			and event.get_button_index() == BUTTON_LEFT \
 			and not event.is_pressed() \
@@ -220,11 +209,14 @@ func _on_Card_gui_input(event) -> void:
 		control.set_default_cursor_shape(Input.CURSOR_ARROW)
 		_handle_hand_half_click(left_half)
 		return
+	# The resource popup is opened with the board pointer switched off, so its
+	# cards never get the hover that would turn IN_POPUP into FOCUSED_IN_POPUP.
+	# The pick has to accept the plain popup state or the click is lost.
 	if event is InputEventMouseButton \
 			and not event.is_pressed() \
 			and event.get_button_index() == BUTTON_LEFT \
 			and cfc.NMAP.has("board") \
-			and state == CardState.FOCUSED_IN_POPUP:
+			and state in [CardState.IN_POPUP, CardState.FOCUSED_IN_POPUP]:
 		if cfc.NMAP.board.pending_resource_host:
 			cfc.NMAP.board.select_resource_for_host(self)
 			return
@@ -244,17 +236,6 @@ func _on_Card_gui_input(event) -> void:
 			targeting_arrow.initiate_targeting()
 		elif not event.is_pressed() and event.get_button_index() == 2:
 			targeting_arrow.complete_targeting()
-
-
-# True while the board is asking the player to pick resource cards from the
-# popup. The pick has no overlay of its own, so clicks have to be routed by hand.
-func _resource_pick_pending() -> bool:
-	if not cfc.NMAP.has("board") or not cfc.NMAP.board:
-		return false
-	var host = cfc.NMAP.board.pending_resource_host
-	if host and is_instance_valid(host):
-		return true
-	return bool(cfc.NMAP.board.pending_resource_swap_active)
 
 
 # Left half sends the card to Resources, right half plays it according to its

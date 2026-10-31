@@ -397,17 +397,17 @@ color = Color( 0.28, 0.3, 0.37, 0 )
 
 [node name="OpponentResourcesVeil" type="ColorRect" parent="OpponentFieldVisual"]
 margin_left = 1124.0
-margin_top = 336.2
+margin_top = 144.200012
 margin_right = 1280.0
-margin_bottom = 358.2
+margin_bottom = 166.200012
 mouse_filter = 2
 color = Color( 0.06, 0.07, 0.1, 0.4 )
 
 [node name="OpponentResourcesLabel" type="Label" parent="OpponentFieldVisual"]
 margin_left = 1128.0
-margin_top = 338.200012
+margin_top = 146.200012
 margin_right = 1276.0
-margin_bottom = 356.200012
+margin_bottom = 164.200012
 mouse_filter = 2
 custom_fonts/font = SubResource( 5 )
 text = "Recursos/Descarte (0)"

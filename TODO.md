@@ -79,7 +79,7 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 ### 🌐 Fase 3: Multiplayer Simples (Espelhamento via WebSockets)
 *   [x] **Username e busca de partida na LAN:** O menu solicita username e endereço do relay, e o botão **Procurar Partida** coloca o jogador em uma fila de duas pessoas. O relay separa partidas, atribui identidades e cancela a busca pelo mesmo botão.
 *   [x] **Relay WebSocket (`Rede.gd`, `LocalRelay.gd` e `tools/ws_relay.py`):** Godot 3 usa mensagens JSON em WebSocket. Na mesma máquina ou na LAN não é preciso iniciar nada: o relay embutido sobe no primeiro cliente que criar/procurar sala (escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião). `python tools/ws_relay.py` continua disponível como relay externo. O relay só encaminha mensagens entre os dois membros de cada partida e não deve ser exposto à internet.
-*   [x] **Relay online em Node.js (`relay/`):** Relay dedicado para o modo online, com o mesmo protocolo JSON, `join_room` por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`; 21 testes com clientes `ws` reais passam. Publicado no S20 FE atrás do túnel Cloudflare em 30/10/2026; falta o hostname fixo (Fase 4). Plano em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
+*   [x] **Relay online em Node.js (`relay/`):** Relay dedicado para o modo online, com o mesmo protocolo JSON, `join_room` por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`; 21 testes com clientes `ws` reais passam. Publicado no S20 FE atrás do túnel Cloudflare em 30/10/2026; a rotação do hostname do túnel é coberta pelo auto-registro (Fase 4). Plano em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
 *   [x] **Sincronizar ações (espelhamento):**
     *   [x] Arrastar: a posição na Cena replica no campo visual do oponente.
     *   [x] Rotação: capacitação/incapacitação replica no oponente.
@@ -95,18 +95,23 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
     *   **Compra (`BUY`):** planejada para a v2 do multiplayer; não entra na sequência inicial da v1.
     *   **Limite da mão:** permanece ilimitado; `ADJ` não descarta cartas por tamanho da mão.
     *   **Estado:** Implementado em `MatchHUD.gd`, com os resultados do d6, quem começa, rodada e etapa. O indicador é informativo e não bloqueia ações do jogo.
+*   [x] **Reconexão automática quando a conexão cai (2026-10-30):** o botão **Reconecte** já existia, mas dependia de alguém ver o aviso e clicar dentro da janela do relay. Agora `Multiplayer.gd` abre uma janela de tentativas em `_on_connection_lost()` e roda um backoff `2 → 5 → 10 → 20 → 40 s` (77 s somados, menos que os 120 s de graca do relay) chamando o mesmo `manual_reconnect()`. Não reinicia a sequência a cada queda de tentativa, não sobrepõe tentativa enquanto um socket está conectando, nunca roda na partida solo (hotseat não falou com o relay) e se encerra no rejoin, no fim da sessão e na sala expirada. Quando a janela vence, o aviso muda uma sola vez para "Conexão perdida. Reconecte à sala ou encerre a partida." Coberto por `tests/integration/test_auto_reconnect.gd` (9 testes).
+*   [x] **"Servidor: online / indisponível" no menu (2026-10-30):** `MainMenu.tscn` ganhou o rótulo `ServerStatus` abaixo do endereço do relay. Na web a sonda é no mesmo site (`GET /api/salas`, que já responde `relay.online` e a lista de salas); no desktop o endereço digitado vira `http(s)://host:porta/healthz`. Refaz a cada 20 s, sonda ~2 s depois de parar de digitar, conta as salas abertas e fica verde/vermelho. No desktop o rótulo se esconde para endereço local (`127.0.0.1`), onde o `LocalRelay` sobe junto com a criação da sala — dizer "indisponível" antes disso seria mentira. Coberto por `tests/unit/test_MainMenuServerStatus.gd` (6 testes). **Nota:** nada disso precisa de mudança no Netlify; o `/api/salas` já está publicado.
 *   [ ] **Completar a autoridade da partida:** O anfitrião já é autoritativo para início, sorteio do d6, semente, sequência de fases e estado público canônico, e as ações recebidas são validadas estruturalmente. Falta o anfitrião aprovar cada jogada antes de aplicá-la e tratar as próprias ações pelo mesmo fluxo. O relay Node.js continua apenas pareando e transportando mensagens.
     *   **Ordem sugerida:** validar uma partida real com dois clientes; completar a validação de cada ação pelo anfitrião; testar estados divergentes, desconexões e privacidade. Não considerar o multiplayer pronto para partidas competitivas até a autoridade e a privacidade estarem verificadas. Detalhes em [MULTIPLAYER.md](./MULTIPLAYER.md#limitações-conhecidas-da-v1).
 
 *   [ ] **Ações cruzadas de regra entre assentos (ataque e retirada de anexo):** hoje a única ação sobre o campo do adversário é arrastar uma carta espelhada para outro slot. Decisões de 2026-10-29: **atacar** apenas registra no log ("X atacou Y"), sem dano, porque a mecânica de dano/nocaute/vitória continua na Fase 1; **retirar uma carta de baixo do personagem do oponente** manda a carta para Recursos/Descarte do dono, como no nocaute; as duas ações valem em qualquer fase, sem limite por turno. Transporte previsto: mensagem `mp_card_action_request` no `MultiplayerSync` e aplicação local no `_remote_meta` do espelho na partida solo.
+*   [ ] **Área para escrever texto durante a partida:** criar um campo onde o jogador digita texto dentro da mesa. Escopo a definir antes de implementar: (a) **recado entre os dois jogadores** (chat) — precisa de mensagem nova no `MultiplayerSync`, passagem pelo relay, histórico só em memória, limite de tamanho e alguma proteção contra abuso, já que o relay hoje só encaminha; ou (b) **anotação particular** (caderno do jogador) — não sai do cliente, não passa pelo relay, e pode ser só um painel com `TextEdit` ao lado do log. Decidir também onde o campo mora (painel do `MatchHUD` junto do log, ou popup), se fica visível no solo/hotseat (no solo o texto do assento inativo precisa ficar escondido, como o resto) e se o conteúdo entra no log de ações.
+*   [ ] **Botão “Back to Main” no multiplayer:** o botão existe no `CGFBoard.tscn` e a partida solo o mantém visível (`_setup_solo()` reposiciona para `148,132`), mas `_setup_multiplayer()` o esconde junto do `DeckBuilder` e dos toggles de desenvolvimento — quem está numa partida online não tem como voltar ao menu sem fechar o jogo. `_on_BackToMain_pressed()` já chama `Multiplayer.leave_session("Partida encerrada pelo jogador.")` quando há sessão ativa, então falta mostrar o botão no multiplayer, escolher a posição (o canto esquerdo tem o log do HUD; o multiplayer não tem `DeckBuilder` ocupando `8,132`) e decidir se sai direto ou pede confirmação antes de abandonar a partida do outro jogador. O `DeckBuilder` segue escondido de propósito: no multiplayer o deck é escolhido no painel de preparação do `MatchHUD`.
 
 ### 🚀 Fase 4: Banco de Dados Completo & Deploy (Netlify)
 *   [ ] **Integrar Banco de Dados JSON:** A importação de deck já guarda `ENERGIA`, `PODERES`/`Tags`, `AFILIACAO`, `ESCUDO`, `ALINHAMENTO` e `ENERGIA_EXTRA` nas propriedades da carta. Falta o motor validar essas regras (poderes, afiliação, escudo) durante a partida.
 *   [x] **Exportar para HTML5:** O preset HTML5 já existe em `export_presets.cfg` com saída em `online/site/game/index.html`; o build local foi gerado com os templates do Godot 3.4.4 e validado com dois navegadores até o início da partida e com importação de deck por link. A integração do cliente web já está feita: `LocalRelay` bloqueado no navegador, endereço padrão `wss://`, `join_room` por código, entrada “Entrar com código” no menu e leitura de `?room=CODIGO`/`?relay=HOST`. **Publicado em 2026-10-30** (deploy `6ae4f75944d360a9d0f5f8f3`, `index.pck` com 7,8 MB).
 *   [ ] **Apagar do código o Deck Builder, a Card Library e os “Decks salvos”:** As quatro entradas já saíram do menu principal (no multiplayer o deck continua sendo escolhido no painel de preparação do `MatchHUD`), mas o código segue no projeto e o preset HTML5 usa `export_filter="all_resources"`, então tudo continua empacotado. Confirmado no `index.pck` atual (10,7 MB): remover `src/core/CardViewer/DeckBuilder/` (70 KB), `src/core/CardViewer/CardLibrary/` (14 KB), `src/custom/CGFDeckbuilder/` (22 KB) e os 4 screenshots do README que ficam na raiz (`deckbuilder-ff-grid.png`, `deckbuilder-preview.png`, `card-library-grid.png`, `card-library-list.png`) economiza ~1,4 MB (~13%) — quase todo o ganho vem das texturas importadas dos screenshots (~1,33 MB), que não são usadas pelo jogo. Sair junto: o botão **DeckBuilder** e o `DeckBuilderPopup` do `CGFBoard.tscn` (já ocultos no multiplayer). **Não remover** `CVGridCardObject`, `CVPreviewPopup` e `CVInfoPanel` do `src/core/CardViewer/`: a `SelectionWindow` do “Procurar” no deck depende deles.
 *   [x] **Excluir testes e tutorial do build HTML5:** o `exclude_filter` do preset HTML5 já cobre `addons/gut`, `tests/`, `tutorial/`, os screenshots do README e as artes de playmat/vibe_images; conferido dentro do `index.pck` publicado (348 arquivos, scripts `.gdc`).
-*   [x] **Hospedagem no Netlify:** site publicado em `https://battle-scenes.netlify.app` (deploy manual da CLI, sem Git CD). O `RELAY_URL` está configurado no Netlify apontando para o túnel cloudflared do S20 FE e o `/api/salas` devolve esse endereço; o lobby aproveita para anexar `?relay=` sozinho em “Abrir o jogo” e nos links de sala. Ver [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
-*   [ ] **Hostname fixo do relay:** hoje o `RELAY_URL` aponta para o túnel `trycloudflare` (`fell-sitemap-alpha-groundwater.trycloudflare.com`), que muda quando o `cloudflared` reinicia. Enquanto não houver domínio/túnel nomeado, toda troca de hostname exige `netlify env:set RELAY_URL …` e um novo deploy; o mesmo vale para um celular/rede diferente.
+*   [x] **Hospedagem no Netlify:** site publicado em `https://battle-scenes.netlify.app` (deploy manual da CLI, sem Git CD; Public com previews protegidos). O `/api/salas` devolve o endereço do relay lido do registro automático e o lobby aproveita para anexar `?relay=` sozinho em “Abrir o jogo” e nos links de sala; o `RELAY_URL` do Netlify ficou como reserva. Ver [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
+*   [x] **Hostname fixo do relay (resolvido por auto-registro, 2026-10-30):** o endereço continua vindo de um túnel `trycloudflare`, que troca de hostname quando o `cloudflared` reinicia, mas ninguém precisa mais correr atrás dele: o registrador no celular (`relay/tools/register-relay.mjs`, sessão tmux `bs-register`) lê o hostname novo do `cf-relay.log`, confere o `GET /healthz` local e publica no site via `POST /api/relay` com o cabeçalho `x-relay-secret`. A Function valida https + allowlist de host e grava em um Netlify Blob (`relay/address`, consistência forte); `/api/salas` lê esse registro e o lobby repassa `?relay=` sozinho. O `RELAY_URL` do Netlify ficou só como reserva, para o lobby funcionar antes do primeiro registro. Testado com deriva proposital do endereço. **Fica aberto:** um hostname fixo de verdade (túnel nomeado com domínio próprio, ou Funnel) continua sendo a saída para parar de depender do celular — ver o item v3 abaixo.
+*   [ ] **v3 — Migrar o relay para Cloudflare Workers + Durable Objects:** trocar o relay Node.js hospedado no S20 FE por um Worker com uma Durable Object por sala (estado SQLite, WebSocket Hibernation, hostname fixo `*.workers.dev` e gratuito). Elimina o celular, o túnel e a rotação de hostname de uma vez. Custo: é uma reescrita de um relay Node já testado (21 testes com clientes `ws` reais), então o protocolo JSON precisa ser reimplementado e revalidado. Decisão de 2026-10-30: adiar para a v3; o auto-registro cobre a rotação do hostname até lá.
 
 *   [ ] **Conferir a arte nova no site publicado:** o fundo do menu principal e o playmat padrão **BS Web** vêm de `assets/brand/bs_web_backdrop.webp` (1024x576, o arquivo original, sem reencode), aprovados no desktop em 2026-10-30 e **já publicados** (deploy `6ae4f75944d360a9d0f5f8f3`). Falta olhar no build web: o contraste do título e dos botões sobre a camada escura de 62% (`ColorRect` em `MainMenu.tscn`), o recorte em janelas estreitas (celular) e o playmat padrão aparecendo para quem nunca escolheu um.
 
@@ -124,12 +129,53 @@ Plano completo em [BOARD_LAYOUT.md](./BOARD_LAYOUT.md). Objetivo: `CGFBoard.tscn
 
 ---
 
-## 📊 3. Painel de Progresso Geral
+## 📦 3. Controle de publicação (o que exige subir no Netlify)
+
+O site é publicado por deploy manual (`netlify deploy --prod` da pasta
+`online/`) e o jogo é um **build**: o `index.pck` de 7,8 MB é baixado de novo
+por todo navegador que abrir a partida depois de uma publicação, porque os
+arquivos `.pck`/`.wasm` vão com `must-revalidate` (o Godot 3.4 pede os nomes
+sem versão). Então o custo real de um upload não é a vez de publicar, é a
+rebaixa de todo mundo que joga no navegador. A regra que usamos: **acumular as
+mudanças de cliente no branch e subir uma vez quando existir algo que pague a
+rebaixa** — por exemplo, tirar os 1,4 MB do pacote, que barateia todas as
+publicações seguintes.
+
+O que é do **relay/celular** ou das **Functions do site** não precisa esperar
+upload do jogo: o relay é reiniciado no Termux quando der vontade, e uma
+mudança só de Function pode ser publicada sem reexportar o HTML5.
+
+**Estado da produção:** o build publicado é o deploy `6ae4f75944d360a9d0f5f8f3`
+(2026-10-30). Tudo marcado *pronto* abaixo está validado no desktop/GUT e
+**ainda não** está no navegador de ninguém.
+
+| Mudança pendente | Onde mora | Sobe no Netlify? | Estado |
+| :--- | :--- | :---: | :--- |
+| Reconexão automática com backoff (`Multiplayer.gd`) | cliente | sim (export + `site/`) | pronta, 9 testes novos passando |
+| “Servidor: online / indisponível” no menu (`MainMenu.gd`, `MainMenu.tscn`) | cliente | sim — lê o `/api/salas` **já publicado** | pronto, 6 testes novos passando |
+| Botão “Back to Main” no multiplayer | cliente | sim | não iniciado |
+| Tirar DeckBuilder/CardLibrary/screenshots do pacote (−1,4 MB) | cliente | sim, **e é o gatilho que paga um upload** | não iniciado |
+| Área de texto durante a partida — caderno do jogador | cliente | sim | não iniciado |
+| Área de texto durante a partida — recado entre os dois | cliente **+ relay no celular** | sim (a parte do jogo) | não iniciado |
+| Ações cruzadas de regra entre assentos (Fase 4 do solo) | cliente | sim | não iniciado |
+| Conferir arte/contraste no build web | validação | não (o build já está publicado) | falta olhar no navegador |
+| `TRUST_PROXY=1` no relay em execução | celular | **não** | pendente — precisa reiniciar o relay |
+| Loop de reinício do `cloudflared` | celular | **não** | bloqueado — SSH do celular fora do ar |
+| v3 — relay em Workers + Durable Objects | servidor novo | **não** (só o registro no Blob) | adiado |
+| API `/api/salas`, `/api/relay`, `netlify.toml` | Netlify Functions | sim, sem reexportar o jogo | sem pendência |
+
+Detalhe por confirmar antes de contar com ele: publicar **só as Functions**
+(sem reenviar `site/`) com `netlify deploy --functions` ainda não foi testado
+aqui; até validar, considerar que qualquer upload manda o diretório inteiro.
+
+---
+
+## 📊 4. Painel de Progresso Geral
 
 | Módulo do Projeto | Estado Atual | Progresso Estimado |
 | :--- | :---: | :---: |
 | **Fase 1: Mecânicas Core (BS)** | 🛠️ Em andamento (falta o contador de energia e o ataque que causa dano) | 95% |
 | **Fase 2: Interface & Imagens Web** | ✅ Implementada (falta validação visual) | 85% |
-| **Fase 3: Multiplayer (WebSockets)**| 🛠️ LAN implementada; relay online codificado | 75% |
-| **Fase 4: Deploy (Netlify)** | 🛠️ Lobby/preset e cliente web prontos; falta build e deploy | 40% |
+| **Fase 3: Multiplayer (WebSockets)**| 🛠️ LAN e relay online publicados; falta a autoridade completa | 80% |
+| **Fase 4: Deploy (Netlify)** | ✅ Site e build publicados; relay com auto-registro. Falta limpar o pacote | 85% |
 | **Fase 5: Layout autoral** | ✅ Etapas 0–5 entregues; falta só a validação visual | 95% |

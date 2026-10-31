@@ -29,6 +29,19 @@ const DECK_SIZE := 60
 const START_HAND_SIZE := 10
 const MAX_CACHED_STATES := 24
 
+# Depois que a conexao local cai, o relay nao derruba a sala: se o adversario
+# ainda esta lá a vaga fica livre, e se os dois sairam ha 120 s de graca. O botao
+# "Reconecte" sempre existiu, mas online o jogador tem que ver o aviso e clicar
+# dentro dessa janela — medido em 30/10/2026, o tunel ficou 13 s fora e a partida
+# so voltou quando alguem clicou. O backoff tenta sozinho nos mesmos termos do
+# botao e soma 77 s, menos que os 120 s do relay, para nunca tentar uma sala que
+# ja expirou.
+const RECONNECT_RETRY_SECONDS := [2.0, 5.0, 10.0, 20.0, 40.0]
+const RECONNECT_RETRYING_MESSAGE := \
+		"Conexão perdida. Tentando reconectar à sala..."
+const RECONNECT_GIVEUP_MESSAGE := \
+		"Conexão perdida. Reconecte à sala ou encerre a partida."
+
 const PHASES := [
 	"REG", "PREP", "ADJ", "ANT", "ATK",
 	"REG", "PREP", "ADJ", "ANT", "ATK",
@@ -106,11 +119,16 @@ var _resume_waiting_ack := false
 var _resume_expected_participants := []
 var _resume_state_before_wait = State.IDLE
 var _waiting_reason := ""
+var _retry_step := RECONNECT_RETRY_SECONDS.size()
+var _retry_elapsed := 0.0
 var _clearing := false
 var _display_checked := false
 
 
 func _ready() -> void:
+	# A unica coisa que roda por frame e a janela de reconexao automatica, entao
+	# o processo fica desligado enquanto nao ha conexao perdida.
+	set_process(false)
 	# warning-ignore:return_value_discarded
 	Rede.connect("match_found", self, "_on_rede_match_found")
 	# warning-ignore:return_value_discarded
@@ -131,6 +149,28 @@ func _ready() -> void:
 	Rede.connect("rejoined", self, "_on_rejoined")
 	# warning-ignore:return_value_discarded
 	Rede.connect("join_failed", self, "_on_join_failed")
+
+
+func _process(delta: float) -> void:
+	if not _auto_reconnect_armed():
+		set_process(false)
+		# A janela venceu e o jogador continua sem conexao: o aviso para de
+		# prometer tentativa automatica e aponta o botao, uma sola vez.
+		if state == State.WAITING and _waiting_reason == "local" \
+				and waiting_message != RECONNECT_GIVEUP_MESSAGE:
+			waiting_message = RECONNECT_GIVEUP_MESSAGE
+			emit_signal("waiting_changed", true, waiting_message)
+		return
+	_retry_elapsed += delta
+	if _retry_elapsed < RECONNECT_RETRY_SECONDS[_retry_step]:
+		return
+	# Uma tentativa em andamento nao recebe outra por cima: o socket ainda esta
+	# conectando e fecharia no meio o proprio rejoin. Espera sem gastar a etapa.
+	if Rede.is_connected or Rede.is_searching:
+		return
+	_retry_elapsed = 0.0
+	_retry_step += 1
+	manual_reconnect()
 
 
 #-----------------------------------------------------------------------------
@@ -406,6 +446,29 @@ func manual_reconnect() -> bool:
 func can_manual_reconnect() -> bool:
 	return state == State.WAITING and _waiting_reason == "local" \
 			and not Rede.room_id.empty()
+
+
+# As mesmas condicoes do botao, mais as duas que o botao nao precisa: hotseat
+# nunca falou com o relay (tentar reconectar abriria socket LOCAL na maquina) e
+# a janela de tentativas tem um fim.
+func _auto_reconnect_armed() -> bool:
+	if state != State.WAITING or _waiting_reason != "local":
+		return false
+	if mode == Mode.SOLO or Rede.room_id.empty():
+		return false
+	return _retry_step < RECONNECT_RETRY_SECONDS.size()
+
+
+func _begin_reconnect_retries() -> void:
+	_retry_step = 0
+	_retry_elapsed = 0.0
+	set_process(true)
+
+
+func _stop_reconnect_retries() -> void:
+	_retry_step = RECONNECT_RETRY_SECONDS.size()
+	_retry_elapsed = 0.0
+	set_process(false)
 
 
 func get_waiting_reason() -> String:
@@ -717,9 +780,13 @@ func _on_connection_lost() -> void:
 		return
 	if state != State.WAITING:
 		_resume_state_before_wait = state
+		# Janela nova a cada queda real. Uma tentativa que falha chega aqui com o
+		# estado ja em WAITING, entao o backoff continua a sequencia em vez de
+		# recomecar do zero e estender o tempo total.
+		_begin_reconnect_retries()
 	_waiting_reason = "local"
 	state = State.WAITING
-	waiting_message = "Conexão perdida. Reconecte à sala ou encerre a partida."
+	waiting_message = RECONNECT_RETRYING_MESSAGE
 	_update_pause()
 	emit_signal("waiting_changed", true, waiting_message)
 	emit_signal("session_changed")
@@ -756,6 +823,7 @@ func _on_opponent_reconnected(_username: String, _role: String) -> void:
 func _on_rejoined(_role: String, _opponent: String) -> void:
 	if not is_session_active():
 		return
+	_stop_reconnect_retries()
 	_log("Reconectado à sala.")
 	if mode == Mode.MATCH and _resume_state_before_wait == State.PREPARING:
 		state = State.PREPARING
@@ -1103,9 +1171,15 @@ func _rebuild_solo_board(public_state: Dictionary) -> void:
 	GameEvents.suppressed = true
 	_solo_clear_local_cards()
 	_restore_own_hidden_cards(_solo_hidden.get(my_slot, {}))
-	_restore_own_public_cards(public_state)
+	# The mirror is applied before the local cards, which is the same order the
+	# checkpoint restore uses. `_restore_own_public_cards` ends by resolving the
+	# opponent attachments against the mirror, so it has to run after
+	# `apply_public_snapshot` (which starts by clearing it). With the reverse
+	# order a resource sitting under a character lost its host and turned into a
+	# loose card in the opponent band.
 	if _sync.has_method("apply_public_snapshot"):
 		_sync.apply_public_snapshot(public_state, opponent_slot)
+	_restore_own_public_cards(public_state)
 	GameEvents.suppressed = false
 	if _sync.has_method("set_suppressed"):
 		_sync.set_suppressed(false)
@@ -2136,6 +2210,7 @@ func _abort_match(message: String) -> void:
 func _end_session(message: String) -> void:
 	if state == State.ENDED:
 		return
+	_stop_reconnect_retries()
 	state = State.ENDED
 	ended_message = message
 	last_error = message
@@ -2165,6 +2240,9 @@ func _clear_session_fields() -> void:
 	waiting_message = ""
 	ended_message = ""
 	last_error = ""
+	# Toda sessao nova comeca sem janela de reconexao; quem abre a janela e a
+	# queda da conexao, em _on_connection_lost.
+	_stop_reconnect_retries()
 	opponent_counts = {"hand": 0, "deck": 0}
 	_start_applied = false
 	_start_payload = {}

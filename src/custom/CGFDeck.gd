@@ -18,6 +18,13 @@ const FAN_MAX := 10
 const LABEL_TOP_OFFSET := 23.0
 # Distance from the top edge of the box to the center of the action buttons.
 const BUTTONS_TOP_OFFSET := 43.0
+# The deck box is split across the screen axis: the left strip sends the top
+# card straight to Recursos/Descarte, the rest of the box draws to the hand.
+# The pile rests turned 270 degrees, so the local +y axis points to the screen
+# right and the screen-left strip is the low end of the local y range that
+# `gui_input` reports. The same convention the hand card uses, with a narrower
+# strip because drawing is the common action.
+const MILL_ZONE_RATIO := 0.30
 
 onready var _clarividencia_button: Button = get_node_or_null(
 		"Control/ManipulationButtons/Clarividencia")
@@ -29,6 +36,7 @@ var _custom_peek_dialog: ConfirmationDialog
 var _custom_peek_count: SpinBox
 var _deck_action_in_progress := false
 var _label_count := -1
+var _mill_divider: ColorRect
 
 
 # The deck rests turned 270 degrees, so after the shuffle animation leaves it
@@ -93,6 +101,7 @@ func _hold_layout() -> void:
 	control.rect_position = Vector2(
 			BOX_BOTTOM_GAP + BOX_SIZE.y - panel_size.x, 0.0)
 	$Control/Highlight.rect_size = panel_size
+	_place_mill_divider(control)
 	_place_manipulation_buttons(control)
 	_refresh_label()
 	if pile_popup.visible or cfc.card_drag_ongoing:
@@ -144,6 +153,7 @@ func _ready() -> void:
 	# not needed and would cover the cards.
 	$Control/CenterContainer/VBoxContainer/PanelContainer.hide()
 	pile_name_label.align = Label.ALIGN_CENTER
+	_create_mill_zone()
 
 
 func _create_peek_menu() -> void:
@@ -328,7 +338,50 @@ func _reveal_searched_card(card: Card) -> void:
 
 
 func _on_Deck_input_event(event) -> void:
-	if event.is_pressed()\
-		and not cfc.game_paused\
-		and event.get_button_index() == 1:
-		emit_signal("draw_card", self)
+	if not event.is_pressed() \
+			or cfc.game_paused \
+			or event.get_button_index() != 1:
+		return
+	var control: Control = get_node("Control")
+	if event.position.y <= control.rect_size.y * MILL_ZONE_RATIO:
+		_mill_top_card_to_resources()
+		return
+	emit_signal("draw_card", self)
+
+
+# The divider marks where the box stops drawing and starts milling. It lives
+# inside the Control, which the pile raises above the cards on every draw, so the
+# stacked cards cannot cover it. A Control has no z_index in this engine.
+func _create_mill_zone() -> void:
+	var control: Control = get_node("Control")
+	control.hint_tooltip = "Esquerda: topo do deck para Recursos · " \
+			+ "Direita: compra para a Mão"
+	_mill_divider = ColorRect.new()
+	_mill_divider.name = "MillDivider"
+	_mill_divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mill_divider.color = Color(1.0, 0.93, 0.75, 0.35)
+	control.add_child(_mill_divider)
+	_place_mill_divider(control)
+
+
+func _place_mill_divider(control: Control) -> void:
+	if not is_instance_valid(_mill_divider):
+		return
+	# The box is turned with the pile, so a rect that is wide in the local x and
+	# thin in the local y lands as a vertical line on the screen, exactly on the
+	# ratio the click uses.
+	_mill_divider.rect_position = Vector2(
+			0.0, control.rect_size.y * MILL_ZONE_RATIO)
+	_mill_divider.rect_size = Vector2(control.rect_size.x, 1.0)
+
+
+# The left strip of the deck sends its top card straight to Recursos/Descarte
+# instead of the hand. The pile turns the card face up itself and every move
+# signal is mirrored, so the opponent reads it as a normal resource.
+func _mill_top_card_to_resources() -> void:
+	if _deck_action_in_progress or get_card_count() == 0:
+		return
+	var card: Card = get_top_card()
+	if not card:
+		return
+	card.move_to(cfc.NMAP.discard)

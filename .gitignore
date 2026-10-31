@@ -23,6 +23,12 @@ relay/.env
 # Local Netlify folder
 .netlify
 
+# Dependências das Functions do Netlify (o deploy empacota junto)
+online/netlify/functions/node_modules/
+
+# Rascunho local do agente: drivers de teste, logs e segredos gerados
+.run/
+
 # Skill bs-web-site (PIDs e logs locais)
 .qoder/skills/bs-web-site/.run/
 

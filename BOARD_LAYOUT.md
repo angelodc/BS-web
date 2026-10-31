@@ -95,7 +95,7 @@ Estes ajustes estavam na lista de layout por código e passam a ser **arrasto no
 
 - Cenário ativo do mesmo tamanho das cartas em jogo;
 - rótulo de quantidade/energia dos Prêmios em outra posição;
-- rótulos do lado do oponente ("Cenário", "Prêmios", "Energia", "Recursos/D", "CAMPO DO OPONENTE") que hoje se espalham sobre o campo.
+- rótulos do lado do oponente ("Cenário", "Prêmios", "Energia", "Recursos/D", "CAMPO DO OPONENTE") que hoje se espalham sobre o campo — o de "Recursos/D" já foi resolvido em 2026-10-30, movido para o topo do box (ver [Ajustes do espelho de recursos](#ajustes-do-espelho-de-recursos-2026-10-30)).
 
 O deck **não** está nesta lista: a decisão d manteve o monte deitado a 270° e a área como está.
 
@@ -116,3 +116,12 @@ O bake foi feito no mesmo dia, com o render medido em 1280×720 e `PLAY_AREA_SCA
 - **Etapa 3:** `Hand.bottom_margin` virou `export` e o valor `105` foi gravado em `CGFHand.tscn`; a linha que recalculava a margem saiu do board.
 - **Etapa 4:** com `$Debug` marcado, `_warn_if_opponent_scene_drifted()` compara posição **e** tamanho do `OpponentScene` autorado com o grid e avisa quando a divergência passa de 1 px.
 - **Etapa 5:** dump removido; GUT com `test_placement_grid` (32), `test_board_use` (7), `test_anchors` (5), `test_solo_hotseat` (9), `test_multiplayer_lobby` (21), `test_damage_knockout` (6), `test_game_events` (13) e `test_battle_scenes_capacity` (4) — 97 testes, 0 falhas. O dump de runtime antes e depois do bake saiu idêntico, confirmando que o render não mudou.
+
+## Ajustes do espelho de recursos (2026-10-30)
+
+O box do oponente ainda diferia do painel local de `Recursos / Descarte` em quatro pontos, todos corrigidos:
+
+- **Rótulo no topo.** `OpponentResourcesVeil` (144.2→166.2) e `OpponentResourcesLabel` (146.2→164.2) saíram da faixa de baixo para o topo do `OpponentResourcesBackground` (144.2→360.2), como o rótulo "Recursos" do painel local. O fundo e o botão `OpponentResourcesView` (canto inferior direito) não mudaram.
+- **Um grid só.** `CGFDiscard.grid_layout()` expõe `origin`, `step` e `scale` do grid local; `MultiplayerSync._resource_slot_position()` consome esses números em vez de repetir a conta (só cai nas constantes enquanto `_layout_panel()` não rodou). O `origin.y` usa `max()` com a faixa do rótulo para a primeira linha nunca cobrir o texto.
+- **Posição e orientação.** As miniaturas espelhadas não recebem mais +180° (um grid de pilha se lê igual dos dois lados) e são posicionadas por `card.global_position` — antes um valor global era gravado em `position`, o que deslocava o grid conforme o tabuleiro crescia.
+- **Ordem e contagem.** A pilha local põe o topo (último índice) na primeira célula; o espelho agora ordena pelo índice da pilha, que viaja em cada carta de recursos, porque um rebuild de hotseat entrega a pilha inteira na ordem de spawn. O rótulo "Recursos/Descarte (n)" é atualizado no `start_mirroring()`, então o hotseat não abre mais com zeros de placeholder. O hover usa a mesma regra do grid local: retângulo sob o ponteiro, não `Area2D`.

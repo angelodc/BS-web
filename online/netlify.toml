@@ -7,6 +7,12 @@
   to = "/.netlify/functions/salas"
   status = 200
 
+# O celular registra aqui o endereço público do relay toda vez que o túnel muda.
+[[redirects]]
+  from = "/api/relay"
+  to = "/.netlify/functions/relay"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]

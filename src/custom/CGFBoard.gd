@@ -468,6 +468,38 @@ func show_resource_message(message: String) -> void:
 	$ResourceSelectionLabel.text = message
 
 
+# The resource popup is drawn over the field, so the card under the pointer is a
+# field card: if the board keeps chasing the pointer it steals both the preview
+# and the click from the popup. The pointer is switched off for the duration of
+# the pick; `enable()` re-discovers whatever sits under the mouse on the way
+# back, so the hover is not left stuck.
+func _set_board_pointer_active(active: bool) -> void:
+	if cfc.ut:
+		return
+	var board = cfc.NMAP.get("board", null)
+	if not board or not is_instance_valid(board):
+		return
+	var pointer = board.mouse_pointer
+	if not pointer or not is_instance_valid(pointer):
+		return
+	if active:
+		if pointer.has_method("enable"):
+			pointer.enable()
+		return
+	if pointer.has_method("disable"):
+		pointer.disable()
+	# The popup sits over the field, but the closeup of the card that was under
+	# the pointer would stay open behind it for the whole pick. `disable()` does
+	# not release it, so the release is done the same way the pointer does when
+	# the mouse leaves a card.
+	var focused = pointer.current_focused_card
+	if focused and is_instance_valid(focused) \
+			and focused.state != Card.CardState.DRAGGED:
+		focused._on_Card_mouse_exited()
+	if pointer.has_method("forget_focus"):
+		pointer.forget_focus()
+
+
 func begin_resource_selection(host: Card, required_count: int) -> void:
 	pending_resource_host = host
 	pending_resource_count = required_count
@@ -480,6 +512,7 @@ func begin_resource_selection(host: Card, required_count: int) -> void:
 		return
 	show_resource_message(
 			"Escolha recursos: 0/" + str(pending_resource_count))
+	_set_board_pointer_active(false)
 	cfc.NMAP.discard.populate_popup()
 
 
@@ -518,6 +551,7 @@ func select_resource_for_host(resource: Card) -> void:
 		pending_resource_count = 0
 		show_resource_message("")
 		cfc.NMAP.discard.pile_popup.hide()
+		_set_board_pointer_active(true)
 
 
 func begin_resource_swap() -> void:
@@ -525,6 +559,7 @@ func begin_resource_swap() -> void:
 		pending_resource_swap_active = false
 		pending_resource_swap_card = null
 		show_resource_message("Troca cancelada.")
+		_set_board_pointer_active(true)
 		return
 	if pending_resource_host or cfc.NMAP.discard.is_popup_open:
 		return
@@ -534,6 +569,7 @@ func begin_resource_swap() -> void:
 	pending_resource_swap_active = true
 	pending_resource_swap_card = null
 	show_resource_message("Escolha uma carta da pilha para a troca.")
+	_set_board_pointer_active(false)
 	cfc.NMAP.discard.populate_popup()
 
 
@@ -545,6 +581,9 @@ func select_resource_for_swap(resource: Card) -> bool:
 		return false
 	pending_resource_swap_card = resource
 	cfc.NMAP.discard.pile_popup.hide()
+	# The next click names the resource to replace, and it lands on the field,
+	# so the pointer has to come back before the popup finishes closing.
+	_set_board_pointer_active(true)
 	return true
 
 
@@ -582,6 +621,7 @@ func _on_resource_popup_closed() -> void:
 		else:
 			pending_resource_swap_active = false
 			show_resource_message("Troca cancelada.")
+			_set_board_pointer_active(true)
 		return
 	if not pending_resource_host or _resource_selection_completed:
 		return
@@ -594,6 +634,7 @@ func _on_resource_popup_closed() -> void:
 	host.set_state(Card.CardState.IN_HAND)
 	host.move_to(cfc.NMAP.hand)
 	show_resource_message("Seleção cancelada; carta devolvida à Mão.")
+	_set_board_pointer_active(true)
 
 
 

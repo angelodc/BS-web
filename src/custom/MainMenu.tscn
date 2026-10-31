@@ -21,6 +21,8 @@ script = ExtResource( 3 )
 window_title = "Aviso"
 dialog_text = "Mensagem"
 
+[node name="ServerProbe" type="HTTPRequest" parent="."]
+
 [node name="MainMenu" type="MarginContainer" parent="."]
 anchor_right = 1.19
 anchor_bottom = 1.181
@@ -67,9 +69,9 @@ size_flags_vertical = 3
 
 [node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
 margin_left = 500.0
-margin_top = 48.0
+margin_top = 35.0
 margin_right = 780.0
-margin_bottom = 311.0
+margin_bottom = 324.0
 rect_min_size = Vector2( 280, 0 )
 custom_constants/separation = 3
 
@@ -87,10 +89,18 @@ text = "127.0.0.1:9080"
 max_length = 256
 placeholder_text = "IP do relay na rede local"
 
-[node name="JoinRow" type="HBoxContainer" parent="MainMenu/VBox/Center/VButtons"]
+[node name="ServerStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
 margin_top = 60.0
 margin_right = 280.0
-margin_bottom = 87.0
+margin_bottom = 83.0
+text = "Servidor: verificando..."
+align = 2
+autowrap = true
+
+[node name="JoinRow" type="HBoxContainer" parent="MainMenu/VBox/Center/VButtons"]
+margin_top = 86.0
+margin_right = 280.0
+margin_bottom = 113.0
 custom_constants/separation = 4
 
 [node name="RoomCode" type="LineEdit" parent="MainMenu/VBox/Center/VButtons/JoinRow"]
@@ -107,38 +117,38 @@ margin_bottom = 27.0
 text = "Entrar"
 
 [node name="MatchStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 90.0
+margin_top = 116.0
 margin_right = 280.0
-margin_bottom = 113.0
+margin_bottom = 139.0
 text = "Desconectado"
 autowrap = true
 
 [node name="SoloMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 116.0
+margin_top = 142.0
 margin_right = 280.0
-margin_bottom = 143.0
+margin_bottom = 169.0
 text = "Partida Solo (P1 vs P2)"
 
 [node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 146.0
+margin_top = 172.0
 margin_right = 280.0
-margin_bottom = 173.0
+margin_bottom = 199.0
 text = "Criar Sala"
 
 [node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 176.0
+margin_top = 202.0
 margin_right = 280.0
-margin_bottom = 203.0
+margin_bottom = 229.0
 text = "Procurar Partida"
 
 [node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 206.0
+margin_top = 232.0
 margin_right = 280.0
-margin_bottom = 233.0
+margin_bottom = 259.0
 text = "Iniciar jogo salvo"
 
 [node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 236.0
+margin_top = 262.0
 margin_right = 280.0
-margin_bottom = 263.0
+margin_bottom = 289.0
 text = "Exit"

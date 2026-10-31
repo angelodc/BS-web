@@ -2,9 +2,10 @@
 
 Este documento planeja como publicar o Battle Scenes no navegador e oferecer
 descoberta de partidas pela internet. Ele registra decisões, limites, uma ordem
-de trabalho e o que já está implementado no repositório. A integração do cliente
-web e o build HTML5 local estão feitos e foram validados com dois navegadores; a
-publicação continua pendente (ver “Estado atual do projeto”).
+de trabalho e o que já está implementado no repositório. **Desde 30/10/2026 o
+conjunto está no ar**: o jogo e o lobby em https://battle-scenes.netlify.app e o
+relay no S20 FE atrás de um túnel Cloudflare, com o endereço público
+auto-registrado no site (ver “Estado atual do projeto”).
 
 ## Resposta curta
 
@@ -18,9 +19,11 @@ publicação continua pendente (ver “Estado atual do projeto”).
   persistentes nem upgrade de WebSocket. Por isso o relay precisa de um serviço
   sempre ligado (Cloudflare Workers/Durable Objects, Fly.io, Render, Railway,
   VPS etc.) com `wss://`.
-- **Versão mais barata (decidida):** o lobby **não guarda estado**. A Function
-  apenas repassa `GET /rooms` do relay. Sem Blobs, sem DB, sem limpeza agendada
-  e sem risco de inconsistência. O relay é dono do ciclo de vida das salas.
+- **Versão mais barata (decidida):** o lobby **não guarda estado de sala**. A
+  Function apenas repassa `GET /rooms` do relay. Sem DB, sem limpeza agendada e
+  sem risco de inconsistência. O relay é dono do ciclo de vida das salas. A única
+  exceção é um Blob com **uma chave**: o endereço público do relay
+  (`relay/address`), que o celular reescreve quando o túnel muda de hostname.
 - **Consequência importante:** com um relay central, os jogadores **não precisam
   trocar IPs**. O lobby mostra um **código de sala**; os dois clientes conectam
   ao mesmo relay público e o relay encaminha as mensagens. Trocar IPs só faz
@@ -33,16 +36,19 @@ Resumo da arquitetura recomendada:
 Navegador A ── HTTPS ──> Netlify CDN (jogo HTML5 + /salas)
       │                        │
       │ wss://                 └── /api/salas ──> Function ──> GET /rooms
-      ▼                                                     (sem storage)
-Relay WebSocket dedicado (wss://relay.exemplo.com)
-      ▲  /rooms, /healthz
-      │ wss://
-Navegador B ───────────────────┘
+      ▼                                  ▲           (sem estado de sala)
+Relay WebSocket dedicado                 │ o endereço vem do Blob relay/address
+(wss://<host>.trycloudflare.com)         │
+      ▲  /rooms, /healthz          /api/relay (POST com segredo)
+      │ wss://                           ▲
+Navegador B ───────────────────┘   registrador no celular
+                                   (relay/tools/register-relay.mjs)
 ```
 
 O relay continua sendo a única fonte de verdade das salas. O Netlify é CDN do
 jogo e fachada HTTP do lobby; ele não guarda estado de sala nem duplica o
-estado em tempo real.
+estado em tempo real — guarda apenas o endereço público do relay, para o lobby
+não depender de uma variável reeditada à mão toda vez que o túnel reinicia.
 
 ## Estado atual do projeto
 
@@ -64,11 +70,18 @@ estado em tempo real.
   por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites
   por IP/conexão e mensagem, heartbeat, allowlist de `Origin` e 21 testes com
   clientes `ws` reais. Usa `ws` + `http` no mesmo processo (Opção A).
-- O lobby do Netlify está implementado localmente:
-  [online/netlify/functions/salas.js](./online/netlify/functions/salas.js)
+- O lobby do Netlify está publicado:
+  [online/netlify/functions/salas.mjs](./online/netlify/functions/salas.mjs)
   repassa `GET /rooms` com cache de 3 s e devolve `503` quando o relay está
   fora; [online/site/index.html](./online/site/index.html) lista as salas e
-  monta links `/game/?room=CODIGO`.
+  monta links `/game/?room=CODIGO` já com `?relay=` anexado.
+- O endereço público do relay é auto-registrado:
+  [relay/tools/register-relay.mjs](./relay/tools/register-relay.mjs) roda no
+  celular, descobre o hostname do túnel e publica em
+  [online/netlify/functions/relay.mjs](./online/netlify/functions/relay.mjs)
+  (segredo + allowlist de host), que grava no Blob `relay/address`. As duas
+  Functions compartilham
+  [online/netlify/lib/relay-url.mjs](./online/netlify/lib/relay-url.mjs).
 - O host é autoritativo para início, dados, fases e estado público; o relay não
   valida jogadas. Essa limitação está descrita em [MULTIPLAYER.md](./MULTIPLAYER.md)
   e continua valendo no modo online.
@@ -91,8 +104,8 @@ estado em tempo real.
 |---|---|---|
 | Servir o jogo HTML5/WASM | Sim | Deploy estático com CDN e HTTPS automático. |
 | API HTTP de lobby | Sim | Netlify Functions (Node/TypeScript), execuções curtas. |
-| Salvar informações | Sim (opcional) | Blobs ou DB existem, mas o lobby decidido não usa storage. |
-| Limpeza agendada | Desnecessária | Só faria sentido com Blobs/DB; o relay expira as salas em memória. |
+| Salvar informações | Sim (opcional) | Em uso só para o endereço do relay (uma chave); salas continuam no relay. |
+| Limpeza agendada | Desnecessária | O relay expira as salas em memória; o Blob não tem TTL e não precisa. |
 | WebSocket persistente | **Não** | Functions e Edge Functions não mantêm conexão aberta. |
 | Proxy de WebSocket | **Não** | Rewrites do Netlify não fazem upgrade de conexão. |
 | Lógica de partida em tempo real | **Não** | Precisa de processo sempre ligado; Functions são stateless. |
@@ -122,11 +135,12 @@ Consequências práticas:
 - **O lobby por proxy custa quase nada.** Uma lista de salas atualizada a cada
   poucos segundos em dezenas de sessões fica na casa de milhares de
   requisições — fração dos 1,5 milhão — e as Functions respondem em milissegundos.
-- **O gargalo é o download do jogo.** Um build de ~20 MB permite ~750 primeiros
-  carregamentos por mês; com `Cache-Control` longo em `.pck`/`.wasm`, visitas
-  repetidas gastam quase nada. Medir o `.pck` depois da Fase 1.
-- **Blobs/DB seriam irrelevantes em custo**, mas desnecessários para salas
-  temporárias. Só entram se houver histórico/ranking (Fase 5).
+- **O gargalo é o download do jogo.** O `index.pck` publicado mede 7,8 MB, o que
+  dá ~1900 primeiros carregamentos por mês; o `.wasm` vem da CDN e quase não
+  muda. Com `must-revalidate` em `.pck`/`.wasm`, visitas repetidas gastam só o
+  `304` quando nada mudou.
+- **Blobs/DB são irrelevantes em custo.** O único uso atual é uma chave com o
+  endereço do relay; histórico/ranking (Fase 5) continuaria barato.
 - O relay é a única peça fora do Netlify; o custo dele depende do provedor
   (Cloudflare Workers tem plano Free com WebSocket via Durable Objects).
 
@@ -142,7 +156,8 @@ BS-web/
 ├── online/                    ← pasta separada, ignorada pelo Godot
 │   ├── .gdignore              impede o editor de varrer esta pasta
 │   ├── netlify.toml           base do site Netlify = online
-│   ├── netlify/functions/     API do lobby (proxy)
+│   ├── netlify/functions/     API: salas.mjs (proxy) e relay.mjs (registro)
+│   ├── netlify/lib/           relay-url.mjs, fonte única do endereço
 │   ├── site/
 │   │   ├── index.html         página /salas
 │   │   └── game/              export HTML5 (gerado, gitignored)
@@ -151,6 +166,8 @@ BS-web/
     ├── src/relay.js           salas, protocolo e limites
     ├── src/server.js          entrada e configuração por ambiente
     ├── test/relay.test.js     testes com clientes ws reais
+    ├── tools/register-relay.mjs   publica o hostname do túnel no site
+    ├── tools/iniciar-tudo.sh      sobe relay + túneis + registrador no celular
     ├── Dockerfile  fly.toml
     └── README.md
 ```
@@ -161,7 +178,8 @@ Regras:
 - `.gdignore` faz o Godot ignorar `online/` inteiro, inclusive o build em
   `online/site/game/`; por isso o export não precisa ficar fora do repo.
 - **Publish = `site`** com base `online` no Netlify, sem caminhos `..`.
-- O build **não vai para o git**: publica-se com `netlify deploy --prod`
+- O build **não vai para o git**: publica-se com
+  `netlify deploy --prod --dir site --functions netlify/functions --no-build`
   a partir de `online/`. Deploy por Git exigiria commitar o build ou criar uma
   Action que rode o export.
 - O relay fica fora do Netlify, em `relay/`, e roda como processo próprio
@@ -179,15 +197,20 @@ npm start     # relay em http://127.0.0.1:9080
 
 ```bash
 cd online
-npm install -g netlify-cli   # uma vez
+npm install -g netlify-cli              # uma vez
+cd netlify/functions && npm install     # uma vez: instala @netlify/blobs
+cd ../..
 RELAY_URL=http://127.0.0.1:9080 netlify dev
 ```
 
 `RELAY_URL` precisa ser **HTTP(S)**: a Function faz
-`fetch("${RELAY_URL}/rooms")`. Sem ele, `/api/salas` responde `503` com
-`relay.online = false`. O `wss://` é o endereço usado pelo **cliente do jogo**,
-não pelo proxy. Confira o relay em `http://127.0.0.1:9080/healthz` e
-`/rooms`.
+`fetch("${url}/rooms")`. Sem ele **e** sem registro no Blob, `/api/salas`
+responde `503` com `relay.online = false`. O `wss://` é o endereço usado pelo
+**cliente do jogo**, não pelo proxy. Confira o relay em
+`http://127.0.0.1:9080/healthz` e `/rooms`.
+
+No `netlify dev` o store de blobs é uma cópia local isolada (não lê nem escreve
+produção), então localmente o endereço vem sempre do `RELAY_URL`.
 
 Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
 `online/site/game/` e responde em `http://localhost:8888/game/`.
@@ -281,6 +304,16 @@ pelo túnel.
   publish = "site"
   functions = "netlify/functions"
 
+[[redirects]]
+  from = "/api/salas"
+  to = "/.netlify/functions/salas"
+  status = 200
+
+[[redirects]]
+  from = "/api/relay"
+  to = "/.netlify/functions/relay"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
@@ -292,13 +325,13 @@ pelo túnel.
   for = "/game/*.wasm"
   [headers.values]
     Content-Type = "application/wasm"
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/game/*.pck"
   [headers.values]
     Content-Type = "application/octet-stream"
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/game/index.html"
@@ -306,13 +339,19 @@ pelo túnel.
     Cache-Control = "no-cache"
 ```
 
+O cache **não é** `immutable`: o shell do Godot 3.4 pede `index.pck` e
+`index.wasm` sem query de versão e toda exportação reescreve esses nomes, então
+quem já jogou ficaria preso ao pacote antigo. Com `must-revalidate` o navegador
+confere o ETag (`304` quando nada mudou) e pega o build novo na hora.
+
 - Não ativar threads no template web nesta etapa. Threads exigem
   `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy`, o que pode
   bloquear as imagens remotas do BSDB sem cabeçalhos CORP.
 - Automação: para uso individual, exportar localmente e rodar
-  `cd online && netlify deploy --prod`. Para CI, criar um GitHub Action que
-  baixa Godot 3.4.4 + templates, executa o export e publica; cachear os
-  templates porque são grandes. O build em `online/site/game/` não é versionado.
+  `cd online && netlify deploy --prod --dir site --functions netlify/functions --no-build`.
+  Para CI, criar um GitHub Action que baixa Godot 3.4.4 + templates, executa o
+  export e publica; cachear os templates porque são grandes. O build em
+  `online/site/game/` não é versionado.
 
 Critério de aceite: jogo abre no navegador via HTTPS, multiplayer LAN
 desabilitado no web sem erros, e uma partida local desktop continua funcionando.
@@ -377,8 +416,9 @@ parearam por sala e jogaram sem erro de console.
 
 Faltam para fechar o critério de aceite: o mesmo teste entre **redes
 diferentes** (4G/fora do Wi-Fi), `rejoin_room` no meio de uma partida dentro da
-janela de 120 s, recusa de terceiro jogador e código inválido pela URL pública, e
-a página de lobby apontando para o relay publicado.
+janela de 120 s e recusa de terceiro jogador/código inválido pela URL pública. A
+página de lobby já aponta para o relay publicado (via `/api/salas` +
+auto-registro).
 
 ### Fase 3 — Lobby no Netlify (1–3 dias)
 
@@ -386,14 +426,35 @@ a página de lobby apontando para o relay publicado.
 
 **A. Proxy do relay (decidida).**
 
-- Netlify Function `GET /api/salas` chama `https://relay.exemplo.com/rooms`
+- Netlify Function `GET /api/salas` chama `<endereço do relay>/rooms`
   no servidor e devolve uma lista sanitizada.
 - Cache curto de 3 s para reduzir chamadas; se o relay estiver fora, devolver
-  `503` com status offline.
+  `503` com status offline **e a URL mesmo assim**, para o lobby continuar
+  montando os links do jogo.
 - Nenhum estado de sala é gravado no Netlify; o relay continua sendo a verdade.
 - A Function está implementada em
-  [online/netlify/functions/salas.js](./online/netlify/functions/salas.js) e usa
-  a variável de ambiente `RELAY_URL` (HTTP/HTTPS, sem `wss://`).
+  [online/netlify/functions/salas.mjs](./online/netlify/functions/salas.mjs) e
+  lê o endereço por
+  [online/netlify/lib/relay-url.mjs](./online/netlify/lib/relay-url.mjs):
+  primeiro o registro no Blob (`POST /api/relay`, escrito pelo celular), com a
+  variável de ambiente `RELAY_URL` (HTTP/HTTPS, sem `wss://`) como reserva.
+
+**Registro do endereço (acrescentado em 30/10/2026).**
+
+- `POST /api/relay` em
+  [online/netlify/functions/relay.mjs](./online/netlify/functions/relay.mjs)
+  aceita `{"url":"https://…"}` com o cabeçalho `x-relay-secret` igual ao
+  `RELAY_REGISTER_SECRET` do site, valida `https:` e host contra
+  `RELAY_HOST_PATTERN` (padrão `^[a-z0-9-]+\.trycloudflare\.com$`) e grava em
+  `relay/address` no Blob `relay`, com consistência forte. `GET /api/relay`
+  devolve `{ registered, url }` e nunca expõe o segredo.
+- Essa Function é a única porta de escrita do Blob: sem segredo válido e host
+  permitido, nada é gravado. O Blob não tem controle de acesso próprio.
+- Quem chama é
+  [relay/tools/register-relay.mjs](./relay/tools/register-relay.mjs), no celular,
+  em sessão tmux própria (`bs-register`, modo `--watch` a cada 60 s): ele só
+  publica quando o hostname do túnel difere do registrado e o `/healthz` local
+  responde.
 
 **B. Diretório em Netlify Blobs (adiada, só se precisar de histórico).**
 
@@ -471,11 +532,14 @@ jogador sair. O lobby só lê. Isso elimina CRUD, limpeza e corrida de entrada.
 Critério de aceite: página lista salas reais, remove expiradas, não vaza IPs e
 o link abre o jogo já com o código preenchido.
 
-**Status:** Function `GET /api/salas`, página `/salas` e `netlify.toml` estão
-publicados em https://battle-scenes.netlify.app (deploy manual da CLI). O
-`RELAY_URL` aponta para o túnel do relay e o `/api/salas` devolve esse endereço,
-então o lobby anexa `?relay=` sozinho ao link do jogo; o cliente Godot segue
-lendo `/game/?room=CODIGO` e preenchendo o código no menu.
+**Status:** Function `GET /api/salas`, página `/salas`, `POST/GET /api/relay` e
+`netlify.toml` estão publicados em https://battle-scenes.netlify.app (deploy
+manual da CLI). O endereço do relay vem do registro automático feito pelo
+celular, com `RELAY_URL` como reserva, e o `/api/salas` o devolve para o lobby
+anexar `?relay=` sozinho ao link do jogo; o cliente Godot segue lendo
+`/game/?room=CODIGO` e preenchendo o código no menu. Validado em produção com
+uma deriva proposital do endereço (lobby fora do ar até o registrador publicar o
+hostname certo, em uma execução) e com sala real listada.
 
 ### Fase 4 — Integração no cliente (2–5 dias)
 
@@ -521,9 +585,13 @@ redes diferentes depois de publicar.
   - resultados de partidas e estatísticas agregadas (sem mãos/decks);
   - catálogo de decks públicos, se for desejado;
   - retenção definida, remoção a pedido, política de privacidade.
-- Não usar Blobs/DB para o lobby em tempo real (ver Fase 3).
+- Não usar Blobs/DB para o lobby em tempo real (ver Fase 3). O único registro
+  atual é o endereço do relay: uma chave, escrita por quem tem o segredo.
 - Monitoramento: uptime do relay, health check, logs de Functions, alertas de
-  erro; manter o relay e o jogo com versões/protocolo compatíveis.
+  erro; manter o relay e o jogo com versões/protocolo compatíveis. No celular,
+  conferir também se as sessões tmux `bs-relay`, `cf-relay` e `bs-register`
+  continuam vivas — sem o registrador o site perde o endereço quando o túnel
+  reinicia.
 - Custos: os 300 créditos/mês são consumidos principalmente pela banda do build
   (ver “Custos no plano Free”). Blobs/DB e Functions do lobby são residuais.
 - Abuso: rate limit, limite de salas, tamanho de frame, Origin, timeout de
@@ -572,7 +640,11 @@ redes diferentes depois de publicar.
 
 ## Perguntas em aberto
 
-- Provedor e região do relay; quem opera e paga.
+- ~~Provedor e região do relay; quem opera e paga.~~ Decidido em 30/10/2026:
+  S20 FE do Douglas (Termux + túnel Cloudflare), sem custo; migração para um
+  endereço permanente fica na v3 do TODO.
+- Quando trocar o relay de endereço fixo, o registrador do celular é desligado e
+  só o `RELAY_URL` passa a valer?
 - Lobby público desde o início ou somente por código.
 - Contas e ranking entram em qual versão.
 - Quais estatísticas salvar e por quanto tempo (privacidade/LGPD).
@@ -584,12 +656,14 @@ redes diferentes depois de publicar.
 1. Guardas de web no `LocalRelay`, endereço padrão `wss://` e campo de relay
    oculto no build HTML5. (implementado)
 2. PR: export HTML5 para `online/site/game/` + primeira publicação do
-   `netlify.toml` + página `/salas` lendo o proxy. (Function, página e
-   `netlify.toml` já implementados; falta o build e o deploy)
+   `netlify.toml` + página `/salas` lendo o proxy. (publicado em 30/10/2026)
 3. PR: relay público (Node/`ws`) com `join_room` por código, `/healthz` e
-   `/rooms`, além dos testes de relay. (implementado em `relay/`; falta deploy)
+   `/rooms`, além dos testes de relay. (publicado no S20 FE em 30/10/2026)
 4. Link `?room=` e entrada por código no menu do jogo. (implementado; falta
    “Salas públicas” no menu)
-5. Validação manual com dois navegadores e atualização do
+5. Auto-registro do endereço do relay: `POST /api/relay` + Blob +
+   `register-relay.mjs` no celular. (implementado e validado em 30/10/2026)
+6. Validação manual com dois navegadores **em redes diferentes** e atualização do
    [MULTIPLAYER.md](./MULTIPLAYER.md) e do [TODO.md](./TODO.md).
-6. Só depois: Blobs/DB para histórico, se houver demanda.
+7. Só depois: endereço permanente para o relay (domínio + túnel nomeado ou
+   Workers/Durable Objects) e Blobs/DB para histórico, se houver demanda.

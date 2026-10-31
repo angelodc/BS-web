@@ -195,7 +195,12 @@ func _on_Card_gui_input(event) -> void:
 	if network_mirror:
 		return
 	if event is InputEventMouseButton and cfc.NMAP.has("board"):
-		if cfc.NMAP.board.mouse_pointer.current_focused_card \
+		# While the player is picking a resource the popup owns the click. The
+		# field card under the pointer would otherwise swallow the event and the
+		# resource being chosen would never be selected.
+		if not _resource_pick_pending() \
+				and cfc.NMAP.board.mouse_pointer \
+				and cfc.NMAP.board.mouse_pointer.current_focused_card \
 				and cfc.NMAP.board.mouse_pointer.current_focused_card != self:
 			cfc.NMAP.board.mouse_pointer.current_focused_card\
 					._on_Card_gui_input(event)
@@ -239,6 +244,17 @@ func _on_Card_gui_input(event) -> void:
 			targeting_arrow.initiate_targeting()
 		elif not event.is_pressed() and event.get_button_index() == 2:
 			targeting_arrow.complete_targeting()
+
+
+# True while the board is asking the player to pick resource cards from the
+# popup. The pick has no overlay of its own, so clicks have to be routed by hand.
+func _resource_pick_pending() -> bool:
+	if not cfc.NMAP.has("board") or not cfc.NMAP.board:
+		return false
+	var host = cfc.NMAP.board.pending_resource_host
+	if host and is_instance_valid(host):
+		return true
+	return bool(cfc.NMAP.board.pending_resource_swap_active)
 
 
 # Left half sends the card to Resources, right half plays it according to its

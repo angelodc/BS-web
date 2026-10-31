@@ -309,6 +309,12 @@ func _layout_panel() -> void:
 	_grid_step = card_size + Vector2(GRID_GAP, GRID_GAP)
 
 
+# The opponent mirror draws the same mini grid, so it asks for these numbers
+# instead of keeping a second copy of the layout that could drift from this one.
+func grid_layout() -> Dictionary:
+	return {"origin": _grid_origin, "step": _grid_step, "scale": _grid_scale}
+
+
 func _apply_grid() -> void:
 	var cards := get_all_cards(false)
 	var count := cards.size()

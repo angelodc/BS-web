@@ -23,12 +23,15 @@ no anfitrião (cliente Godot); ele não valida jogadas.
   `?room=CODIGO` no build web e usa `wss://` por padrão. O desktop continua
   podendo usar o relay LAN embutido e o `tools/ws_relay.py`.
 - O site está em produção em https://battle-scenes.netlify.app (deploy manual da
-  CLI, sem Git CD). O lobby lê o `RELAY_URL` configurado no Netlify pelo
-  `/api/salas` e anexa `?relay=` sozinho no link do jogo.
-- Pendente: hostname fixo (domínio na conta Cloudflare ou provedor always-on),
-  tirar o placeholder `wss://relay.exemplo.com` de [Rede.gd](../src/custom/Rede.gd)
-  — ele só aparece quando a página é aberta sem `?relay=` — e validar dois
-  navegadores em redes diferentes.
+  CLI, sem Git CD). O endereço público do relay é **auto-registrado**: o celular
+  publica o hostname do túnel em `POST /api/relay`, a Function grava em um Netlify
+  Blob e o `/api/salas` devolve esse endereço, que o lobby anexa como `?relay=`
+  no link do jogo. O `RELAY_URL` configurado no Netlify ficou só como reserva.
+- Pendente: hospedar o relay em um endereço permanente (domínio na conta
+  Cloudflare com túnel nomeado, ou Workers + Durable Objects — ver a Fase 4 do
+  TODO), tirar o placeholder `wss://relay.exemplo.com` de
+  [Rede.gd](../src/custom/Rede.gd) — ele só aparece quando a página é aberta sem
+  `?relay=` — e validar dois navegadores em redes diferentes.
 - Uma instância basta para a v1. Escalar horizontalmente exigiria estado
   compartilhado (Redis) e não está no escopo.
 
@@ -190,7 +193,9 @@ valores atuais, `bs-web-relay` e `gru`, são apenas um exemplo).
 
 O lobby do Netlify precisa da URL **HTTP(S)** do relay em `RELAY_URL`
 (`https://relay.exemplo.com`), porque a Function chama `GET /rooms`; o cliente
-do jogo usa a mesma máquina com `wss://`.
+do jogo usa a mesma máquina com `wss://`. Com um provedor de hostname fixo o
+registrador do celular deixa de ser necessário: basta `RELAY_URL` apontar para o
+endereço permanente (ele é a reserva quando não há registro no Blob).
 
 ### Celular (Termux + cloudflared) — rota em uso hoje
 
@@ -228,21 +233,63 @@ Layout no aparelho:
 ~/projetos/bs-relay/
 ├── package.json  src/  test/   copiado do repo (LF preservado)
 ├── node_modules/               npm install dentro do Termux
-├── iniciar-tudo.sh             sobe relay + tuneis, idempotente
-├── relay.log  cf-relay.log  boot.log
+├── iniciar-tudo.sh             sobe relay + tuneis + registrador, idempotente
+├── register-relay.mjs          publica o hostname do tunel no site
+├── relay.log  cf-relay.log  registrar.log  boot.log
+~/.bs-relay-secret              segredo do registro (modo 600, fora do repo)
 ~/.termux/boot/bs-relay.sh      Termux:Boot: wake-lock + sshd + iniciar-tudo
 ```
 
-Sessões tmux: `bs-relay` (Node na 9080), `cf-relay` (túnel do relay) e
-`cf-site` (túnel do site, só para testar o build local quando a 8888 está
-alcançável por `ssh -R 8888:localhost:8888`; a produção é o Netlify).
+Sessões tmux: `bs-relay` (Node na 9080), `cf-relay` (túnel do relay),
+`bs-register` (registrador em modo `--watch`) e `cf-site` (túnel do site, só para
+testar o build local quando a 8888 está alcançável por `ssh -R 8888:localhost:8888`;
+a produção é o Netlify).
 
 ```bash
 ssh termux-pelada
 tmux attach -t bs-relay
 bash ~/projetos/bs-relay/iniciar-tudo.sh      # idempotente
 curl -sS http://127.0.0.1:9080/healthz
+curl -sS https://battle-scenes.netlify.app/api/relay
 ```
+
+### Auto-registro do endereço público
+
+O quick tunnel troca de hostname a cada reinício, então o endereço não é
+configurado à mão em lugar nenhum: `register-relay.mjs` faz o caminho inteiro.
+
+1. Lê o último host `*.trycloudflare.com` do `cf-relay.log` (o túnel imprime a URL
+   ao registrar).
+2. Compara com o que o site já tem em `GET /api/relay`; se for igual, não faz nada.
+3. Confere o relay local com `GET http://127.0.0.1:9080/healthz` — endereço de um
+   relay morto não é publicado.
+4. Publica `POST /api/relay` com o corpo `{"url":"https://<host>"}` e o cabeçalho
+   `x-relay-secret` lido de `~/.bs-relay-secret`.
+
+Do lado do site, a Function [`relay`](../online/netlify/functions/relay.mjs)
+exige o segredo (`RELAY_REGISTER_SECRET`, definido no Netlify e nunca impresso),
+aceita apenas `https:` e host dentro da allowlist
+(`RELAY_HOST_PATTERN`, padrão `^[a-z0-9-]+\.trycloudflare\.com$`) e grava em
+`relay/address` no Netlify Blobs com consistência forte. `GET /api/relay` devolve
+`{ "registered": true, "url": "…" }` e cai no `RELAY_URL` do ambiente quando não
+há registro — útil antes do primeiro registro ou se o registrador parar.
+
+```bash
+node register-relay.mjs               # uma sincronização; exit 0 se publicou ou já batia
+node register-relay.mjs --watch       # repete a cada INTERVAL_MS (padrão 60 s)
+```
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `SITE` | `https://battle-scenes.netlify.app` | Site que recebe o registro. |
+| `TUNNEL_LOG` | `~/projetos/bs-relay/cf-relay.log` | Log do `cloudflared` onde está o hostname. |
+| `HEALTH_URL` | `http://127.0.0.1:9080/healthz` | Sonda local antes de publicar. |
+| `RELAY_SECRET_FILE` | `~/.bs-relay-secret` | Arquivo com o segredo do `x-relay-secret`. |
+| `INTERVAL_MS` | `60000` | Intervalo do modo `--watch`. |
+
+O script não tem dependências (só `node:` nativo) e roda tanto no Termux quanto
+no desktop. Trocar o segredo é `netlify env:set RELAY_REGISTER_SECRET …` seguido
+da gravação do mesmo valor em `~/.bs-relay-secret`.
 
 O player abre o site em https://battle-scenes.netlify.app e clica em “Abrir o
 jogo”; o lobby já monta o link com
@@ -251,12 +298,14 @@ funcionando, mas precisa desse parâmetro, porque o padrão web em
 `Rede.WEB_DEFAULT_ADDRESS` ainda é placeholder.
 
 Limites dessa rota: o hostname `*.trycloudflare.com` **muda a cada reinício do
-túnel**; o quick tunnel não tem SLA e o Android pode matar o processo em Doze
-(`termux-wake-lock` atenua, não resolve). Um hostname fixo exige um domínio na
-conta Cloudflare e `cloudflared tunnel --config` com túnel nomeado. Reiniciar o
-celular hoje só recupera os serviços se o APK **Termux:Boot** estiver instalado
-na mesma fonte do Termux (o hook já está escrito em `~/.termux/boot/`). Para
-produção estável, a rota continua sendo Fly.io/Docker acima.
+túnel** — o registrador cobre isso em até um minuto, mas nada mais funciona se a
+sessão `bs-register` morrer; o quick tunnel não tem SLA e o Android pode matar o
+processo em Doze (`termux-wake-lock` atenua, não resolve). Um hostname fixo exige
+um domínio na conta Cloudflare e `cloudflared tunnel --config` com túnel nomeado.
+Reiniciar o celular hoje só recupera os serviços se o APK **Termux:Boot** estiver
+instalado na mesma fonte do Termux (o hook já está escrito em `~/.termux/boot/`).
+Para produção estável, a rota continua sendo Fly.io/Docker acima ou a migração
+para Workers + Durable Objects (v3 no TODO).
 
 ### Docker
 

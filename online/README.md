@@ -22,16 +22,18 @@ online/
   CLI, sem Git CD; projeto público, previews protegidos). Lobby em `/` e jogo em
   `/game/`.
 - A Function `/api/salas` e a página `/salas` estão no ar e funcionando.
-- O endereço do relay é **auto-registrado** pelo celular em `POST /api/relay`;
-  `/api/salas` o lê de um Netlify Blob e o lobby anexa `?relay=` sozinho em
-  “Abrir o jogo” e nos links de sala. O `RELAY_URL` do Netlify é só reserva.
+- O endereço do relay é **fixo**: `RELAY_URL` aponta para
+  `https://129-159-222-25.sslip.io` (VM Oracle), `/api/salas` o devolve e o
+  lobby anexa `?relay=` sozinho em “Abrir o jogo” e nos links de sala. O Blob
+  `relay/address` está vazio; se algum registro existir, ele vence o
+  `RELAY_URL`. O `POST /api/relay` é rota de emergência para túnel temporário.
 - O cliente web já tem `join_room` por código, entrada “Entrar com código” no
   menu, leitura de `?room=CODIGO` e `?relay=HOST`, padrão `wss://` e
   `LocalRelay` desativado no navegador. Falta validar dois navegadores em redes
-  diferentes.
+  diferentes pelo endereço novo.
 - O endereço web padrão é o placeholder `wss://relay.exemplo.com` em
-  [src/custom/Rede.gd](../src/custom/Rede.gd); troque-o pelo domínio publicado
-  ou use `?relay=` ao testar.
+  [src/custom/Rede.gd](../src/custom/Rede.gd); o lobby sempre passa `?relay=`,
+  então ele só aparece quando a página do jogo é aberta direto.
 
 ## Exportar o jogo
 
@@ -63,7 +65,7 @@ Jogo em `http://localhost:8888/game/` (depois do export) e lobby em
 `http://localhost:8888/` (funciona sem o export).
 
 A Function lê `RELAY_URL` **HTTP(S)** (sem barra final), por exemplo
-`https://relay.exemplo.com`. Não use `wss://` aqui: o proxy faz
+`https://129-159-222-25.sslip.io`. Não use `wss://` aqui: o proxy faz
 `fetch("${url}/rooms")`. O `wss://` é o endereço usado pelo cliente do
 jogo. Sem a variável **e** sem registro no Blob, `/api/salas` responde 503 com
 `relay.online = false`.
@@ -87,21 +89,25 @@ esse endereço para montar os links do jogo, então só falta arrumar o relay.
 
 ### `GET /api/relay`
 
-`{ "registered": true, "url": "https://<host>.trycloudflare.com" }`. Sem registro,
-`registered` é `false` e `url` cai no `RELAY_URL` do ambiente (ou `null`).
+`{ "registered": false, "url": "https://129-159-222-25.sslip.io" }`. Sem registro
+no Blob, `registered` é `false` e `url` cai no `RELAY_URL` do ambiente (ou
+`null`). Com o relay fixo, esse é o estado esperado.
 
 ### `POST /api/relay`
 
-Escreve o endereço público do relay no Blob `relay/address`. Exige o cabeçalho
-`x-relay-secret` igual ao `RELAY_REGISTER_SECRET` do site (401 se não bater; 503
-se o site não tiver segredo), aceita apenas `https:` e host dentro de
-`RELAY_HOST_PATTERN` (padrão `^[a-z0-9-]+\.trycloudflare\.com$`) e devolve
-`{ "ok": true, "url": … }`. Sem segredo válido ou fora da allowlist, nada é
-gravado — essa Function é a única porta de escrita do Blob.
+Rota de emergência para um túnel temporário: escreve o endereço público do relay
+no Blob `relay/address`. Exige o cabeçalho `x-relay-secret` igual ao
+`RELAY_REGISTER_SECRET` do site (401 se não bater; 503 se o site não tiver
+segredo), aceita apenas `https:` e host dentro de `RELAY_HOST_PATTERN` (padrão
+`^[a-z0-9-]+\.trycloudflare\.com$`) e devolve `{ "ok": true, "url": … }`. Sem
+segredo válido ou fora da allowlist, nada é gravado — essa Function é a única
+porta de escrita do Blob. Enquanto houver valor no Blob, ele vence o
+`RELAY_URL`; para voltar ao endereço fixo, apague a chave com
+`netlify blobs:delete relay address`.
 
 Quem chama é o registrador do celular
-([../relay/tools/register-relay.mjs](../relay/tools/register-relay.mjs)); os
-detalhes estão no [README do relay](../relay/README.md).
+([../relay/tools/register-relay.mjs](../relay/tools/register-relay.mjs)) quando
+o fallback é ligado; os detalhes estão no [README do relay](../relay/README.md).
 
 ## Publicar
 
@@ -114,8 +120,10 @@ O build não vai para o git. Deploy por Git exigiria commitar
 `site/game/` ou criar uma Action que rode o export do Godot.
 
 Variáveis do site (definidas pela CLI/dashboard, nunca no `netlify.toml`):
-`RELAY_URL` (reserva) e `RELAY_REGISTER_SECRET` (segredo do registro). Depois de
-mudar uma variável é preciso publicar de novo para as Functions pegarem o valor.
+`RELAY_URL` (endereço fixo de produção,
+`https://129-159-222-25.sslip.io`) e `RELAY_REGISTER_SECRET` (segredo do
+registro de emergência). Depois de mudar uma variável é preciso publicar de novo
+para as Functions pegarem o valor.
 
 O `index.pck`/`index.wasm` são pedidos pelo shell do Godot sem query de versão,
 então o `netlify.toml` os serve com `public, max-age=0, must-revalidate`: o
@@ -125,14 +133,16 @@ Não troque por `immutable` — quem já jogou ficaria preso ao pacote antigo.
 ## Relay
 
 O relay de produção fica em [../relay/](../relay/README.md) (Node.js + `ws`),
-fora do Netlify, publicado no S20 FE atrás de um túnel Cloudflare. Ele é a fonte
-de verdade das salas; o lobby aqui só consulta `GET /rooms` e guarda o endereço
-público dele.
+fora do Netlify, rodando na VM Always Free da Oracle em Frankfurt com IP
+reservado `129.159.222.25` (`https://129-159-222-25.sslip.io`), atrás do Caddy.
+Ele é a fonte de verdade das salas; o lobby aqui só consulta `GET /rooms` e
+guarda o endereço público dele.
 
 ## Escopo
 
 - O lobby só lê `GET /rooms` do relay; não guarda sala, não cria TTL e não faz
   claim de entrada.
-- O único estado do site é o Blob `relay/address` (um endereço público, sem TTL
-  próprio): nada de contadores, saldos ou dados de jogador em blobs.
+- O único estado possível do site é o Blob `relay/address` (um endereço
+  público, sem TTL próprio e hoje vazio): nada de contadores, saldos ou dados de
+  jogador em blobs.
 - Detalhes e fases: [../ONLINE_HOSTING.md](../ONLINE_HOSTING.md).

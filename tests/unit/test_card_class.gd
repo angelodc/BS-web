@@ -127,6 +127,46 @@ func test_font_size():
 	card.card_front.set_rich_label_text(text_node, lorem)
 	assert_eq(card.card_front._card_text.rect_size,labels_rect)
 
+
+# The fitting loop used to shrink past its own minimum check: when the first
+# adjustment landed below 6 it never reached the "reached minimum size" branch
+# and kept decrementing against a height it could not trust. On the web build
+# that ended in a DynamicFont cache error and a frozen engine.
+func test_rich_text_stops_at_the_minimum_font_size():
+	var text_node: RichTextLabel = card.card_front.card_labels["Abilities"]
+	# A narrow, short label and a long text force the first adjustment past the
+	# floor, which is the case that used to slip under the minimum check.
+	text_node.rect_min_size = Vector2(24, 12)
+	var long_text := "Fitting floor check. ".repeat(40)
+	var running = card.card_front.set_rich_label_text(text_node, long_text)
+	if running is GDScriptFunctionState:
+		yield(running, "completed")
+	_assert_rtl_fonts_at_least_minimum(text_node)
+
+
+# A size cached by an earlier build could sit below the floor; the cached
+# branch has to raise it instead of handing it to the font.
+func test_cached_rich_text_size_respects_the_minimum():
+	var text_node: RichTextLabel = card.card_front.card_labels["Abilities"]
+	var text := "Cached floor check."
+	var cache: Dictionary = cfc.font_size_cache.get(str(1), {})
+	if not cache.has("Abilities"):
+		cache["Abilities"] = {}
+	cache["Abilities"][text.md5_text()] = -4
+	cfc.font_size_cache[str(1)] = cache
+	card.card_front.set_rich_label_text(text_node, text)
+	_assert_rtl_fonts_at_least_minimum(text_node)
+
+
+func _assert_rtl_fonts_at_least_minimum(text_node: RichTextLabel) -> void:
+	for font_type in ["normal_font", "italics_font", "bold_font",
+			"bold_italics_font", "title_font", "mono_font"]:
+		var font = text_node.get("custom_fonts/" + font_type)
+		if font:
+			assert_true(font.size >= CardFront.MIN_RTL_FONT_SIZE,
+					"%s stays at or above the minimum (got %s)"
+					% [font_type, font.size])
+
 func test_number_properties_with_string_value():
 	cfc.card_definitions["GUT Card"] = {
 		"Type": "Red",

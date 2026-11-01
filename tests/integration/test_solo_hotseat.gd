@@ -224,6 +224,21 @@ func _take_hand_card() -> Card:
 	return null
 
 
+# Moves a few hand cards into the resources pile, which is how the owner builds
+# the mini grid the other seat reads mirrored.
+func _fill_discard(count: int) -> Array:
+	var moved := []
+	for _index in range(count):
+		var card := _take_hand_card()
+		if not card:
+			break
+		cfc.NMAP.hand.remove_child(card)
+		discard.add_child(card)
+		card.state = Card.CardState.IN_PILE
+		moved.append(card)
+	return moved
+
+
 # Places a card the way a dropped one rests: child of the board, held by the
 # scene slot, so the public state records it with its slot index.
 func _place_scene_card(slot_index: int) -> Card:
@@ -553,6 +568,89 @@ func test_mirror_of_a_resource_card_turns_with_the_grid():
 			var label_band := Rect2(Vector2(1124, 144.2), Vector2(156, 22))
 			assert_false(cell.intersects(label_band),
 					"The cell never reaches into the resources label")
+
+
+# The mirrored grid answers the pointer exactly where it draws each miniatures:
+# no dead spot over the artwork and no preview over the empty part of the box.
+# The cells come from the local pile, so both sides share one layout.
+func test_mirror_resource_hover_follows_the_drawn_mini():
+	yield(_start_solo_match({}, {}, true), "completed")
+	cfc.NMAP.board._discard_position = Vector2(0, 372.2)
+	discard.position = Vector2(0, 372.2)
+	discard._layout_panel()
+	var moved := _fill_discard(4)
+	yield(_settle(), "completed")
+	assert_true(moved.size() >= 2, "The pile holds cards to mirror")
+
+	assert_true(Multiplayer.swap_solo_seat(), "The swap mirrors the pile")
+	yield(yield_for(0.7), YIELD)
+
+	var sync = Multiplayer._sync
+	var order: Array = sync._resources_in_pile_order()
+	assert_eq(order.size(), moved.size(), "Every resource keeps a mirrored cell")
+	var box := Rect2(Vector2(1124, 144.2), Vector2(156, 216))
+	var visible := int(min(order.size(), sync.RESOURCES_GRID_MAX))
+	for index in range(visible):
+		var mirror: Card = sync._remote_cards.get(order[index])
+		assert_not_null(mirror, "The pile order names a live mirror")
+		if not mirror:
+			continue
+		var cell: Rect2 = sync._resource_cell_rect(index)
+		var drawn: Rect2 = sync._card_screen_rect(mirror)
+		assert_almost_eq(drawn.position, cell.position, Vector2(2, 2),
+				"The mini is drawn inside its own hover cell")
+		assert_almost_eq(drawn.size, cell.size, Vector2(2, 2),
+				"The hover cell is the size of the drawn mini")
+		assert_eq(sync._resource_hover_at(cell.position + cell.size * 0.5), mirror,
+				"The middle of the mini answers with that card")
+		# Three pixels above is the six pixel gap between the mirrored rows, or
+		# the free strip above the top row, so no other mini can answer there.
+		assert_null(sync._resource_hover_at(Vector2(
+				cell.position.x + cell.size.x * 0.5, cell.position.y - 3)),
+				"Just above a mini is not a hover")
+	# The box has room above the grid, which must stay inert: a hover there
+	# opened the preview far above the cards.
+	var empty_top := Vector2(box.position.x + box.size.x * 0.5,
+			box.position.y + 10)
+	assert_false(sync._resources_in_pile_order().empty(),
+			"The mirrored grid is laid out")
+	for index in range(visible):
+		var cell: Rect2 = sync._resource_cell_rect(index)
+		assert_false(cell.has_point(empty_top),
+				"No cell reaches the empty top of the box")
+	assert_null(sync._resource_hover_at(empty_top),
+			"The empty top of the box is not a hover")
+
+
+# The grid has to read the pointer the GUI receives, not the window position
+# CanvasItem reports under a stretched window: the mirrored box sits far from
+# the origin, where the two spaces disagree by almost a hundred pixels.
+func test_mirror_resource_hover_reads_the_gui_pointer():
+	yield(_start_solo_match({}, {}, true), "completed")
+	cfc.NMAP.board._discard_position = Vector2(0, 372.2)
+	discard.position = Vector2(0, 372.2)
+	discard._layout_panel()
+	var moved := _fill_discard(3)
+	yield(_settle(), "completed")
+	assert_true(moved.size() >= 1, "The pile holds a card to mirror")
+
+	assert_true(Multiplayer.swap_solo_seat(), "The swap mirrors the pile")
+	yield(yield_for(0.7), YIELD)
+	var sync = Multiplayer._sync
+	var order: Array = sync._resources_in_pile_order()
+	assert_true(order.size() >= 1, "There is a mirrored mini")
+	var mirror: Card = sync._remote_cards.get(order[0])
+	var cell: Rect2 = sync._resource_cell_rect(0)
+	sync._pointer_known = true
+	sync._pointer_pos = cell.position + cell.size * 0.5
+	sync._update_resource_preview()
+	assert_eq(sync._resource_preview, mirror,
+			"The pointer the GUI reported picks the drawn mini")
+	sync._pointer_pos = cell.position - Vector2(80, 30)
+	sync._update_resource_preview()
+	assert_null(sync._resource_preview,
+			"A pointer away from the mini keeps the preview clear")
+	sync._pointer_known = false
 
 
 func test_three_solo_swaps_keep_both_fields_populated():

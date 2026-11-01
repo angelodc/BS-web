@@ -3,6 +3,38 @@ extends Reference
 const DECKS_PATH := "user://Decks/"
 const LAST_DECK_SETTING := "last_deck_path"
 const SEAT_DECK_SETTING := "last_solo_deck_path_"
+# The published build ships one ready deck so a new player can start without
+# importing a link first. It is a plain JSON of about 24 KB, nothing next to the
+# HTML5 build; the link in the file is metadata and the card data is what lets
+# the deck play without the BSDB.
+const DEFAULT_DECK_PATH := "res://data/decks/aliados_homem_aranha.json"
+const DEFAULT_DECK_FILE := "aliados_homem_aranha.json"
+const DEFAULT_DECK_SEEDED := "default_deck_seeded"
+
+
+# Copies the bundled deck into the local catalog once, and only when the player
+# has no decks at all. The flag makes a later deletion stick instead of bringing
+# the deck back on every launch.
+static func ensure_default_deck() -> void:
+	if bool(cfc.game_settings.get(DEFAULT_DECK_SEEDED, false)):
+		return
+	if not list_decks().empty():
+		cfc.set_setting(DEFAULT_DECK_SEEDED, true)
+		return
+	var source := File.new()
+	if not source.file_exists(DEFAULT_DECK_PATH) \
+			or source.open(DEFAULT_DECK_PATH, File.READ) != OK:
+		return
+	var text := source.get_as_text()
+	source.close()
+	var directory := Directory.new()
+	directory.make_dir_recursive(DECKS_PATH)
+	var target := File.new()
+	if target.open(DECKS_PATH + DEFAULT_DECK_FILE, File.WRITE) != OK:
+		return
+	target.store_string(text)
+	target.close()
+	cfc.set_setting(DEFAULT_DECK_SEEDED, true)
 
 
 static func list_decks() -> Array:

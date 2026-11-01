@@ -103,14 +103,15 @@ static func texture_for_id(id: String) -> Texture:
 static func texture_for_path(path: String) -> Texture:
 	if path.empty():
 		return null
-	# Asking for the file first keeps a missing artwork silent: the web export
-	# drops the bundled playmats and load() would log an error for each one.
-	if not file_exists(path):
-		return null
+	# The exported web build keeps the imported texture but not the source file,
+	# so the remap has to be asked first. It is also the silent path for a
+	# missing artwork: both checks fail without logging.
 	if ResourceLoader.exists(path):
 		var resource = load(path)
 		if resource is Texture:
 			return resource
+	if not file_exists(path):
+		return null
 	# The editor only imports new art when its window gets focus, and a playmat
 	# the player uploaded has no importer at all; decoding the file directly
 	# keeps both working.

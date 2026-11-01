@@ -3,9 +3,19 @@ extends Control
 const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const LinkDeckScene = preload("res://src/custom/BSDBDeckImportDialog.tscn")
+const TableScriptScript = preload("res://src/core/table/TableScript.gd")
+const TableKeyboardScript = preload("res://src/core/table/TableKeyboard.gd")
 
 const DECK_SIZE := 60
 const MAX_LOG_LINES := 200
+const CONSOLE_LOG_LINES := 20
+const CONSOLE_PLACEHOLDER := "{\"op\":\"comprar\"} · mesa · log · ajuda (F8)"
+const CONSOLE_HELP := "Comandos: mesa · log · ajuda\n" \
+		+ "Um objeto aplica uma intenção: {\"op\":\"comprar\"}\n" \
+		+ "Um script: {\"seed\":\"f4\",\"steps\":[{\"op\":\"comprar\"}," \
+		+ "{\"expect\":{\"zones\":{\"hand\":1}}}]}\n" \
+		+ "Cartas por nome ou id; cópias ganham \"Test Card 2 1\", \"Test Card 2 2\".\n" \
+		+ "Digite teclas para ver o mapa de atalhos."
 const MENU_SAVE := 0
 const MENU_LEAVE := 1
 const CARD_LINK_COLOR := "#ffd479"
@@ -64,6 +74,10 @@ var _playmat_poll: Timer
 var _playmat_chunk := ""
 var _playmat_offset := 0
 var _playmat_total := -1
+var _console_panel: PanelContainer
+var _console_input: LineEdit
+var _console_output: RichTextLabel
+var _keyboard = null
 
 
 func _ready() -> void:
@@ -114,6 +128,7 @@ func _ready() -> void:
 		_append_log("Sessão multiplayer iniciada.")
 	else:
 		_append_log("Modo solo: cada ação sua é registrada aqui.")
+	_build_console()
 	_refresh()
 	call_deferred("_apply_last_deck")
 
@@ -137,6 +152,7 @@ func _exit_tree() -> void:
 func _apply_last_deck() -> void:
 	if not is_inside_tree() or not Multiplayer.is_preparing():
 		return
+	DeckCatalog.ensure_default_deck()
 	if Multiplayer.is_solo():
 		_apply_last_solo_decks()
 		return
@@ -481,13 +497,27 @@ func _on_prep_changed() -> void:
 #-----------------------------------------------------------------------------
 
 func _on_advance_pressed() -> void:
-	if not Multiplayer.advance_phase():
-		_append_log("Não é possível avançar a fase agora.")
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		if not Multiplayer.advance_phase():
+			_append_log("Não é possível avançar a fase agora.")
+		return
+	var result: Dictionary = board.apply_intent({"op": "passar_fase"})
+	if not bool(result.get("ok", false)):
+		_append_log(str(result.get("message",
+				"Não é possível avançar a fase agora.")))
 
 
 func _on_swap_seat_pressed() -> void:
-	if not Multiplayer.swap_solo_seat():
-		_append_log("Não foi possível trocar de assento agora.")
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		if not Multiplayer.swap_solo_seat():
+			_append_log("Não foi possível trocar de assento agora.")
+		return
+	var result: Dictionary = board.apply_intent({"op": "trocar_assento"})
+	if not bool(result.get("ok", false)):
+		_append_log(str(result.get("message",
+				"Não foi possível trocar de assento agora.")))
 
 
 func _on_match_menu_pressed(id: int) -> void:
@@ -766,6 +796,172 @@ func _escape_bbcode(text: String) -> String:
 
 func _scroll_log_to_bottom() -> void:
 	_log_label.scroll_to_line(max(_log_label.get_line_count() - 1, 0))
+
+
+#-----------------------------------------------------------------------------
+# Text console
+#-----------------------------------------------------------------------------
+
+# The console is the keyboard face of the same intents the buttons and the
+# mouse use: a JSON object applies one action, and a script runs a whole
+# sequence with expectations. F8 toggles it so it never steals a click.
+func _build_console() -> void:
+	_console_panel = PanelContainer.new()
+	_console_panel.name = "CommandConsole"
+	_console_panel.anchor_right = 0.0
+	_console_panel.anchor_bottom = 0.0
+	_console_panel.margin_left = 8.0
+	_console_panel.margin_top = 132.0
+	_console_panel.margin_right = 508.0
+	_console_panel.margin_bottom = 288.0
+	_console_panel.visible = false
+	# A Control has no z_index in this engine; the panel is added last, so the
+	# sibling order already draws it over the rest of the HUD.
+	var box := VBoxContainer.new()
+	_console_panel.add_child(box)
+	_console_output = RichTextLabel.new()
+	_console_output.rect_min_size = Vector2(480, 110)
+	_console_output.bbcode_enabled = true
+	_console_output.scroll_active = true
+	_console_output.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(_console_output)
+	_console_input = LineEdit.new()
+	_console_input.rect_min_size = Vector2(480, 30)
+	_console_input.placeholder_text = CONSOLE_PLACEHOLDER
+	_console_input.connect("text_entered", self, "_on_console_entered")
+	box.add_child(_console_input)
+	add_child(_console_panel)
+
+
+func _unhandled_key_input(event : InputEventKey) -> void:
+	if not event.pressed or event.echo:
+		return
+	if event.scancode == KEY_F8:
+		_toggle_console()
+		get_tree().set_input_as_handled()
+		return
+	# While the console is open the LineEdit owns the keyboard, so a shortcut
+	# cannot type over a command or steal its keys.
+	if _console_panel.visible:
+		if event.scancode == KEY_ESCAPE:
+			_toggle_console()
+			get_tree().set_input_as_handled()
+		return
+	var keyboard = table_keyboard()
+	if keyboard != null and keyboard.handle_event(event):
+		get_tree().set_input_as_handled()
+
+
+func _toggle_console() -> void:
+	if not is_instance_valid(_console_panel):
+		return
+	_console_panel.visible = not _console_panel.visible
+	if _console_panel.visible:
+		_console_input.grab_focus()
+		if _console_output.text.empty():
+			_console_echo(CONSOLE_HELP)
+	else:
+		_console_input.release_focus()
+
+
+func _on_console_entered(text : String) -> void:
+	var command := text.strip_edges()
+	if command.empty():
+		return
+	_console_input.clear()
+	_console_input.grab_focus()
+	if command in ["mesa", "estado"]:
+		var actions = _console_actions()
+		if actions != null:
+			actions.sync()
+			_console_echo(actions.state.describe(actions.get_seat()))
+		return
+	if command == "log":
+		var actions = _console_actions()
+		if actions != null:
+			_console_echo(actions.describe_log(CONSOLE_LOG_LINES))
+		return
+	if command in ["ajuda", "help", "?"]:
+		_console_echo(CONSOLE_HELP)
+		return
+	if command in ["teclas", "atalhos"]:
+		_console_echo(TableKeyboardScript.KEY_HELP)
+		return
+	var parsed := JSON.parse(command)
+	if parsed.error != OK:
+		_console_echo("JSON inválido (linha " + str(parsed.error_line) + "): "
+				+ str(parsed.error_string))
+		return
+	var data = parsed.result
+	if data is Dictionary:
+		_run_console_script(data)
+	elif data is Array:
+		_run_console_script({"steps": data})
+	else:
+		_console_echo("Use um objeto ou uma lista JSON.")
+
+
+# A single object is one step; a script is the same object with "steps". Both
+# end in TableScript, so the console never has a second set of rules.
+func _run_console_script(script) -> void:
+	var actions = _console_actions()
+	if actions == null:
+		return
+	var result = TableScriptScript.run(actions, script)
+	var lines := []
+	var expectations := 0
+	for step in result.get("steps", []):
+		if step.has("expect"):
+			expectations += 1
+			continue
+		var text := str(step.get("text", ""))
+		if text.empty():
+			continue
+		lines.append(text)
+		# The intent log is the same one the buttons fill, so a scripted action
+		# stays visible to both players.
+		_append_log(text)
+	if bool(result.get("ok", false)):
+		var summary := "ok"
+		if not lines.empty():
+			summary += ": " + PoolStringArray(lines).join(" · ")
+		if expectations > 0:
+			summary += " · " + str(expectations) + " conferência(s)"
+		_console_echo(summary)
+		return
+	var prefix := "erro"
+	if int(result.get("failed", -1)) >= 0:
+		prefix += " no passo " + str(int(result["failed"]) + 1)
+	var message := str(result.get("message", ""))
+	if message.empty():
+		message = str(result.get("error", ""))
+	_console_echo(prefix + ": " + message)
+
+
+func _console_actions():
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("table_actions"):
+		_console_echo("A mesa ainda não está pronta.")
+		return null
+	return board.table_actions()
+
+
+# The keyboard runner is created on the first key and shares the table's action
+# log, so a shortcut lands in the same undo history as a click.
+func table_keyboard():
+	if not is_instance_valid(_keyboard):
+		var board = cfc.NMAP.get("board", null)
+		if not is_instance_valid(board) or not board.has_method("table_actions"):
+			return null
+		_keyboard = TableKeyboardScript.new(board.table_actions())
+	return _keyboard
+
+
+func _console_echo(text : String) -> void:
+	if not is_instance_valid(_console_output):
+		return
+	_console_output.bbcode_text = _escape_bbcode(text)
+	_console_output.scroll_to_line(max(_console_output.get_line_count() - 1, 0))
 
 
 #-----------------------------------------------------------------------------

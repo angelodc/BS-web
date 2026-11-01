@@ -1,10 +1,17 @@
 extends ManipulationButtons
 
+# Every button hands the card's id to the same intent the keyboard and the
+# scripts will use. The board validates it first, so a click on a state the
+# rules refuse changes nothing and tells the player why.
+
 
 func _ready() -> void:
+	# The labels were swapped against what the card does: the button that tilts
+	# the character one way read as the other state. The node names stay because
+	# the visibility rules and the intent handlers hang off them.
 	needed_buttons = {
-		"Capacitar": "Capacitar",
-		"Incapacitar": "Incapacitar",
+		"Capacitar": "Incapacitar",
+		"Incapacitar": "Capacitar",
 		"Escudo": "Escudo",
 		"Flip": "Flip",
 		"Rot90": "T",
@@ -19,7 +26,7 @@ func _ready() -> void:
 	shield_menu.connect("id_pressed", self, "_on_ShieldMenu_id_pressed")
 	for button in get_children():
 		if button is Button:
-			button.hint_tooltip = button.name
+			button.hint_tooltip = str(needed_buttons.get(button.name, button.name))
 			if button.name in ["Capacitar", "Incapacitar"]:
 				button.rect_min_size = Vector2(100, 26)
 			elif button.name == "Escudo":
@@ -61,24 +68,37 @@ func _update_action_visibility(is_available: bool, is_character: bool) -> void:
 			is_available and is_character and stage >= 0 and stage <= 1)
 
 
+# Runs one intent for the card this menu belongs to. The result is reported on
+# the table's message line and, for the state buttons, the menu is refreshed.
+func _apply(intent : Dictionary) -> Dictionary:
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		push_warning("A mesa não está disponível para esta ação.")
+		return {"ok": false, "error": "mesa_indisponivel"}
+	intent["card"] = owner_node
+	var result: Dictionary = board.apply_intent(intent)
+	board.report_intent(result)
+	return result
+
+
 func _on_Premios_pressed() -> void:
-	owner_node.send_to_opponent_prizes()
+	_apply({"op": "enviar_aos_prêmios"})
 
 
 func _on_Nocaute_pressed() -> void:
-	owner_node.knockout()
+	_apply({"op": "nocautear"})
 
 
 func _on_Dano_pressed() -> void:
-	cfc.NMAP.board.damage_character(owner_node, 1)
+	_apply({"op": "ferir", "amount": 1})
 
 
 func _on_Rot90_pressed() -> void:
-	owner_node.set_card_rotation(90, true)
+	_apply({"op": "girar", "degree": 90, "toggle": true})
 
 
 func _on_Flip_pressed() -> void:
-	owner_node.set_is_faceup(not owner_node.is_faceup)
+	_apply({"op": "virar"})
 
 
 func _on_Escudo_pressed() -> void:
@@ -101,23 +121,17 @@ func _on_Escudo_pressed() -> void:
 
 func _on_ShieldMenu_id_pressed(id: int) -> void:
 	var amount: int = id if id <= 3 else -(id - 3)
-	var result: int = owner_node.tokens.mod_token("escudo", amount)
-	if result == CFConst.ReturnCode.FAILED:
-		push_warning("The shield counter cannot be reduced below zero.")
+	_apply({"op": "escudo", "amount": amount})
 
 
 func _on_Capacitar_pressed() -> void:
-	var result = owner_node.capacitar()
-	if result == CFConst.ReturnCode.FAILED:
-		push_warning("The character cannot be capacitated in its current state.")
+	_apply({"op": "capacitar"})
 	_update_action_visibility(
 			owner_node.get_parent() == cfc.NMAP.board,
 			owner_node.is_battle_scenes_character())
 
 func _on_Incapacitar_pressed() -> void:
-	var result = owner_node.incapacitar()
-	if result == CFConst.ReturnCode.FAILED:
-		push_warning("The character cannot be incapacitated in its current state.")
+	_apply({"op": "incapacitar"})
 	_update_action_visibility(
 			owner_node.get_parent() == cfc.NMAP.board,
 			owner_node.is_battle_scenes_character())

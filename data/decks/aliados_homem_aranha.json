@@ -1,0 +1,641 @@
+{
+	"id": "bbbbbbbb-2222-4222-8222-222222222222",
+	"name": "Resgate Aracnídeo",
+	"cards": {
+		"BSCA_006": 3,
+		"BSCA_022": 3,
+		"BSCA_027": 1,
+		"BSCA_038": 1,
+		"BSCA_039": 3,
+		"BSCA_040": 3,
+		"BSCA_042": 1,
+		"BSCA_047": 3,
+		"BSCA_051": 1,
+		"BSCA_053": 1,
+		"BSCA_057": 3,
+		"BSCA_061": 2,
+		"BSCA_065": 1,
+		"BSCA_069": 3,
+		"BSCA_076": 2,
+		"BSCA_083": 3,
+		"BSCA_084": 3,
+		"BSCA_090": 1,
+		"BSCA_DECK_009": 1,
+		"BSET_056": 2,
+		"BSET_058": 1,
+		"BSFE_012": 2,
+		"BSFE_022": 1,
+		"BSFE_076": 2,
+		"BSFE_077": 1,
+		"BSFE_078": 1,
+		"BSFE_085": 2,
+		"BSFE_086": 3,
+		"BSFE_087": 2,
+		"BSIC_075": 1,
+		"BSIV_073": 1,
+		"BSOS_058": 2
+	},
+	"total": 60,
+	"definitions": {
+		"BSCA_057": {
+			"Name": "Aranhabô Espião",
+			"Type": "Red",
+			"_tipo": "Suporte",
+			"ENERGIA": "1",
+			"Tags": [
+
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Frota (pode haver qualquer número de suportes chamados ARANHABÔ ESPIÃO em cena). Durante sua Fase de Preparação, uma vez por turno, se você controlar um personagem e todos os personagens que você controla tiverem a afiliação Aliados do Homem-Aranha, você pode colocar o card do topo de seu deck nos seus recursos e comprar um card. Quando este suporte for destruído, você pode comprar um card.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_057",
+			"_bsdb_image_path": "/bsca/BSCA_057.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_090": {
+			"Name": "Facção Ardilosa",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Elasticidade"
+			],
+			"Requirements": "",
+			"Abilities": "Compartilhar - Elasticidade (os outros personagens que você controla com alguma afiliação em comum com este personagem podem usar a ação deste card).\n\nIncapacite o personagem alvo em 1.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_090",
+			"_bsdb_image_path": "/bsca/BSCA_090.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_061": {
+			"Name": "Ilha Das Aranhas",
+			"Type": "Red",
+			"_tipo": "Suporte",
+			"ENERGIA": "3",
+			"Tags": [
+
+			],
+			"Requirements": "Mundo Bélico",
+			"Abilities": "Materializar (você pode colocar este card em cena carregando cards do topo de seu deck ao invés de cards de seus recursos). Você não pode colocar outro card de suporte com a afiliação Mundo Bélico em cena. Durante sua Fase de Preparação, uma vez por turno, se você controlar um ou mais personagens, você pode descarregar um card deste suporte. Se o fizer, você pode carregar um card de habilidade de Ataque Energético de seus recursos em um personagem que você controla. Se aquele personagem não tiver Ataque Energético, descarregue um card dele.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_061",
+			"_bsdb_image_path": "/bsca/BSCA_061.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_065": {
+			"Name": "Tecnópolis",
+			"Type": "Red",
+			"_tipo": "Suporte",
+			"ENERGIA": "3",
+			"Tags": [
+
+			],
+			"Requirements": "Mundo Bélico",
+			"Abilities": "Materializar (você pode colocar este card em cena carregando cards do topo de seu deck ao invés de cards de seus recursos). Você não pode colocar outro card de suporte com a afiliação Mundo Bélico em cena. Durante sua Fase de Preparação, uma vez por turno, se você controlar um ou mais personagens, você pode descarregar um card deste suporte. Se o fizer, você pode carregar um card de habilidade de Genialidade de seus recursos em um personagem que você controla. Se aquele personagem não tiver Genialidade, descarregue um card dele.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_065",
+			"_bsdb_image_path": "/bsca/BSCA_065.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_069": {
+			"Name": "Aranhaverso",
+			"Type": "Green",
+			"_tipo": "Cenário",
+			"ENERGIA": "0",
+			"Tags": [
+
+			],
+			"Requirements": "",
+			"Abilities": "Quando este cenário entrar em cena, compre um card. Quando um personagem com a afiliação Aliados do Homem-Aranha entrar em cena sob seu controle, você pode colocar este card nos recursos de seu dono. Se o fizer, escolha uma opção, (A) coloque os dois cards do topo de seu deck em seus recursos; (B) você pode procurar em seu deck por um card de personagem com a afiliação Aliados do Homem-Aranha. Se o fizer, revele aquele card, coloque-o em sua mão e embaralhe o seu deck.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_069",
+			"_bsdb_image_path": "/bsca/BSCA_069.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSOS_058": {
+			"Name": "Desfechos Paralelos",
+			"Type": "Green",
+			"_tipo": "Cenário",
+			"ENERGIA": "0",
+			"Tags": [
+
+			],
+			"Requirements": "",
+			"Abilities": "Quando este cenário entrar em cena, coloque os dois cards do topo de seu deck em seus recursos. Quando este cenário sair de cena, compre um card.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSOS_058",
+			"_bsdb_image_path": "/bsos/BSOS_058.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSET_056": {
+			"Name": "Momento de Hesitação",
+			"Type": "Green",
+			"_tipo": "Cenário",
+			"ENERGIA": "0",
+			"Tags": [
+
+			],
+			"Requirements": "",
+			"Abilities": "Quando MOMENTO DE HESITAÇÃO entrar em cena, compre um card. Ações de antecipar que não sejam de cards de habilidades não podem ser usadas.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSET_056",
+			"_bsdb_image_path": "/bset/BSET_056.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSET_058": {
+			"Name": "Múltiplas Opções",
+			"Type": "Green",
+			"_tipo": "Cenário",
+			"ENERGIA": "0",
+			"Tags": [
+
+			],
+			"Requirements": "",
+			"Abilities": "Sempre que um personagem que você controla usar uma ação de Genialidade, você pode comprar um card.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSET_058",
+			"_bsdb_image_path": "/bset/BSET_058.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_076": {
+			"Name": "Paradoxo Enigmático",
+			"Type": "Green",
+			"_tipo": "Cenário",
+			"ENERGIA": "0",
+			"Tags": [
+
+			],
+			"Requirements": "",
+			"Abilities": "Quando este cenário entrar em cena, compre um card. Quando este cenário fosse ser substituído por outro cenário, o controlador daquele cenário pode incapacitar um personagem que ele próprio controla em 2. Se não o fizer, aquele cenário não entra em cena e é colocado nos recursos daquele jogador ao invés disso (este cenário sairá de cena mesmo que aquele cenário não entre em cena).",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_076",
+			"_bsdb_image_path": "/bsca/BSCA_076.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_083": {
+			"Name": "Amigão da Vizinhança",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Agilidade"
+			],
+			"Requirements": "",
+			"Abilities": "Municiar - afiliação Aliados do Homem-Aranha (enquanto este personagem tiver a afiliação indicada, ele ganha Agilidade e a ação deste card é uma ação de Antecipação e Imprevista).\n\nAMIGÃO DA VIZINHANÇA causa 2 pontos de dano a cada um de até dois alvos diferentes.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_083",
+			"_bsdb_image_path": "/bsca/BSCA_083.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_087": {
+			"Name": "Arrumar a Bagunça",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Genialidade"
+			],
+			"Requirements": "",
+			"Abilities": "Compre dois cards. Descarte um card. Coloque dois cards dos seus recursos na base do seu deck (se não houver cards suficientes nos recursos, coloque todos eles na base do deck).",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_087",
+			"_bsdb_image_path": "/bsfe/BSFE_087.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_076": {
+			"Name": "Correria Enrolada",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Agilidade"
+			],
+			"Requirements": "",
+			"Abilities": "CORRERIA ENROLADA causa 2 pontos de dano no alvo. Se este personagem (o personagem que usou esta ação) tiver Agilidade, incapacite o alvo em 1.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_076",
+			"_bsdb_image_path": "/bsfe/BSFE_076.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSIC_075": {
+			"Name": "Enclausurar",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Elasticidade"
+			],
+			"Requirements": "",
+			"Abilities": "Carregue um card neste personagem. Descarregue ENCLAUSURAR: O personagem alvo não pode usar ações neste turno.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSIC_075",
+			"_bsdb_image_path": "/bsic/BSIC_075.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_086": {
+			"Name": "Saraiva de Amarras",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Elasticidade"
+			],
+			"Requirements": "",
+			"Abilities": "Ação Única (este personagem não pode usar mais de uma ação chamada SARAIVA DE AMARRAS por turno) - O alvo ganha Escudo +2 até o final do turno. Se este personagem (o personagem que usou esta ação) tiver Agilidade, ele pode usar mais uma ação neste turno.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_086",
+			"_bsdb_image_path": "/bsfe/BSFE_086.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_084": {
+			"Name": "Tática Desarmada",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Agilidade"
+			],
+			"Requirements": "",
+			"Abilities": "Tática (no início da sua Fase de Ajuste, você pode carregar um card de habilidade de seus recursos neste personagem. Se o fizer, descarregue este card).\n\nTÁTICA DESARMADA causa 3 pontos de dano no alvo.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_084",
+			"_bsdb_image_path": "/bsca/BSCA_084.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_006": {
+			"Name": "Adaga",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Agilidade",
+				"Ataque energético",
+				"Regeneração"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Quando este personagem entrar em cena, você pode procurar em seu deck por um card de personagem chamado Manto. Se o fizer, revele aquele card, coloque-o em sua mão e embaralhe o seu deck. Enquanto você controlar um personagem chamado Manto, este personagem ganha Escudo +1.\n\nOs textos permanentes do personagem alvo controlado pelo oponente não têm efeito até o final do turno.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_006",
+			"_bsdb_image_path": "/bsca/BSCA_006.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_012": {
+			"Name": "Deathlok",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Ataque à distância",
+				"Genialidade"
+			],
+			"Requirements": "",
+			"Abilities": "Toda vez que uma ação deste personagem fosse causar dano em um alvo, se este personagem estiver carregando um card de suporte, aquela ação causará aquela quantidade de dano +1 (esse bônus não se aplica em ações que não tenham alvo).\n\nCompre dois cards, ou INTELECTO ASSASSINO causa 1 ponto de dano penetrante no alvo.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_012",
+			"_bsdb_image_path": "/bsfe/BSFE_012.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_DECK_009": {
+			"Name": "Fandral",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "4",
+			"Tags": [
+				"Agilidade",
+				"Lâminas",
+				"Super forca"
+			],
+			"Requirements": "Asgardianos",
+			"Abilities": "Durante sua Fase de Preparação, uma vez por turno, se você controlar um personagem com alter ego HOGUN, você pode colocar em cena um card de personagem com alter ego VOLSTAGG como se ele tivesse Materializar. Durante sua Fase de Preparação, uma vez por turno, se você controlar um personagem com alter ego HOGUN e um personagem com alter ego VOLSTAGG, você pode comprar 2 cards.\n\nO GALANTE causa 1 ponto de dano penetrante no alvo. Este personagem pode usar esta ação mais uma vez neste turno.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_DECK_009",
+			"_bsdb_image_path": "/bsca_deck/BSCA_DECK_009.png",
+			"_bsdb_shield": "2",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_022": {
+			"Name": "Gatuno",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Agilidade",
+				"Genialidade",
+				"Lâminas"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Enquanto você controlar outro personagem com a afiliação Aliados do Homem-Aranha, a ação Roubo Furtivo é uma ação de antecipar e imprevista. Durante sua Fase de Preparação, uma vez por turno, você pode colocar os X cards do topo de seu deck em seus recursos. X é igual ao número de personagens com a afiliação Aliados do Homem-Aranha que você controla.\n\nColoque um card de habilidade com Item Único que um personagem estiver carregando na base do deck de seu dono.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_022",
+			"_bsdb_image_path": "/bsca/BSCA_022.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_022": {
+			"Name": "Gilgamesh",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "7",
+			"Tags": [
+				"Ataque energético",
+				"Regeneração",
+				"Super forca",
+				"Telecinesia"
+			],
+			"Requirements": "Eternos",
+			"Abilities": "Durante sua Fase de Preparação, uma vez por turno, se este personagem não estiver carregando cards de habilidade, você pode carregar um card de habilidade de seus recursos neste personagem. Se o fizer, descarregue um card deste personagem.\n\nHERÓI MITOLÓGICO causa 2 pontos de dano no alvo.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_022",
+			"_bsdb_image_path": "/bsfe/BSFE_022.png",
+			"_bsdb_shield": "3",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_027": {
+			"Name": "Homem-Aranha",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Agilidade",
+				"Elasticidade",
+				"Super forca"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Durante sua Fase de Combate, uma vez por turno, quando um personagem controlado por um oponente usar uma ação no turno em que ele entrou em cena, se este card estiver em sua mão, você pode colocá-lo em cena. Quando este personagem entrar em cena desta forma, aquela ação não tem efeito. Enquanto você controlar outro personagem com a afiliação Aliados do Homem-Aranha, este personagem ganha Prontidão - ações que não sejam Imprevistas.\n\nAGILIDADE ARACNÍDEA causa 2 pontos de dano no alvo. Este personagem pode usar esta ação outra vez neste turno.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_027",
+			"_bsdb_image_path": "/bsca/BSCA_027.png",
+			"_bsdb_shield": "2",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_038": {
+			"Name": "Madame Teia",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "2",
+			"Tags": [
+				"Magia",
+				"Regeneração",
+				"Telepatia"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Quando um efeito controlado por um oponente fizer com que ele procure por um ou mais cards no próprio deck, se este card estiver em sua mão, você pode colocá-lo em cena. Quando este personagem entrar em cena desta forma, aquele jogador não pode procurar por cards em seu deck até o final do turno e você pode procurar em seu deck por um card de personagem ou suporte com a afiliação Aliados do Homem-Aranha, revelá-lo, colocá-lo em sua mão e embaralhar seu deck.\n\nOlhe os três cards do topo do deck de um oponente e coloque-os de volta em qualquer ordem. Compre um card.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_038",
+			"_bsdb_image_path": "/bsca/BSCA_038.png",
+			"_bsdb_shield": "2",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_039": {
+			"Name": "Manto",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "4",
+			"Tags": [
+				"Elasticidade",
+				"Regeneração",
+				"Telecinesia"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Quando este personagem entrar em cena, você pode procurar em seu deck por um card de personagem chamado Adaga. Se o fizer, revele aquele card, coloque-o em sua mão e embaralhe o seu deck. Durante sua Fase de Preparação, uma vez por turno, se você controlar um personagem chamado Adaga, você pode carregar um card de seus recursos neste personagem.\n\nDescarregue um personagem ou suporte e devolva-o para a mão de seu dono.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_039",
+			"_bsdb_image_path": "/bsca/BSCA_039.png",
+			"_bsdb_shield": "2",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_040": {
+			"Name": "Mary Jane",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "2",
+			"Tags": [
+				"Sem poder"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Espionar (quando este card for colocado nos prêmios de seus oponentes, você pode comprar um card). Enquanto este card estiver nos prêmios de seus oponentes, você pode usar Potencializar 1 - afiliação Aliados do Homem-Aranha.\n\nCompre um card.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_040",
+			"_bsdb_image_path": "/bsca/BSCA_040.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_042": {
+			"Name": "Mulher-Aranha",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Agilidade",
+				"Elasticidade",
+				"Super forca"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Durante sua Fase de Preparação, uma vez por turno, se você controlar outros dois ou mais personagens com a afiliação Aliados do Homem-Aranha, você pode procurar em seu deck por um card de personagem ou suporte com a afiliação Aliados do Homem-Aranha. Se o fizer, revele aquele card, coloque-o em sua mão e embaralhe o seu deck.\n\nAção Única (este personagem não pode usar mais de uma ação chamada VIÚVA BRANCA por turno) - VIÚVA BRANCA causa 1 ponto de dano no alvo. Este personagem pode usar mais uma ação neste turno.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_042",
+			"_bsdb_image_path": "/bsca/BSCA_042.png",
+			"_bsdb_shield": "2",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_047": {
+			"Name": "Peter Parker",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Genialidade"
+			],
+			"Requirements": "Aliados do Homem-Aranha/Simbiontes",
+			"Abilities": "Hospedeiro (este personagem ganha os poderes das ações de cards com Interligar que ele estiver carregando). Enquanto este personagem estiver carregando um ou mais cards com Interligar, ele ganha Prontidão - ação PAPARAZZO.\n\nCompre um card.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_047",
+			"_bsdb_image_path": "/bsca/BSCA_047.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_051": {
+			"Name": "Solo",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Agilidade",
+				"Ataque à distância",
+				"Ataque energético"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Materializar. No início da Etapa de Ataque de seu turno, se este card estiver em sua mão, você pode colocá-lo em cena. Potencializar 1 - afiliação Aliados do Homem-Aranha. Durante sua Etapa de Ataque, uma vez por turno, você pode escolher outro personagem com a afiliação Aliados do Homem-Aranha tendo sido potencializado neste turno. Se o fizer, a próxima ação que aquele personagem usar neste turno causa +1 ponto de dano em cada um dos seus alvos.\n\nO TERROR MORRE causa 1 ponto de dano penetrante no alvo.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_051",
+			"_bsdb_image_path": "/bsca/BSCA_051.png",
+			"_bsdb_shield": "1",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSCA_053": {
+			"Name": "Teia De Seda",
+			"Type": "Blue",
+			"_tipo": "Personagem",
+			"ENERGIA": "3",
+			"Tags": [
+				"Agilidade",
+				"Elasticidade",
+				"Genialidade",
+				"Regeneração"
+			],
+			"Requirements": "Aliados do Homem-Aranha",
+			"Abilities": "Liderar 1 - afiliação Aliados do Homem-Aranha (durante sua Fase de Preparação, uma vez por turno, você pode capacitar um personagem que você controla com a afiliação indicada em 1).\n\nARMADILHA DE SEDA causa 3 pontos de dano, distribuídos da forma como você escolher entre até três alvos diferentes.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSCA_053",
+			"_bsdb_image_path": "/bsca/BSCA_053.png",
+			"_bsdb_shield": "2",
+			"_bsdb_alignment": "Herói",
+			"_bsdb_extra_energy": ""
+		},
+		"BSIV_073": {
+			"Name": "Impossível de se Ver",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Agilidade"
+			],
+			"Requirements": "",
+			"Abilities": "A ação de IMPOSSÍVEL DE SE VER causa +2 pontos de dano em seu alvo caso seja a primeira ação usada neste turno.\n\nIMPOSSÍVEL DE SE VER causa 1 ponto de dano no alvo.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSIV_073",
+			"_bsdb_image_path": "/bsiv/BSIV_073.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_085": {
+			"Name": "Investigação Complexa",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Elasticidade"
+			],
+			"Requirements": "",
+			"Abilities": "Prontidão - ação Investigação Complexa (a ação indicada pode ser usada por este personagem no turno em que ele entrou em cena).\n\nSingularidade (cada jogador não pode usar mais de uma ação com Singularidade por turno) - Compre dois cards. Descarte um card. Você pode colocar um card que não seja de habilidade dos seus recursos na base do seu deck.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_085",
+			"_bsdb_image_path": "/bsfe/BSFE_085.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_077": {
+			"Name": "Investigação Incauta",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Agilidade"
+			],
+			"Requirements": "",
+			"Abilities": "Prontidão - ação Investigação Incauta.\n\nSingularidade (cada jogador não pode usar mais de uma ação com Singularidade por turno) - Carregue três cards do topo de seu deck neste personagem. Descarregue três cards deste personagem.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_077",
+			"_bsdb_image_path": "/bsfe/BSFE_077.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		},
+		"BSFE_078": {
+			"Name": "Rápido e Rasteiro",
+			"Type": "Purple",
+			"_tipo": "Habilidade",
+			"ENERGIA": "0",
+			"Tags": [
+				"Agilidade"
+			],
+			"Requirements": "",
+			"Abilities": "Antecipação-Surpresa (no início da Etapa de Antecipação do turno de um oponente, se este card estiver na sua mão você pode revelá-lo; se o fizer, carregue este card em um personagem que você controla e descarregue um card daquele personagem).<br>Quando este card for carregado de sua mão em um personagem com Agilidade que você controla, você pode capacitá-lo em 2.\n\nRÁPIDO E RASTEIRO causa 2 pontos de dano no alvo.",
+			"Cost": 0,
+			"Power": 0,
+			"_bsdb_id": "BSFE_078",
+			"_bsdb_image_path": "/bsfe/BSFE_078.png",
+			"_bsdb_shield": "0",
+			"_bsdb_alignment": "",
+			"_bsdb_extra_energy": ""
+		}
+	},
+	"source_url": "https://battlescenes.vercel.app/deck/bbbbbbbb-2222-4222-8222-222222222222"
+}

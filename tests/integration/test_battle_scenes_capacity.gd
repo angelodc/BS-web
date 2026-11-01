@@ -3,11 +3,27 @@ extends "res://tests/UTcommon.gd"
 class TestBattleScenesCapacity:
 	extends "res://tests/Basic_common.gd"
 
+	const Snapshot = preload("res://src/core/table/TableSnapshot.gd")
+
+	# The manipulation buttons now run through the table intents, whose rules
+	# only know cards that sit on a field slot. The state is rebuilt from the
+	# scene, so settling the card on a slot (as the renderer does) keeps these
+	# tests about the buttons and the stage instead of the play rules.
 	func _put_card_on_board(card: Card, card_type: String) -> void:
 		hand.remove_child(card)
 		board.add_child(card)
 		card.properties["_tipo"] = card_type
 		card.set_state(Card.CardState.ON_PLAY_BOARD)
+		var grid: BoardPlacementGrid = Snapshot.field_grid(board)
+		var slot = null
+		for candidate in grid.get_all_slots():
+			if candidate.occupying_card == null:
+				slot = candidate
+				break
+		assert_true(is_instance_valid(slot), "A mesa tem um slot livre")
+		card.global_position = slot.rect_global_position
+		slot.occupying_card = card
+		card._placement_slot = slot
 
 
 	func test_character_capacity_advances_and_reverses_with_limits() -> void:

@@ -346,7 +346,13 @@ func _on_Deck_input_event(event) -> void:
 	if event.position.y <= control.rect_size.y * MILL_ZONE_RATIO:
 		_mill_top_card_to_resources()
 		return
-	emit_signal("draw_card", self)
+	# The click is the same intent the keyboard and the scripts use: the draw
+	# enters the hand at the front and the log records it.
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		emit_signal("draw_card", self)
+		return
+	board.report_intent(board.apply_intent({"op": "comprar", "quantity": 1}))
 
 
 # The divider marks where the box stops drawing and starts milling. It lives
@@ -381,7 +387,10 @@ func _place_mill_divider(control: Control) -> void:
 func _mill_top_card_to_resources() -> void:
 	if _deck_action_in_progress or get_card_count() == 0:
 		return
-	var card: Card = get_top_card()
-	if not card:
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		var card: Card = get_top_card()
+		if card:
+			card.move_to(cfc.NMAP.discard)
 		return
-	card.move_to(cfc.NMAP.discard)
+	board.report_intent(board.apply_intent({"op": "mandar_topo_para_recursos"}))

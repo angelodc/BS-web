@@ -690,3 +690,79 @@ func test_scene_slots_mirror_into_the_opponent_band():
 	assert_eq(int(sync._local_entry(card, "board", 1)["slot"]), -1,
 			"A card outside the scene grid advertises no slot")
 
+
+
+# F3 of "ações sem mouse": the field grows by adding columns and every card
+# keeps the row and column its address names.
+func test_column_resize_keeps_cards_on_their_row_and_column():
+	grid.configure_columns(2)
+	var card: Card = cards[0]
+	var slot: BoardPlacementSlot = grid.get_slot(3)
+	slot.occupying_card = card
+	card._placement_slot = slot
+
+	grid.set_columns_keeping_cards(4)
+
+	assert_eq(int(grid.get_node("GridContainer").columns), 4)
+	assert_eq(grid.get_slot_count(), 8)
+	assert_eq(grid.get_slot(5).occupying_card, card,
+			"The card keeps row 2, column 2 in the wider grid")
+	assert_eq(card._placement_slot, grid.get_slot(5))
+	assert_null(slot.occupying_card, "The old slot releases the card")
+
+	grid.set_columns_keeping_cards(1)
+
+	assert_eq(int(grid.get_node("GridContainer").columns), 2,
+			"A shrink never drops the column that holds a card")
+	assert_eq(grid.get_slot(3).occupying_card, card,
+			"The card keeps its row and column")
+
+
+# F3 of "ações sem mouse": the mirror lines a card up by the owner's field
+# address, so a different column count on this client cannot shift it.
+func test_mirror_resolves_the_owner_field_address():
+	var sync = autofree(load("res://src/custom/MultiplayerSync.gd").new())
+	var scene_grid: BoardPlacementGrid = \
+			load("res://src/custom/CGFPlacementGridDemo.tscn").instance()
+	scene_grid.name = "PlacementGridDemo"
+	board.add_child(scene_grid)
+	autofree(scene_grid)
+	yield(yield_for(0.2), YIELD)
+	var columns := int(scene_grid.get_node("GridContainer").columns)
+	assert_eq(columns, 3, "The fixture has three columns")
+
+	var address: String = sync._board_address_for_slot(
+			scene_grid.get_slot(columns))
+	assert_true(address.ends_with(":campo:trás:1"),
+			"A slot names the owner row and column: " + address)
+	assert_eq(sync._slot_index_for_address(address), columns)
+	assert_eq(sync._slot_index_for_address("p1:campo:frente:3"), 2)
+	assert_eq(sync._slot_index_for_address("p1:campo:trás:3"), 5)
+	assert_eq(sync._slot_index_for_address("p1:campo:frente:4"), -1,
+			"A column this grid does not have has no slot")
+	assert_eq(sync._slot_index_for_address("p1:mão:1"), -1,
+			"Only field addresses name a field slot")
+	assert_eq(sync._slot_index_for_address(""), -1)
+
+	var card: Card = cards[0]
+	card._placement_slot = scene_grid.get_slot(columns + 1)
+	var entry: Dictionary = sync._local_entry(card, "board", 1)
+	assert_true(str(entry.get("address", "")).ends_with(":campo:trás:2"),
+			"The public entry carries the address: " + str(entry))
+
+	# The address wins over a slot index that would name another place; the
+	# index is what an older peer sends and still has to work alone.
+	var target: Vector2 = sync._target_for_remote(
+			"board", Vector2(0.5, 0.5), "net-1", 0, "p1:campo:trás:1")
+	assert_eq(target, sync._mirrored_slot_rect(columns).position)
+	var by_index: Vector2 = sync._target_for_remote(
+			"board", Vector2(0.5, 0.5), "net-1", 0, "")
+	assert_eq(by_index, sync._mirrored_slot_rect(0).position)
+
+	var requested: BoardPlacementSlot = sync._requested_board_slot(
+			scene_grid, {"address": "p1:campo:trás:2", "slot": 0}, card)
+	assert_eq(requested, scene_grid.get_slot(columns + 1))
+	var fallback: BoardPlacementSlot = sync._requested_board_slot(
+			scene_grid, {"address": "p1:campo:frente:9", "slot": 1}, card)
+	assert_eq(fallback, scene_grid.get_slot(1),
+			"An address outside the grid falls back to the slot index")

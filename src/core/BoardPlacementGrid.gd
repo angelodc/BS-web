@@ -143,6 +143,41 @@ func configure_columns(columns: int) -> void:
 	_apply_grid_size()
 
 
+# Changes the column count keeping every card on its own (row, column). The
+# state owns the addresses, so resizing the field must not send a card to a
+# different row or column: the slots are vacated, the grid is resized and every
+# card goes back to the slot its address names. A shrink never drops a column
+# that still holds a card.
+func set_columns_keeping_cards(columns: int) -> void:
+	columns = max(1, columns)
+	var old_columns: int = max(1, int($GridContainer.columns))
+	var highest_column := -1
+	for index in range(get_slot_count()):
+		if is_instance_valid(get_slot(index).occupying_card):
+			highest_column = max(highest_column, index % old_columns)
+	columns = max(columns, highest_column + 1)
+	if columns == old_columns and get_slot_count() == columns * 2:
+		_apply_grid_size()
+		return
+	var staying := []
+	for index in range(get_slot_count()):
+		var slot: BoardPlacementSlot = get_slot(index)
+		var card = slot.occupying_card
+		if is_instance_valid(card):
+			staying.append([int(index / old_columns), index % old_columns, card])
+		slot.occupying_card = null
+	configure_columns(columns)
+	var new_columns: int = max(1, int($GridContainer.columns))
+	for entry in staying:
+		var new_index: int = int(entry[0]) * new_columns + int(entry[1])
+		while get_slot_count() <= new_index:
+			add_slot()
+		var slot: BoardPlacementSlot = get_slot(new_index)
+		slot.occupying_card = entry[2]
+		entry[2]._placement_slot = slot
+		entry[2]._target_position = slot.rect_global_position
+
+
 # Returns the slot a card should occupy when placed automatically.
 #
 # Cards fill the front row first (nearest the center line), starting at the

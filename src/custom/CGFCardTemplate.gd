@@ -1,5 +1,7 @@
 extends Card
 
+const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
+
 
 func _ready() -> void:
 	._ready()
@@ -47,6 +49,81 @@ func _restore_after_invalid_board_drop(tags: Array) -> void:
 	var movement = .move_to(original_parent, -1, original_position, tags)
 	if movement is GDScriptFunctionState:
 		yield(movement, "completed")
+
+
+# The drop is one more caller of the same intents the buttons and the scripts
+# use. The destination the mouse chose becomes the intent's address and the
+# board validates it; a refused drop sends the card back to where it came from
+# and shows the reason.
+#
+# Host targeting and deck/popup drags keep the original path: they are choices
+# made during the drag, not table moves.
+func common_pre_drop_scripts(destination : Node) -> bool:
+	if cfc.ut or not is_instance_valid(destination) or not cfc.NMAP.has("board"):
+		return false
+	var table = cfc.NMAP.board
+	if not table.has_method("apply_intent"):
+		return false
+	if is_instance_valid(potential_host):
+		return false
+	var parent = get_parent()
+	if not is_instance_valid(parent) or "CardPopUpSlot" in str(parent.name):
+		return false
+	# Cards leave the deck through draw and mill, not by dragging; that path
+	# keeps working exactly as before.
+	if parent == cfc.NMAP.get("deck", null):
+		return false
+	var seat := int(table.table_actions().get_seat())
+	var prefix := "p" + str(seat)
+	var intent := {}
+	if destination == table:
+		var slot = get_potential_placement_slot()
+		# Only the local field and the shared scenario have addresses; a drop on
+		# the mirrored side or on any other slot keeps the original path.
+		if not _is_local_slot(slot):
+			return false
+		var address: String = _Snapshot.slot_address(slot, seat)
+		if address.empty():
+			return false
+		# A scenario only enters its own slot; anywhere else the original path
+		# sends it back, as it always did.
+		if is_battle_scenes_scenario() \
+				and address != _Snapshot.SCENARIO_ADDRESS:
+			return false
+		intent = {"op": "mover" if parent == table else "jogar",
+				"card": self, "to": address}
+	elif destination == cfc.NMAP.get("hand", null):
+		if parent == destination:
+			return false
+		var hand_slot: int = destination.get_all_cards().size() + 1
+		intent = {"op": "mover", "card": self,
+				"to": prefix + ":mão:" + str(hand_slot)}
+	elif destination == cfc.NMAP.get("discard", null):
+		intent = {"op": "descartar", "card": self}
+	elif destination == cfc.NMAP.get("prizes", null):
+		intent = {"op": "mover", "card": self, "to": prefix + ":prêmios:1"}
+	else:
+		return false
+	var result: Dictionary = table.apply_intent(intent)
+	if bool(result.get("ok", false)):
+		return true
+	table.report_intent(result)
+	_restore_after_invalid_board_drop(["Intent"])
+	return true
+
+
+# True when the slot belongs to the local field grid or to the shared scenario
+# grid, which are the only ones with an address for this seat.
+func _is_local_slot(slot) -> bool:
+	if not is_instance_valid(slot):
+		return false
+	var grid = cfc.NMAP.board
+	if not is_instance_valid(grid):
+		return false
+	for each in [_Snapshot.field_grid(grid), _Snapshot.scenario_grid(grid)]:
+		if is_instance_valid(each) and each.get_all_slots().has(slot):
+			return true
+	return false
 
 
 func is_battle_scenes_energy() -> bool:

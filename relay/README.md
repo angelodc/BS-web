@@ -15,23 +15,27 @@ no anfitrião (cliente Godot); ele não valida jogadas.
   handshake de protocolo, `/healthz`, `/rooms`, limite de frame/conexões/salas
   por IP, rate limit, heartbeat, allowlist de Origin, expiração de 120 s e logs
   estruturados. A suíte tem 21 testes com clientes `ws` reais.
-- Publicado no S20 FE (Termux + quick tunnel Cloudflare) desde 30/10/2026, com
-  `wss://` e `/healthz` acessíveis de fora. É rota de teste: hostname
-  efêmero, sem SLA. O `fly.toml` continua um modelo com `app`/`primary_region`
-  de exemplo, para quando houver provedor fixo.
+- Publicado em produção desde 01/11/2026 na VM Always Free da Oracle Cloud
+  (Frankfurt, Ubuntu 24.04, `VM.Standard.E2.1.Micro`), com IP público
+  **reservado** `129.159.222.25` e hostname `129-159-222-25.sslip.io`. Caddy
+  termina o TLS com certificado Let's Encrypt e faz proxy para o Node em
+  `127.0.0.1:9080`, sob o serviço systemd `bs-relay`. O S20 FE/Termux e o quick
+  tunnel continuam descritos abaixo como fallback, mas estão **desligados desde
+  01/11/2026**. O `fly.toml` continua um modelo com `app`/`primary_region` de
+  exemplo para outro provedor.
 - O cliente Godot já envia `join_room` (menu “Entrar com código”), lê
   `?room=CODIGO` no build web e usa `wss://` por padrão. O desktop continua
   podendo usar o relay LAN embutido e o `tools/ws_relay.py`.
 - O site está em produção em https://battle-scenes.netlify.app (deploy manual da
-  CLI, sem Git CD). O endereço público do relay é **auto-registrado**: o celular
-  publica o hostname do túnel em `POST /api/relay`, a Function grava em um Netlify
-  Blob e o `/api/salas` devolve esse endereço, que o lobby anexa como `?relay=`
-  no link do jogo. O `RELAY_URL` configurado no Netlify ficou só como reserva.
-- Pendente: hospedar o relay em um endereço permanente (domínio na conta
-  Cloudflare com túnel nomeado, ou Workers + Durable Objects — ver a Fase 4 do
-  TODO), tirar o placeholder `wss://relay.exemplo.com` de
+  CLI, sem Git CD). O endereço do relay é **fixo**: o `RELAY_URL` do Netlify
+  aponta para `https://129-159-222-25.sslip.io`, o `/api/salas` devolve esse
+  endereço e o lobby anexa `?relay=` no link do jogo. O Blob `relay/address` e o
+  `register-relay.mjs` continuam existindo como rota de emergência para um túnel
+  temporário; o Blob está vazio e, se tiver valor, **vence o `RELAY_URL`**.
+- Pendente: validar dois navegadores em redes diferentes pelo endereço novo e
+  tirar o placeholder `wss://relay.exemplo.com` de
   [Rede.gd](../src/custom/Rede.gd) — ele só aparece quando a página é aberta sem
-  `?relay=` — e validar dois navegadores em redes diferentes.
+  `?relay=`.
 - Uma instância basta para a v1. Escalar horizontalmente exigiria estado
   compartilhado (Redis) e não está no escopo.
 
@@ -176,7 +180,94 @@ acomodar envelopes de checkpoint.
 
 ## Deploy
 
-### Fly.io
+### Oracle Cloud (produção desde 01/11/2026)
+
+O relay roda em uma VM Always Free `VM.Standard.E2.1.Micro` em Frankfurt
+(AD-1), Ubuntu 24.04, com **IP público reservado** `129.159.222.25` e hostname
+`129-159-222-25.sslip.io`. O IP reservado sobrevive a stop/start e pode ser
+reanexado a outra instância (por exemplo, uma A1 futura), mantendo o hostname.
+
+O processo fica em `/opt/bs-relay` (cópia de `relay/` sem `node_modules`):
+
+```bash
+cd /opt/bs-relay
+npm ci --omit=dev
+```
+
+`/opt/bs-relay/.env`:
+
+```ini
+PORT=9080
+HOST=127.0.0.1
+ALLOWED_ORIGINS=https://battle-scenes.netlify.app
+TRUST_PROXY=1
+LOG_LEVEL=info
+```
+
+`HOST=127.0.0.1` é proposital: só o Caddy, na mesma máquina, alcança o relay.
+Quem for expor o Node diretamente precisa trocar para `0.0.0.0` e abrir a porta
+no firewall.
+
+`/etc/systemd/system/bs-relay.service`:
+
+```ini
+[Unit]
+Description=Battle Scenes relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/bs-relay
+EnvironmentFile=/opt/bs-relay/.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now bs-relay
+```
+
+`/etc/caddy/Caddyfile`:
+
+```caddyfile
+129-159-222-25.sslip.io {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:9080
+}
+```
+
+```bash
+sudo systemctl reload caddy
+```
+
+O Caddy emite o certificado Let's Encrypt por TLS-ALPN, renova sozinho e
+redireciona HTTP para HTTPS com 308.
+
+Na rede da Oracle, libere TCP 22, 80 e 443 na Security List da VCN **e** no
+`iptables` da imagem Ubuntu (a imagem já termina com `REJECT`); persista com
+`netfilter-persistent save`. O restante pode ficar fechado.
+
+Conferência:
+
+```bash
+curl -sS https://129-159-222-25.sslip.io/healthz
+curl -sS https://129-159-222-25.sslip.io/rooms
+systemctl is-active bs-relay caddy
+```
+
+### Fly.io (alternativa)
 
 ```bash
 cd relay
@@ -193,15 +284,23 @@ valores atuais, `bs-web-relay` e `gru`, são apenas um exemplo).
 
 O lobby do Netlify precisa da URL **HTTP(S)** do relay em `RELAY_URL`
 (`https://relay.exemplo.com`), porque a Function chama `GET /rooms`; o cliente
-do jogo usa a mesma máquina com `wss://`. Com um provedor de hostname fixo o
-registrador do celular deixa de ser necessário: basta `RELAY_URL` apontar para o
-endereço permanente (ele é a reserva quando não há registro no Blob).
+do jogo usa a mesma máquina com `wss://`. É o mesmo arranjo da VM da Oracle — a
+diferença é de onde vem o hostname fixo. Com um endereço permanente o
+registrador do celular não é necessário: o `RELAY_URL` aponta para ele e só
+perde para um registro no Blob, se houver.
 
-### Celular (Termux + cloudflared) — rota em uso hoje
+### Celular (Termux + cloudflared) — fallback desligado
 
-O relay roda em um Samsung S20 FE (aarch64, sem root) servindo como servidor
-sempre ligado. Não há mudança de código: `src/server.js` roda no Node nativo do
-Termux (v24) e o TLS público vem de um túnel Cloudflare.
+O relay rodou em um Samsung S20 FE (aarch64, sem root) entre 30/10 e 01/11/2026.
+As sessões `bs-relay`, `cf-relay` e `bs-register` e o wake lock foram encerrados
+quando o relay passou para a VM da Oracle; os arquivos e a sessão do WhatsApp
+continuam intactos para emergência. Não há mudança de código: `src/server.js`
+roda no Node nativo do Termux (v24) e o TLS público vem de um túnel Cloudflare.
+
+Se o celular voltar a ser usado, o registrador grava o hostname do túnel no Blob
+e esse valor **passa a vencer o `RELAY_URL`**. Para voltar à VM depois, apague a
+chave: `netlify blobs:delete relay address` (ou `npx netlify-cli blobs:delete
+relay address`).
 
 Decisões que só valem nesse ambiente:
 
@@ -253,10 +352,11 @@ curl -sS http://127.0.0.1:9080/healthz
 curl -sS https://battle-scenes.netlify.app/api/relay
 ```
 
-### Auto-registro do endereço público
+### Auto-registro do endereço público (rota de emergência)
 
-O quick tunnel troca de hostname a cada reinício, então o endereço não é
-configurado à mão em lugar nenhum: `register-relay.mjs` faz o caminho inteiro.
+Com o IP reservado, este caminho **não roda em produção**. Ele continua útil
+quando se sobe um quick tunnel temporário: o hostname muda a cada reinício e o
+`register-relay.mjs` publica o novo sem edição manual.
 
 1. Lê o último host `*.trycloudflare.com` do `cf-relay.log` (o túnel imprime a URL
    ao registrar).
@@ -302,10 +402,11 @@ túnel** — o registrador cobre isso em até um minuto, mas nada mais funciona 
 sessão `bs-register` morrer; o quick tunnel não tem SLA e o Android pode matar o
 processo em Doze (`termux-wake-lock` atenua, não resolve). Um hostname fixo exige
 um domínio na conta Cloudflare e `cloudflared tunnel --config` com túnel nomeado.
-Reiniciar o celular hoje só recupera os serviços se o APK **Termux:Boot** estiver
+Reiniciar o celular só recupera os serviços se o APK **Termux:Boot** estiver
 instalado na mesma fonte do Termux (o hook já está escrito em `~/.termux/boot/`).
-Para produção estável, a rota continua sendo Fly.io/Docker acima ou a migração
-para Workers + Durable Objects (v3 no TODO).
+Para produção, a rota é a **VM Oracle acima**; Fly.io/Docker continuam como
+alternativas. Workers + Durable Objects deixaram de ser necessários só para
+obter endereço fixo.
 
 ### Docker
 

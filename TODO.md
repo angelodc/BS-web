@@ -79,7 +79,7 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 ### 🌐 Fase 3: Multiplayer Simples (Espelhamento via WebSockets)
 *   [x] **Username e busca de partida na LAN:** O menu solicita username e endereço do relay, e o botão **Procurar Partida** coloca o jogador em uma fila de duas pessoas. O relay separa partidas, atribui identidades e cancela a busca pelo mesmo botão.
 *   [x] **Relay WebSocket (`Rede.gd`, `LocalRelay.gd` e `tools/ws_relay.py`):** Godot 3 usa mensagens JSON em WebSocket. Na mesma máquina ou na LAN não é preciso iniciar nada: o relay embutido sobe no primeiro cliente que criar/procurar sala (escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião). `python tools/ws_relay.py` continua disponível como relay externo. O relay só encaminha mensagens entre os dois membros de cada partida e não deve ser exposto à internet.
-*   [x] **Relay online em Node.js (`relay/`):** Relay dedicado para o modo online, com o mesmo protocolo JSON, `join_room` por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`; 21 testes com clientes `ws` reais passam. Publicado no S20 FE atrás do túnel Cloudflare em 30/10/2026; a rotação do hostname do túnel é coberta pelo auto-registro (Fase 4). Plano em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
+*   [x] **Relay online em Node.js (`relay/`):** Relay dedicado para o modo online, com o mesmo protocolo JSON, `join_room` por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`; 21 testes com clientes `ws` reais passam. Entrou em produção em 30/10/2026 no S20 FE atrás de um túnel Cloudflare e desde 01/11/2026 roda numa VM Always Free da Oracle em Frankfurt, com IP público reservado `129.159.222.25` e TLS do Caddy em `129-159-222-25.sslip.io`. Plano em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md) e [relay/README.md](./relay/README.md).
 *   [x] **Sincronizar ações (espelhamento):**
     *   [x] Arrastar: a posição na Cena replica no campo visual do oponente.
     *   [x] Rotação: capacitação/incapacitação replica no oponente.
@@ -109,9 +109,9 @@ O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
 *   [x] **Exportar para HTML5:** O preset HTML5 já existe em `export_presets.cfg` com saída em `online/site/game/index.html`; o build local foi gerado com os templates do Godot 3.4.4 e validado com dois navegadores até o início da partida e com importação de deck por link. A integração do cliente web já está feita: `LocalRelay` bloqueado no navegador, endereço padrão `wss://`, `join_room` por código, entrada “Entrar com código” no menu e leitura de `?room=CODIGO`/`?relay=HOST`. **Publicado em 2026-10-30** (deploy `6ae4f75944d360a9d0f5f8f3`, `index.pck` com 7,8 MB).
 *   [ ] **Apagar do código o Deck Builder, a Card Library e os “Decks salvos”:** As quatro entradas já saíram do menu principal (no multiplayer o deck continua sendo escolhido no painel de preparação do `MatchHUD`), mas o código segue no projeto e o preset HTML5 usa `export_filter="all_resources"`, então tudo continua empacotado. Confirmado no `index.pck` atual (10,7 MB): remover `src/core/CardViewer/DeckBuilder/` (70 KB), `src/core/CardViewer/CardLibrary/` (14 KB), `src/custom/CGFDeckbuilder/` (22 KB) e os 4 screenshots do README que ficam na raiz (`deckbuilder-ff-grid.png`, `deckbuilder-preview.png`, `card-library-grid.png`, `card-library-list.png`) economiza ~1,4 MB (~13%) — quase todo o ganho vem das texturas importadas dos screenshots (~1,33 MB), que não são usadas pelo jogo. Sair junto: o botão **DeckBuilder** e o `DeckBuilderPopup` do `CGFBoard.tscn` (já ocultos no multiplayer). **Não remover** `CVGridCardObject`, `CVPreviewPopup` e `CVInfoPanel` do `src/core/CardViewer/`: a `SelectionWindow` do “Procurar” no deck depende deles.
 *   [x] **Excluir testes e tutorial do build HTML5:** o `exclude_filter` do preset HTML5 já cobre `addons/gut`, `tests/`, `tutorial/`, os screenshots do README e as artes de playmat/vibe_images; conferido dentro do `index.pck` publicado (348 arquivos, scripts `.gdc`).
-*   [x] **Hospedagem no Netlify:** site publicado em `https://battle-scenes.netlify.app` (deploy manual da CLI, sem Git CD; Public com previews protegidos). O `/api/salas` devolve o endereço do relay lido do registro automático e o lobby aproveita para anexar `?relay=` sozinho em “Abrir o jogo” e nos links de sala; o `RELAY_URL` do Netlify ficou como reserva. Ver [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
-*   [x] **Hostname fixo do relay (resolvido por auto-registro, 2026-10-30):** o endereço continua vindo de um túnel `trycloudflare`, que troca de hostname quando o `cloudflared` reinicia, mas ninguém precisa mais correr atrás dele: o registrador no celular (`relay/tools/register-relay.mjs`, sessão tmux `bs-register`) lê o hostname novo do `cf-relay.log`, confere o `GET /healthz` local e publica no site via `POST /api/relay` com o cabeçalho `x-relay-secret`. A Function valida https + allowlist de host e grava em um Netlify Blob (`relay/address`, consistência forte); `/api/salas` lê esse registro e o lobby repassa `?relay=` sozinho. O `RELAY_URL` do Netlify ficou só como reserva, para o lobby funcionar antes do primeiro registro. Testado com deriva proposital do endereço. **Fica aberto:** um hostname fixo de verdade (túnel nomeado com domínio próprio, ou Funnel) continua sendo a saída para parar de depender do celular — ver o item v3 abaixo.
-*   [ ] **v3 — Migrar o relay para Cloudflare Workers + Durable Objects:** trocar o relay Node.js hospedado no S20 FE por um Worker com uma Durable Object por sala (estado SQLite, WebSocket Hibernation, hostname fixo `*.workers.dev` e gratuito). Elimina o celular, o túnel e a rotação de hostname de uma vez. Custo: é uma reescrita de um relay Node já testado (21 testes com clientes `ws` reais), então o protocolo JSON precisa ser reimplementado e revalidado. Decisão de 2026-10-30: adiar para a v3; o auto-registro cobre a rotação do hostname até lá.
+*   [x] **Hospedagem no Netlify:** site publicado em `https://battle-scenes.netlify.app` (deploy manual da CLI, sem Git CD; Public com previews protegidos). O `/api/salas` devolve o endereço do relay lido do `RELAY_URL` (`https://129-159-222-25.sslip.io`) e o lobby aproveita para anexar `?relay=` sozinho em “Abrir o jogo” e nos links de sala. O Blob `relay/address` está vazio; um registro nele, se existir, tem precedência sobre o `RELAY_URL`. Ver [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
+*   [x] **Hostname fixo do relay (resolvido, 2026-11-01):** o relay saiu do S20 FE e do túnel `trycloudflare` e roda numa VM Always Free da Oracle com **IP público reservado** `129.159.222.25` — o IP reservado sobrevive a stop/start e a recriar a instância, então o hostname `129-159-222-25.sslip.io` é estável. O `RELAY_URL` do Netlify aponta para ele e ninguém precisa correr atrás de endereço. O registrador no celular (`relay/tools/register-relay.mjs`) e o `POST /api/relay` ficaram como rota de emergência, desligados; o Blob `relay/address` está vazio (se algo for gravado nele, sobrescreve o `RELAY_URL` — apagar com `netlify blobs:delete relay address`). O `POST /api/relay` só aceita hosts `*.trycloudflare.com` (padrão `RELAY_HOST_PATTERN`), então essa rota serviria apenas para um túnel temporário novo.
+*   [ ] **v3 — Migrar o relay para Cloudflare Workers + Durable Objects (opcional):** reescrever o relay Node.js como um Worker com uma Durable Object por sala (estado SQLite, WebSocket Hibernation, `*.workers.dev`). O motivo original era acabar com o celular, o túnel e a rotação de hostname, e isso já foi resolvido pela VM da Oracle com IP reservado; agora é só uma alternativa de operação (não depender de uma VM). Custo: reimplementar e revalidar o protocolo JSON de um relay já testado (21 testes com clientes `ws` reais). Sem prazo; a VM atende até haver motivo concreto para migrar.
 
 *   [ ] **Conferir a arte nova no site publicado:** o fundo do menu principal e o playmat padrão **BS Web** vêm de `assets/brand/bs_web_backdrop.webp` (1024x576, o arquivo original, sem reencode), aprovados no desktop em 2026-10-30 e **já publicados** (deploy `6ae4f75944d360a9d0f5f8f3`). Falta olhar no build web: o contraste do título e dos botões sobre a camada escura de 62% (`ColorRect` em `MainMenu.tscn`), o recorte em janelas estreitas (celular) e o playmat padrão aparecendo para quem nunca escolheu um.
 
@@ -141,9 +141,10 @@ mudanças de cliente no branch e subir uma vez quando existir algo que pague a
 rebaixa** — por exemplo, tirar os 1,4 MB do pacote, que barateia todas as
 publicações seguintes.
 
-O que é do **relay/celular** ou das **Functions do site** não precisa esperar
-upload do jogo: o relay é reiniciado no Termux quando der vontade, e uma
-mudança só de Function pode ser publicada sem reexportar o HTML5.
+O que é do **relay** ou das **Functions do site** não precisa esperar upload do
+jogo: o relay roda sob systemd na VM da Oracle (`sudo systemctl restart bs-relay`
+ou `sudo systemctl reload caddy`) e uma mudança só de Function pode ser
+publicada sem reexportar o HTML5.
 
 **Estado da produção:** o build publicado é o deploy `6ae4f75944d360a9d0f5f8f3`
 (2026-10-30). Tudo marcado *pronto* abaixo está validado no desktop/GUT e
@@ -156,12 +157,12 @@ mudança só de Function pode ser publicada sem reexportar o HTML5.
 | Botão “Back to Main” no multiplayer | cliente | sim | não iniciado |
 | Tirar DeckBuilder/CardLibrary/screenshots do pacote (−1,4 MB) | cliente | sim, **e é o gatilho que paga um upload** | não iniciado |
 | Área de texto durante a partida — caderno do jogador | cliente | sim | não iniciado |
-| Área de texto durante a partida — recado entre os dois | cliente **+ relay no celular** | sim (a parte do jogo) | não iniciado |
+| Área de texto durante a partida — recado entre os dois | cliente **+ relay** | sim (a parte do jogo) | não iniciado |
 | Ações cruzadas de regra entre assentos (Fase 4 do solo) | cliente | sim | não iniciado |
 | Conferir arte/contraste no build web | validação | não (o build já está publicado) | falta olhar no navegador |
-| `TRUST_PROXY=1` no relay em execução | celular | **não** | pendente — precisa reiniciar o relay |
-| Loop de reinício do `cloudflared` | celular | **não** | bloqueado — SSH do celular fora do ar |
-| v3 — relay em Workers + Durable Objects | servidor novo | **não** (só o registro no Blob) | adiado |
+| `TRUST_PROXY=1` no relay em execução | VM Oracle | **não** | feito em 01/11/2026 no `.env` do `/opt/bs-relay` |
+| Relay em IP público reservado + Caddy com TLS | VM Oracle | **não** | feito em 01/11/2026 (`129-159-222-25.sslip.io`) |
+| v3 — relay em Workers + Durable Objects | servidor novo | **não** (só o registro no Blob) | opcional, sem prazo |
 | API `/api/salas`, `/api/relay`, `netlify.toml` | Netlify Functions | sim, sem reexportar o jogo | sem pendência |
 
 Detalhe por confirmar antes de contar com ele: publicar **só as Functions**
@@ -177,5 +178,5 @@ aqui; até validar, considerar que qualquer upload manda o diretório inteiro.
 | **Fase 1: Mecânicas Core (BS)** | 🛠️ Em andamento (falta o contador de energia e o ataque que causa dano) | 95% |
 | **Fase 2: Interface & Imagens Web** | ✅ Implementada (falta validação visual) | 85% |
 | **Fase 3: Multiplayer (WebSockets)**| 🛠️ LAN e relay online publicados; falta a autoridade completa | 80% |
-| **Fase 4: Deploy (Netlify)** | ✅ Site e build publicados; relay com auto-registro. Falta limpar o pacote | 85% |
+| **Fase 4: Deploy (Netlify)** | ✅ Site, build e relay (VM Oracle, IP reservado) publicados. Falta limpar o pacote | 90% |
 | **Fase 5: Layout autoral** | ✅ Etapas 0–5 entregues; falta só a validação visual | 95% |

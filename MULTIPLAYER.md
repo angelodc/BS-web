@@ -72,15 +72,15 @@ Permitir uma partida local entre dois jogadores, em que ambos acompanhem ao vivo
 
 ## Implementação v1
 
-Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida é LAN, para dois jogadores, e o anfitrião é quem cria a sala.
+Implementada na branch `feature/multiplayer-v1` (a partir de `main`). A partida é para dois jogadores, em LAN ou pela internet, e o anfitrião é quem cria a sala.
 
 ### Transporte e salas
 
 - O relay é embutido no jogo ([src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd)) e inicia automaticamente quando o endereço configurado aponta para a própria máquina (por exemplo `127.0.0.1:9080`). Em rede local, a instância do anfitrião escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião. Não é necessário instalar Python para jogar na mesma máquina ou em LAN. Esse relay é um adaptador de desenvolvimento/LAN e não deve ser exposto à internet.
 - O relay [tools/ws_relay.py](./tools/ws_relay.py) continua disponível como alternativa externa. Se já houver um relay escutando na porta local, o jogo reutiliza esse relay em vez de abrir outra porta.
-- Para o modo online existe um relay dedicado em Node.js ([relay/](./relay/README.md)), com `join_room` por código, `protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`. Ele usa o mesmo protocolo JSON e ainda não foi publicado; o plano está em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
+- Para o modo online existe um relay dedicado em Node.js ([relay/](./relay/README.md)), com `join_room` por código, `protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`. Ele usa o mesmo protocolo JSON e está em produção desde 01/11/2026 numa VM Always Free da Oracle, com IP público reservado e TLS em `wss://129-159-222-25.sslip.io`; o plano está em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
 - Ambos aceitam `create_room`, `join_room`, `find_match`, `cancel_match`, `rejoin_room`, `create_resume_room`, `join_resume_room` e `leave_room`, atribuem `H` (anfitrião/P1) a quem cria a sala e `C` (convidado/P2) a quem entra.
-- No build web o relay embutido não sobe (`LocalRelay` retorna cedo com `OS.has_feature("web")`). O cliente usa `wss://relay.exemplo.com` por padrão (placeholder de deploy), aceita `?relay=HOST` para testes e trata `localhost`/`127.0.0.1` como relay local via `ws://`.
+- No build web o relay embutido não sobe (`LocalRelay` retorna cedo com `OS.has_feature("web")`). O lobby publicado sempre abre o jogo com `?relay=129-159-222-25.sslip.io`; o padrão interno ainda é o placeholder `wss://relay.exemplo.com`, que só vale quando `/game/` é aberto direto. O cliente aceita `?relay=HOST` para testes e trata `localhost`/`127.0.0.1` como relay local via `ws://`.
 - Mensagens acima de 12.000 caracteres são divididas em partes `mp_chunk` pelo cliente e remontadas pelo destinatário; o relay externo aceita frames de até 4 MiB.
 - Uma sala com pelo menos um jogador conectado não expira, atendendo à espera sem limite. Quando os dois se desconectam, a sala fica disponível para `rejoin_room` por 120 segundos.
 - O relay não valida jogadas nem mantém estado oficial: ele apenas forma salas e encaminha mensagens.

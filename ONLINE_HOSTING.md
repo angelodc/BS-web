@@ -2,10 +2,11 @@
 
 Este documento planeja como publicar o Battle Scenes no navegador e oferecer
 descoberta de partidas pela internet. Ele registra decisões, limites, uma ordem
-de trabalho e o que já está implementado no repositório. **Desde 30/10/2026 o
-conjunto está no ar**: o jogo e o lobby em https://battle-scenes.netlify.app e o
-relay no S20 FE atrás de um túnel Cloudflare, com o endereço público
-auto-registrado no site (ver “Estado atual do projeto”).
+de trabalho e o que já está implementado no repositório. **O conjunto está no ar
+desde 30/10/2026**: o jogo e o lobby em https://battle-scenes.netlify.app e,
+desde 01/11/2026, o relay em uma VM Always Free da Oracle Cloud em Frankfurt com
+IP público reservado e hostname fixo
+`wss://129-159-222-25.sslip.io` (ver “Estado atual do projeto”).
 
 ## Resposta curta
 
@@ -21,9 +22,10 @@ auto-registrado no site (ver “Estado atual do projeto”).
   VPS etc.) com `wss://`.
 - **Versão mais barata (decidida):** o lobby **não guarda estado de sala**. A
   Function apenas repassa `GET /rooms` do relay. Sem DB, sem limpeza agendada e
-  sem risco de inconsistência. O relay é dono do ciclo de vida das salas. A única
-  exceção é um Blob com **uma chave**: o endereço público do relay
-  (`relay/address`), que o celular reescreve quando o túnel muda de hostname.
+  sem risco de inconsistência. O relay é dono do ciclo de vida das salas. O
+  endereço público vem do `RELAY_URL` (hoje fixo); existe também um Blob com
+  **uma chave** (`relay/address`) como rota de emergência para túnel temporário —
+  hoje vazio e sem uso em produção.
 - **Consequência importante:** com um relay central, os jogadores **não precisam
   trocar IPs**. O lobby mostra um **código de sala**; os dois clientes conectam
   ao mesmo relay público e o relay encaminha as mensagens. Trocar IPs só faz
@@ -37,25 +39,29 @@ Navegador A ── HTTPS ──> Netlify CDN (jogo HTML5 + /salas)
       │                        │
       │ wss://                 └── /api/salas ──> Function ──> GET /rooms
       ▼                                  ▲           (sem estado de sala)
-Relay WebSocket dedicado                 │ o endereço vem do Blob relay/address
-(wss://<host>.trycloudflare.com)         │
-      ▲  /rooms, /healthz          /api/relay (POST com segredo)
-      │ wss://                           ▲
-Navegador B ───────────────────┘   registrador no celular
-                                   (relay/tools/register-relay.mjs)
+Relay WebSocket na VM Oracle             │ o endereço vem do RELAY_URL
+(wss://129-159-222-25.sslip.io)          │ (Blob relay/address só na emergência)
+      ▲  /rooms, /healthz                │
+      │ wss://                           │
+Navegador B ───────────────────┘          │
+                                    /api/relay (POST com segredo,
+                                    usado só com túnel temporário)
 ```
 
 O relay continua sendo a única fonte de verdade das salas. O Netlify é CDN do
 jogo e fachada HTTP do lobby; ele não guarda estado de sala nem duplica o
-estado em tempo real — guarda apenas o endereço público do relay, para o lobby
-não depender de uma variável reeditada à mão toda vez que o túnel reinicia.
+estado em tempo real. Com o endereço fixo, o lobby não depende de variável
+reeditada a cada reinício nem de registro no Blob.
 
 ## Estado atual do projeto
 
 - O cliente Godot usa WebSocket com endereço configurável em
   [src/custom/Rede.gd](./src/custom/Rede.gd); o padrão desktop é
-  `127.0.0.1:9080` e o padrão web é `wss://relay.exemplo.com` (placeholder que
-  deve ser trocado ao publicar; `?relay=HOST` sobrepõe para testes locais).
+  `127.0.0.1:9080` e o padrão web ainda é o placeholder
+  `wss://relay.exemplo.com`. No site publicado o lobby sempre anexa
+  `?relay=129-159-222-25.sslip.io`, então o placeholder só aparece para quem
+  abrir `/game/` sem passar pelo lobby; `?relay=HOST` também serve para testes
+  locais.
 - O relay embutido ([src/custom/LocalRelay.gd](./src/custom/LocalRelay.gd)) só
   sobe para endereços locais e serve para LAN/desenvolvimento. Ele não tem TLS,
   autenticação nem persistência, não deve ser exposto à internet e não é
@@ -75,12 +81,17 @@ não depender de uma variável reeditada à mão toda vez que o túnel reinicia.
   repassa `GET /rooms` com cache de 3 s e devolve `503` quando o relay está
   fora; [online/site/index.html](./online/site/index.html) lista as salas e
   monta links `/game/?room=CODIGO` já com `?relay=` anexado.
-- O endereço público do relay é auto-registrado:
-  [relay/tools/register-relay.mjs](./relay/tools/register-relay.mjs) roda no
-  celular, descobre o hostname do túnel e publica em
-  [online/netlify/functions/relay.mjs](./online/netlify/functions/relay.mjs)
-  (segredo + allowlist de host), que grava no Blob `relay/address`. As duas
-  Functions compartilham
+- O relay de produção roda na VM Always Free da Oracle Cloud (Frankfurt,
+  `VM.Standard.E2.1.Micro`), com IP público **reservado** `129.159.222.25` e
+  hostname `129-159-222-25.sslip.io`. Caddy termina o TLS (Let's Encrypt, com
+  renovação automática) e faz proxy para o Node em `127.0.0.1:9080`, sob o
+  serviço systemd `bs-relay`. O `RELAY_URL` do Netlify aponta para esse
+  endereço; o Blob `relay/address` está vazio e o registrador do celular está
+  desligado desde 01/11/2026.
+- [online/netlify/functions/relay.mjs](./online/netlify/functions/relay.mjs) e
+  [relay/tools/register-relay.mjs](./relay/tools/register-relay.mjs) continuam
+  existindo como rota de emergência para um túnel temporário (segredo +
+  allowlist de host). As duas Functions compartilham
   [online/netlify/lib/relay-url.mjs](./online/netlify/lib/relay-url.mjs).
 - O host é autoritativo para início, dados, fases e estado público; o relay não
   valida jogadas. Essa limitação está descrita em [MULTIPLAYER.md](./MULTIPLAYER.md)
@@ -139,10 +150,11 @@ Consequências práticas:
   dá ~1900 primeiros carregamentos por mês; o `.wasm` vem da CDN e quase não
   muda. Com `must-revalidate` em `.pck`/`.wasm`, visitas repetidas gastam só o
   `304` quando nada mudou.
-- **Blobs/DB são irrelevantes em custo.** O único uso atual é uma chave com o
-  endereço do relay; histórico/ranking (Fase 5) continuaria barato.
-- O relay é a única peça fora do Netlify; o custo dele depende do provedor
-  (Cloudflare Workers tem plano Free com WebSocket via Durable Objects).
+- **Blobs/DB são irrelevantes em custo.** Hoje o Blob está vazio (a chave
+  `relay/address` só apareceria num fallback de túnel); histórico/ranking
+  (Fase 5) continuaria barato.
+- O relay é a única peça fora do Netlify e hoje custa **zero**: roda na camada
+  Always Free da Oracle Cloud (VM micro + IP reservado), sem plano pago.
 
 ## Estrutura de pastas
 
@@ -166,8 +178,8 @@ BS-web/
     ├── src/relay.js           salas, protocolo e limites
     ├── src/server.js          entrada e configuração por ambiente
     ├── test/relay.test.js     testes com clientes ws reais
-    ├── tools/register-relay.mjs   publica o hostname do túnel no site
-    ├── tools/iniciar-tudo.sh      sobe relay + túneis + registrador no celular
+    ├── tools/register-relay.mjs   registro de emergência (não roda em produção)
+    ├── tools/iniciar-tudo.sh      fallback no celular (desligado desde 01/11/2026)
     ├── Dockerfile  fly.toml
     └── README.md
 ```
@@ -182,8 +194,9 @@ Regras:
   `netlify deploy --prod --dir site --functions netlify/functions --no-build`
   a partir de `online/`. Deploy por Git exigiria commitar o build ou criar uma
   Action que rode o export.
-- O relay fica fora do Netlify, em `relay/`, e roda como processo próprio
-  (Docker/Fly). `<relay>/.gdignore` impede o Godot de varrer `node_modules`.
+- O relay fica fora do Netlify, em `relay/`, e roda como processo próprio na VM
+  Oracle (systemd + Caddy; Docker/Fly são alternativas).
+  `<relay>/.gdignore` impede o Godot de varrer `node_modules`.
 
 ## Como testar
 
@@ -220,9 +233,13 @@ Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
 1. **Código de sala curto** (6 caracteres, por exemplo `K7M2QX`) em vez de IP.
    O código é exibido ao criar a sala e pode virar link:
    `https://play.exemplo.com/?room=K7M2QX`.
-2. **Um único endereço público de relay** (`wss://relay.exemplo.com`) embutido
-   no build web. O jogador não digita IP no navegador; no desktop o campo de
-   endereço continua disponível para LAN/relay próprio.
+2. **Um único endereço público de relay** (`wss://129-159-222-25.sslip.io`)
+   embutido no build web. O jogador não digita IP no navegador; no desktop o
+   campo de endereço continua disponível para LAN/relay próprio. O cliente
+   ainda carrega o placeholder `wss://relay.exemplo.com` como padrão em
+   [src/custom/Rede.gd](./src/custom/Rede.gd): no site publicado o lobby sempre
+   passa `?relay=` e o placeholder não é usado, mas abrir `/game/` direto cai
+   nele.
 3. **Lobby público opcional**: uma página no Netlify lista salas abertas (host,
    modo, jogadores, status, criação/expiração). Entrar continua acontecendo no
    jogo, via WebSocket. A página só descobre a sala; não transporta a partida.
@@ -244,7 +261,8 @@ Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
   Fly.io/Render com TLS automático. O relay Node.js já está escrito para um
   processo sempre ligado (Fly/Render/VPS); Cloudflare Workers exigiria adaptar
   a hospedagem, sem mudar o protocolo JSON.
-- Definir domínios: `play.exemplo.com` (Netlify) e `relay.exemplo.com` (relay).
+- Definir domínios: o site ficou em `battle-scenes.netlify.app` (Netlify) e o
+  relay em `129-159-222-25.sslip.io` (VM da Oracle, IP público reservado).
 - Definir o código de sala e o campo `protocol_version` no handshake.
 - Confirmar que o jogo pode ficar público antes de a autoridade do servidor
   existir. Enquanto o host for autoritativo, o modo online é recreativo, não
@@ -254,19 +272,19 @@ Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
 Critério de aceite: domínios e provedor definidos, protocolo versionado e
 decisão registrada neste documento.
 
-**Status (30/10/2026): decidido e em operação.** O provedor inicial é o
-**S20 FE (Termux) com túnel Cloudflare**, não Workers nem Fly. A razão é de
-custo de migração: o relay Node já roda como processo sempre ligado e só
-precisa de `wss://` na frente; Workers/Durable Objects exigiriam reescrever a
-hospedagem, e Supabase/AWS serverless não sustentam WebSocket. O transporte é
-`cloudflared tunnel --protocol http2 --url http://127.0.0.1:9080`
-(`*.trycloudflare.com`, sem conta e sem domínio). Consequências aceitas por
-enquanto: hostname efêmero, sem SLA e risco de Doze — ver a seção
-“Celular (Termux + cloudflared)” em [relay/README.md](./relay/README.md).
-Domínios próprios (`play.` / `relay.`) e túnel nomeado ficam para quando houver
-contas externas. O site de produção está no Netlify (deploy manual da CLI,
-`battle-scenes.netlify.app`); o `ssh -R 8888` só serve para testar o build local
-pelo túnel.
+**Status (01/11/2026): em operação na Oracle Cloud.** A primeira publicação, em
+30/10/2026, foi no **S20 FE (Termux) com quick tunnel Cloudflare**; em
+01/11/2026 o relay passou para uma **VM Always Free da Oracle Cloud** em
+Frankfurt (`VM.Standard.E2.1.Micro`), com IP público **reservado**
+`129.159.222.25` e hostname `129-159-222-25.sslip.io`. A razão continua a mesma:
+o relay Node já roda como processo sempre ligado e só precisa de `wss://` na
+frente; Workers/Durable Objects exigiriam reescrever a hospedagem, e
+Supabase/AWS serverless não sustentam WebSocket. O TLS agora é do Caddy com
+Let's Encrypt, sem túnel. O celular e o quick tunnel ficam como fallback
+desligado — ver “Celular (Termux + cloudflared)” em
+[relay/README.md](./relay/README.md). O site de produção está no Netlify (deploy
+manual da CLI, `battle-scenes.netlify.app`); o `ssh -R 8888` só serve para
+testar o build local.
 
 ### Fase 1 — Build web funcional (1–2 dias)
 
@@ -399,26 +417,27 @@ Deploy sugerido:
   `/healthz` e TLS automático.
 - Uma única instância, região próxima dos jogadores.
 - Segredo/allowlist e limites configuráveis por ambiente.
-- Domínio `relay.exemplo.com` com `wss://` funcionando em navegador.
+- Hostname público (`129-159-222-25.sslip.io`) com `wss://` funcionando em
+  navegador.
 
 Critério de aceite: dois navegadores em redes diferentes criam/entram por
 código, trocam mensagens e reconectam dentro da janela de tolerância; health
 check responde; limites e protocolo inválido são recusados.
 
-**Status:** a Opção A está implementada em [relay/](./relay/README.md), com
+**Status:** a Opção A está implementada em [relay/](./relay/README.md) e
+publicada na **VM Always Free da Oracle Cloud** desde 01/11/2026, com
 `join_room` por código, `hello`/`protocol`, `/healthz`, `/rooms`, limites,
 heartbeat, allowlist de Origin, expiração e 21 testes com clientes `ws` reais.
-O deploy saiu do papel em 30/10/2026, mas no celular: o relay roda no S20 FE
-(Termux, Node v24, tmux `bs-relay`, porta 9080) atrás de um quick tunnel
-Cloudflare, com `wss://` funcionando no navegador e `/healthz` respondendo pelo
-hostname público. Dois navegadores abriram o jogo pelo túnel do site,
-parearam por sala e jogaram sem erro de console.
+O relay roda sob systemd (`bs-relay`) em `127.0.0.1:9080`, com Caddy na frente
+para TLS/HTTPS e IP público reservado `129.159.222.25`
+(`wss://129-159-222-25.sslip.io`). Dois clientes WebSocket reais parearam pelo
+endereço novo, o certificado Let's Encrypt foi emitido e o reboot da VM foi
+testado com o serviço voltando sozinho. O lobby aponta para esse endereço via
+`RELAY_URL`.
 
 Faltam para fechar o critério de aceite: o mesmo teste entre **redes
 diferentes** (4G/fora do Wi-Fi), `rejoin_room` no meio de uma partida dentro da
-janela de 120 s e recusa de terceiro jogador/código inválido pela URL pública. A
-página de lobby já aponta para o relay publicado (via `/api/salas` +
-auto-registro).
+janela de 120 s e recusa de terceiro jogador/código inválido pela URL pública.
 
 ### Fase 3 — Lobby no Netlify (1–3 dias)
 
@@ -435,11 +454,12 @@ auto-registro).
 - A Function está implementada em
   [online/netlify/functions/salas.mjs](./online/netlify/functions/salas.mjs) e
   lê o endereço por
-  [online/netlify/lib/relay-url.mjs](./online/netlify/lib/relay-url.mjs):
-  primeiro o registro no Blob (`POST /api/relay`, escrito pelo celular), com a
-  variável de ambiente `RELAY_URL` (HTTP/HTTPS, sem `wss://`) como reserva.
+  [online/netlify/lib/relay-url.mjs](./online/netlify/lib/relay-url.mjs): o
+  `RELAY_URL` (HTTP/HTTPS, sem `wss://`) é a fonte em produção; um registro no
+  Blob (`POST /api/relay`, só para túnel temporário) tem precedência quando
+  existe.
 
-**Registro do endereço (acrescentado em 30/10/2026).**
+**Registro do endereço (rota de emergência, acrescentada em 30/10/2026).**
 
 - `POST /api/relay` em
   [online/netlify/functions/relay.mjs](./online/netlify/functions/relay.mjs)
@@ -451,10 +471,12 @@ auto-registro).
 - Essa Function é a única porta de escrita do Blob: sem segredo válido e host
   permitido, nada é gravado. O Blob não tem controle de acesso próprio.
 - Quem chama é
-  [relay/tools/register-relay.mjs](./relay/tools/register-relay.mjs), no celular,
-  em sessão tmux própria (`bs-register`, modo `--watch` a cada 60 s): ele só
-  publica quando o hostname do túnel difere do registrado e o `/healthz` local
-  responde.
+  [relay/tools/register-relay.mjs](./relay/tools/register-relay.mjs), quando o
+  fallback do celular é ligado, em sessão tmux própria (`bs-register`, modo
+  `--watch` a cada 60 s): ele só publica quando o hostname do túnel difere do
+  registrado e o `/healthz` local responde. Em produção o registrador está
+  desligado e o Blob vazio; para voltar ao endereço fixo depois de um teste,
+  apague a chave com `netlify blobs:delete relay address`.
 
 **B. Diretório em Netlify Blobs (adiada, só se precisar de histórico).**
 
@@ -534,12 +556,12 @@ o link abre o jogo já com o código preenchido.
 
 **Status:** Function `GET /api/salas`, página `/salas`, `POST/GET /api/relay` e
 `netlify.toml` estão publicados em https://battle-scenes.netlify.app (deploy
-manual da CLI). O endereço do relay vem do registro automático feito pelo
-celular, com `RELAY_URL` como reserva, e o `/api/salas` o devolve para o lobby
-anexar `?relay=` sozinho ao link do jogo; o cliente Godot segue lendo
+manual da CLI). O endereço do relay é fixo no `RELAY_URL`
+(`https://129-159-222-25.sslip.io`), o Blob `relay/address` está vazio e o
+registrador do celular está desligado; o `/api/salas` devolve o endereço para o
+lobby anexar `?relay=` sozinho ao link do jogo, e o cliente Godot segue lendo
 `/game/?room=CODIGO` e preenchendo o código no menu. Validado em produção com
-uma deriva proposital do endereço (lobby fora do ar até o registrador publicar o
-hostname certo, em uma execução) e com sala real listada.
+sala real listada e com o relay respondendo pelo endereço reservado.
 
 ### Fase 4 — Integração no cliente (2–5 dias)
 
@@ -588,10 +610,11 @@ redes diferentes depois de publicar.
 - Não usar Blobs/DB para o lobby em tempo real (ver Fase 3). O único registro
   atual é o endereço do relay: uma chave, escrita por quem tem o segredo.
 - Monitoramento: uptime do relay, health check, logs de Functions, alertas de
-  erro; manter o relay e o jogo com versões/protocolo compatíveis. No celular,
-  conferir também se as sessões tmux `bs-relay`, `cf-relay` e `bs-register`
-  continuam vivas — sem o registrador o site perde o endereço quando o túnel
-  reinicia.
+  erro; manter o relay e o jogo com versões/protocolo compatíveis. Na VM da
+  Oracle, conferir `systemctl is-active bs-relay caddy` e
+  `curl -sS https://129-159-222-25.sslip.io/healthz`; o Caddy renova o
+  certificado sozinho. O endereço é fixo (IP público reservado), então não há
+  mais hostname para perseguir.
 - Custos: os 300 créditos/mês são consumidos principalmente pela banda do build
   (ver “Custos no plano Free”). Blobs/DB e Functions do lobby são residuais.
 - Abuso: rate limit, limite de salas, tamanho de frame, Origin, timeout de
@@ -640,11 +663,14 @@ redes diferentes depois de publicar.
 
 ## Perguntas em aberto
 
-- ~~Provedor e região do relay; quem opera e paga.~~ Decidido em 30/10/2026:
-  S20 FE (Termux + túnel Cloudflare), sem custo; migração para um
-  endereço permanente fica na v3 do TODO.
-- Quando trocar o relay de endereço fixo, o registrador do celular é desligado e
-  só o `RELAY_URL` passa a valer?
+- ~~Provedor e região do relay; quem opera e paga.~~ Resolvido em 01/11/2026:
+  VM Always Free da Oracle em Frankfurt (AD-1), operada pelo próprio projeto,
+  custo zero; o S20 FE e o túnel Cloudflare saíram de produção.
+- ~~Endereço fixo e registrador automático.~~ Resolvido em 01/11/2026: o IP
+  público `129.159.222.25` foi reservado (sobrevive a recriação da instância e
+  pode ser reanexado a outra), o hostname é `129-159-222-25.sslip.io` e o
+  `RELAY_URL` do Netlify aponta para ele. O Blob `relay/address` está vazio;
+  `POST /api/relay` e o registrador do celular ficaram só como emergência.
 - Lobby público desde o início ou somente por código.
 - Contas e ranking entram em qual versão.
 - Quais estatísticas salvar e por quanto tempo (privacidade/LGPD).
@@ -658,12 +684,15 @@ redes diferentes depois de publicar.
 2. PR: export HTML5 para `online/site/game/` + primeira publicação do
    `netlify.toml` + página `/salas` lendo o proxy. (publicado em 30/10/2026)
 3. PR: relay público (Node/`ws`) com `join_room` por código, `/healthz` e
-   `/rooms`, além dos testes de relay. (publicado no S20 FE em 30/10/2026)
+   `/rooms`, além dos testes de relay. (em produção na VM da Oracle desde
+   01/11/2026, atrás do Caddy com TLS)
 4. Link `?room=` e entrada por código no menu do jogo. (implementado; falta
    “Salas públicas” no menu)
 5. Auto-registro do endereço do relay: `POST /api/relay` + Blob +
-   `register-relay.mjs` no celular. (implementado e validado em 30/10/2026)
+   `register-relay.mjs` no celular. (implementado e validado em 30/10/2026;
+   virou emergência depois do endereço fixo)
 6. Validação manual com dois navegadores **em redes diferentes** e atualização do
    [MULTIPLAYER.md](./MULTIPLAYER.md) e do [TODO.md](./TODO.md).
-7. Só depois: endereço permanente para o relay (domínio + túnel nomeado ou
-   Workers/Durable Objects) e Blobs/DB para histórico, se houver demanda.
+7. ~~Endereço permanente para o relay.~~ Resolvido em 01/11/2026 com a VM da
+   Oracle e o IP público reservado; a v3 (Workers/Durable Objects) deixa de ser
+   necessária para isso. Resta, se houver demanda: Blobs/DB para histórico.

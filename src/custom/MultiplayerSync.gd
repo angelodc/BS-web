@@ -7,6 +7,8 @@
 extends Control
 
 const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
+const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
+const _Table = preload("res://src/core/table/TableState.gd")
 const DRAG_SEND_INTERVAL := 0.08
 const COUNTS_SEND_DELAY := 0.12
 # A settled change travels as one complete public snapshot instead of a stream of
@@ -53,6 +55,14 @@ var _remote_drag_offset := Vector2.ZERO
 var _sent_visible := {}
 var _pending_cards := {}
 var _resource_preview: Card = null
+# The pointer as the engine delivers it to the GUI. The board is laid out in the
+# 1280x720 viewport, but CanvasItem's global mouse position answers in window
+# coordinates when the window is stretched: at 1384x805 the mirrored grid sat
+# almost a hundred pixels away from its artwork, so the hover met empty space
+# over the miniatures and previews above them. The localized input event is the
+# same space the GUI hit-tests in, which is what the mirrored rects use.
+var _pointer_pos := Vector2.ZERO
+var _pointer_known := false
 var _hand_placeholders := []
 var _lens: Panel
 var _lens_time := 0.0
@@ -126,6 +136,21 @@ func stop_mirroring() -> void:
 
 func set_suppressed(value: bool) -> void:
 	_suppressed = value
+
+
+func _input(event) -> void:
+	if event is InputEventMouse:
+		_pointer_pos = event.position
+		_pointer_known = true
+
+
+# The pointer in the board's coordinate space. Until the first mouse event the
+# global position is the only answer available, and it is already right when the
+# window has no stretch.
+func _pointer_position() -> Vector2:
+	if _pointer_known:
+		return _pointer_pos
+	return get_global_mouse_position()
 
 
 func _process(delta: float) -> void:
@@ -273,6 +298,9 @@ func _send_card_state(card: Card, zone: String, dragging := false) -> void:
 		# A dragged card has left its slot, so only a settled card names one.
 		if not dragging:
 			payload["slot"] = _slot_index(card._placement_slot)
+			var address := _board_address_for_slot(card._placement_slot)
+			if not address.empty():
+				payload["address"] = address
 	if zone == "scenario":
 		payload["claim"] = int(_scenario_claims.get(net_id, 0))
 	if zone == "resources":
@@ -434,6 +462,7 @@ func _apply_remote_card(data: Dictionary) -> void:
 		return
 	var travel := Vector2(float(data.get("x", 0.5)), float(data.get("y", 0.5)))
 	var slot_index := int(data.get("slot", -1))
+	var address := str(data.get("address", ""))
 	var rotation := int(data.get("rot", 0))
 	var face := int(data.get("face", 1)) == 1
 	var host_id := str(data.get("host", ""))
@@ -444,7 +473,7 @@ func _apply_remote_card(data: Dictionary) -> void:
 	if typeof(previous_meta) == TYPE_DICTIONARY:
 		previous_zone = str(previous_meta.get("zone", ""))
 	_remember_remote_meta(net_id, zone, card_name, travel, rotation, face,
-			host_id, claim, slot_index, pile_index, offset)
+			host_id, claim, slot_index, pile_index, offset, address)
 	_configure_remote_card(card)
 	_set_remote_card_interactive(card, zone)
 	var host: Card = _remote_cards.get(host_id)
@@ -465,7 +494,7 @@ func _apply_remote_card(data: Dictionary) -> void:
 	else:
 		_pending_host_links[net_id] = host_id
 	_attach_pending_hosts()
-	var target := _target_for_remote(zone, travel, net_id, slot_index)
+	var target := _target_for_remote(zone, travel, net_id, slot_index, address)
 	if card.get_parent() != cfc.NMAP.board:
 		if card.get_parent():
 			card.get_parent().remove_child(card)
@@ -651,8 +680,7 @@ func _on_remote_card_gui_input(event, card: Card) -> void:
 	if event.button_index != BUTTON_LEFT or not event.pressed:
 		return
 	_remote_drag_card = card
-	_remote_drag_offset = card.get_global_mouse_position() \
-			- card.global_position
+	_remote_drag_offset = _pointer_position() - card.global_position
 	card.z_index = 100
 
 
@@ -661,8 +689,7 @@ func _update_remote_drag() -> void:
 		_remote_drag_card = null
 		return
 	if Input.is_mouse_button_pressed(BUTTON_LEFT):
-		var target := _remote_drag_card.get_global_mouse_position() \
-				- _remote_drag_offset
+		var target := _pointer_position() - _remote_drag_offset
 		_remote_drag_card.global_position = target
 		_remote_drag_card._target_position = target
 		return
@@ -772,6 +799,7 @@ func _drop_mirror_locally(card: Card, zone: String, slot_index: int) -> bool:
 	card.global_position = mirrored.position
 	card._target_position = mirrored.position
 	meta["slot"] = slot_index
+	meta["address"] = _board_address_for_index(slot_index)
 	var travel := _slot_travel(slot_index)
 	meta["x"] = travel.x
 	meta["y"] = travel.y
@@ -787,7 +815,7 @@ func _restore_mirror_position(card: Card) -> void:
 	var zone := str(meta.get("zone", "board"))
 	var travel := Vector2(float(meta.get("x", 0.5)), float(meta.get("y", 0.5)))
 	var target := _target_for_remote(zone, travel, str(card.network_id),
-			int(meta.get("slot", -1)))
+			int(meta.get("slot", -1)), str(meta.get("address", "")))
 	card.global_position = target
 	card._target_position = target
 
@@ -835,12 +863,20 @@ func _apply_move_request(data: Dictionary) -> void:
 	_send_card_state(card, zone)
 
 
-# The mirror names the slot its drop lined up with. The normalized travel is
-# only the fallback for a drop that missed every slot of the opponent band, or
-# for a request coming from a client whose grid has a different shape.
+# The mirror names the slot its drop lined up with. The field address is read
+# first because it survives a different column count between the two clients;
+# the slot index and the normalized travel are the fallbacks for a drop that
+# missed every slot of the opponent band.
 func _requested_board_slot(grid: BoardPlacementGrid, data: Dictionary,
 		card: Card) -> BoardPlacementSlot:
 	var slots := grid.get_all_slots()
+	var by_address := _slot_index_for_address(str(data.get("address", "")))
+	if by_address >= 0 and by_address < slots.size():
+		var named: BoardPlacementSlot = slots[by_address]
+		if is_instance_valid(named) \
+				and (not named.occupying_card
+						or named.occupying_card == card):
+			return named
 	var wanted := int(data.get("slot", -1))
 	if wanted >= 0 and wanted < slots.size():
 		var requested: BoardPlacementSlot = slots[wanted]
@@ -946,7 +982,8 @@ func _remember_remote_meta(
 		claim := 0,
 		slot := -1,
 		pile := -1,
-		offset := -1) -> void:
+		offset := -1,
+		address := "") -> void:
 	var previous = _remote_meta.get(net_id, {})
 	if typeof(previous) == TYPE_DICTIONARY:
 		var old_zone := str(previous.get("zone", ""))
@@ -964,6 +1001,7 @@ func _remember_remote_meta(
 		"claim": claim,
 		"pile": pile,
 		"offset": offset,
+		"address": address,
 	}
 	if zone in _remote_zone_order \
 			and not net_id in _remote_zone_order[zone]:
@@ -1016,7 +1054,7 @@ func _local_mouse_zone() -> String:
 	var board: Control = cfc.NMAP.board
 	if not board:
 		return ""
-	return _zone_at(board.get_global_mouse_position())
+	return _zone_at(_pointer_position())
 
 
 # The local piles are matched before the hand because the hand band stretches
@@ -1143,6 +1181,7 @@ func build_public_card_entries(my_slot: int, opponent_slot: int,
 				"claim": int(meta.get("claim", 0)),
 				"pile": int(meta.get("pile", -1)),
 				"offset": int(meta.get("offset", -1)),
+				"address": str(meta.get("address", "")),
 			})
 			if include_definitions:
 				_add_definition(definitions, card_name)
@@ -1246,6 +1285,7 @@ func _snapshot_entry_matches(net_id: String, entry: Dictionary) -> bool:
 			and str(meta.get("host", "")) == str(entry.get("host", "")) \
 			and int(meta.get("pile", -1)) == int(entry.get("pile", -1)) \
 			and int(meta.get("offset", -1)) == int(entry.get("offset", -1)) \
+			and str(meta.get("address", "")) == str(entry.get("address", "")) \
 			and float(meta.get("x", 0.5)) == float(entry.get("x", 0.5)) \
 			and float(meta.get("y", 0.5)) == float(entry.get("y", 0.5))
 
@@ -1583,6 +1623,65 @@ func _slot_index(slot) -> int:
 	return grid.get_all_slots().find(slot)
 
 
+# Field address of a local scene slot ("p1:campo:frente:2"), or "" when the
+# slot is not one of the grid slots. The address is what the other side uses
+# to line the mirror up: it names the owner's row and column, so a client whose
+# grid has a different number of columns still draws the card in the same place
+# of the owner's table.
+func _board_address_for_slot(slot) -> String:
+	return _board_address_for_index(_slot_index(slot))
+
+
+func _board_address_for_index(index : int) -> String:
+	var grid := _scene_grid()
+	if not grid or index < 0 or index >= grid.get_slot_count():
+		return ""
+	var columns := int(max(1, int(grid.get_node("GridContainer").columns)))
+	var row := int(index / columns)
+	var row_name := "frente"
+	if row == 1:
+		row_name = "trás"
+	elif row > 1:
+		row_name = "linha" + str(row + 1)
+	# Outside a match there is no seat to name; the addresses are only compared
+	# by row and column on the other side, so seat one keeps them parseable.
+	var seat := int(Multiplayer.my_slot)
+	if seat <= 0:
+		seat = 1
+	return _Table.field_address(seat, row_name, index % columns + 1)
+
+
+# Slot of the local scene grid named by an address, or -1 when the address is
+# missing, belongs to another zone or names a column this grid does not have.
+# The address comes from the owner's state, which is why it survives a change
+# in the column count between the two clients.
+func _slot_index_for_address(address : String) -> int:
+	if address.empty():
+		return -1
+	var parsed := _Table.parse_address(address)
+	if str(parsed.get("kind", "")) != "field":
+		return -1
+	var row := 0
+	match str(parsed.get("row", "frente")):
+		"frente":
+			row = 0
+		"trás":
+			row = 1
+		_:
+			return -1
+	var column := int(parsed.get("column", 0)) - 1
+	var grid := _scene_grid()
+	if not grid or column < 0:
+		return -1
+	var columns := int(max(1, int(grid.get_node("GridContainer").columns)))
+	if column >= columns:
+		return -1
+	var index := row * columns + column
+	if index >= grid.get_slot_count():
+		return -1
+	return index
+
+
 # Both halves of the table are the same play area seen from opposite sides, so
 # an opponent box is this rectangle turned 180 degrees around the middle line
 # and the centre of the board. Every mirrored zone goes through this one
@@ -1625,12 +1724,21 @@ func _mirrored_slot_rect(index: int) -> Rect2:
 
 # A scene card that sits in one of the owner's slots is mirrored into the
 # matching slot of the opponent band, so both fields keep the same geometry.
-# A card that is not resting on a slot still lives in the owner's table space,
-# so its mirror is the same box turned 180 degrees; only a travelling card
-# without any table geometry falls back to the zone stack.
+# The owner's field address comes first because it names the row and column
+# instead of this client's slot numbering: when the two grids have different
+# column counts, the same index is a different place on the table. The index
+# and the normalized travel are the fallbacks for older peers that do not send
+# an address. A card that is not resting on a slot still lives in the owner's
+# table space, so its mirror is the same box turned 180 degrees; only a
+# travelling card without any table geometry falls back to the zone stack.
 func _target_for_remote(zone: String, travel: Vector2, net_id: String,
-		slot_index: int) -> Vector2:
+		slot_index: int, address := "") -> Vector2:
 	if zone == "board":
+		var named_slot := _slot_index_for_address(address)
+		if named_slot >= 0:
+			var named := _mirrored_slot_rect(named_slot)
+			if named.size.x > 0.0:
+				return named.position
 		if slot_index >= 0:
 			var mirrored := _mirrored_slot_rect(slot_index)
 			if mirrored.size.x > 0.0:
@@ -1848,20 +1956,27 @@ func _update_resource_preview() -> void:
 	var hovered: Card = null
 	if not cfc.card_drag_ongoing and not _suppressed \
 			and not _local_pile_popup_open():
-		var area := _resources_area()
-		if area:
-			var mouse: Vector2 = area.get_global_mouse_position()
-			for net_id in _resources_in_pile_order():
-				var card: Card = _remote_cards.get(net_id)
-				if not is_instance_valid(card) or not card.visible:
-					continue
-				# The rect comes from the layout pass, so the hover answers where
-				# the mirror was drawn even before its tween has settled.
-				var cell: Rect2 = _remote_layout_rects.get(
-						str(net_id), _card_screen_rect(card))
-				if cell.has_point(mouse):
-					hovered = card
+		hovered = _resource_hover_at(_pointer_position())
 	_set_resource_preview(hovered)
+
+
+# The resource mirror drawn under the point, or null. Split from the pointer so
+# a test can drive the same check without moving the OS mouse; the guard that
+# keeps the preview off during a drag, a rebuild or the selection popup stays
+# in the caller, which is the only path that answers the pointer.
+func _resource_hover_at(point: Vector2) -> Card:
+	var hovered: Card = null
+	for net_id in _resources_in_pile_order():
+		var card: Card = _remote_cards.get(net_id)
+		if not is_instance_valid(card) or not card.visible:
+			continue
+		# The rect comes from the layout pass, so the hover answers where the
+		# mirror was drawn even before its tween has settled.
+		var cell: Rect2 = _remote_layout_rects.get(
+				str(net_id), _card_screen_rect(card))
+		if cell.has_point(point):
+			hovered = card
+	return hovered
 
 
 # The hover has to follow what is actually drawn, not the nominal grid size: a
@@ -1884,22 +1999,25 @@ func _local_pile_popup_open() -> bool:
 
 
 func _set_resource_preview(card: Card) -> void:
-	if card == _resource_preview:
-		return
-	if is_instance_valid(_resource_preview):
-		_resource_preview.preview_force_front = false
-		_resource_preview.preview_locked = false
-		if cfc.NMAP.has("main") and cfc.NMAP.main:
-			cfc.NMAP.main.unfocus(_resource_preview)
-	_resource_preview = card
-	if not is_instance_valid(card) or cfc.ut \
+	if card != _resource_preview:
+		if is_instance_valid(_resource_preview):
+			_resource_preview.preview_force_front = false
+			_resource_preview.preview_locked = false
+			if cfc.NMAP.has("main") and cfc.NMAP.main:
+				cfc.NMAP.main.unfocus(_resource_preview)
+		_resource_preview = card
+	var previewed := _resource_preview
+	if not is_instance_valid(previewed) or cfc.ut \
 			or not cfc.NMAP.has("main") or not cfc.NMAP.main:
 		return
-	card.preview_force_front = not card.is_faceup
+	# Asked again every frame on purpose: another hover (a hand card, the pile
+	# owner) can take the closeup while the pointer never leaves this miniature.
+	# The focus call is a no-op when this card is still the one being previewed.
+	previewed.preview_force_front = not previewed.is_faceup
 	# Without the lock the mirror's own state machine unfocuses the closeup on
 	# the very next frame, which is why the grid hover used to show nothing.
-	card.preview_locked = true
-	cfc.NMAP.main.focus_card(card)
+	previewed.preview_locked = true
+	cfc.NMAP.main.focus_card(previewed)
 
 
 # The panel width is authored in CGFBoard.tscn, so the grid never falls back to
@@ -2237,6 +2355,9 @@ func _local_entry(card: Card, zone: String, owner: int) -> Dictionary:
 		# the card has settled, exactly like the live drag message.
 		if cfc.card_drag_ongoing != card:
 			entry["slot"] = _slot_index(card._placement_slot)
+			var address := _board_address_for_slot(card._placement_slot)
+			if not address.empty():
+				entry["address"] = address
 	if zone == "scenario":
 		entry["claim"] = int(_scenario_claims.get(net_id, 0))
 	if zone == "resources":
@@ -2261,6 +2382,7 @@ func _entry_as_message(entry: Dictionary) -> Dictionary:
 		"claim": int(entry.get("claim", 0)),
 		"pile": int(entry.get("pile", -1)),
 		"offset": int(entry.get("offset", -1)),
+		"address": str(entry.get("address", "")),
 	}
 
 

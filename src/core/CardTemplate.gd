@@ -551,7 +551,11 @@ func _on_Card_gui_input(event) -> void:
 					if potential_container:
 						destination = potential_container
 						potential_container.highlight.set_highlight(false)
-					move_to(destination)
+					# A project can take the drop over and run it as its own
+					# table action; it returns true when the move is already
+					# handled, applied or refused.
+					if not common_pre_drop_scripts(destination):
+						move_to(destination)
 					_focus_completed = false
 		else:
 			_process_more_card_inputs(event)
@@ -1914,6 +1918,14 @@ func check_play_costs() -> Color:
 # warning-ignore:unused_argument
 func common_pre_move_scripts(new_host: Node, old_host: Node, move_tags: Array) -> Node:
 	return(new_host)
+
+# Called right before a dragged card is moved to where the mouse released it.
+# A project can override it to route the drop through its own table actions;
+# returning true means the drop was handled and `move_to()` must not run.
+# warning-ignore:unused_argument
+func common_pre_drop_scripts(destination: Node) -> bool:
+	return(false)
+
 
 # This function can be overriden by any class extending Card, in order to provide
 # a way of running scripts for a whole class of cards, based on where the card moves.

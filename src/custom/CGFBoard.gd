@@ -2,6 +2,9 @@
 extends Board
 
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
+const TableActionsScript = preload("res://src/core/table/TableActions.gd")
+const TableRendererScript = preload("res://src/core/table/TableRenderer.gd")
+const TableSnapshotScript = preload("res://src/core/table/TableSnapshot.gd")
 
 # The playmat covers the whole play area edge to edge; the TextureRect uses the
 # cover stretch mode, so a window whose ratio differs from the artwork's crops a
@@ -23,6 +26,7 @@ var pending_resource_swap_card: Card
 var pending_resource_count := 0
 var pending_resource_swap_active := false
 var _resource_selection_completed := false
+var _table_actions = null
 
 # The match is won by the first player whose prize area reaches this much
 # printed energy.
@@ -372,6 +376,38 @@ func _build_victory_overlay(slot: int) -> void:
 	close.connect("pressed", overlay, "queue_free")
 
 
+# The shared runner for everything the mouse triggers: the manipulation
+# buttons, the deck, the match HUD and card drops. One instance per board keeps
+# the action log, which is what undo and the script console read.
+func table_actions():
+	if not is_instance_valid(_table_actions):
+		_table_actions = TableActionsScript.new(self)
+	return _table_actions
+
+
+# Runs one validated intent on behalf of the UI. A refused intent changes
+# nothing and returns `ok = false` with a message.
+func apply_intent(intent : Dictionary) -> Dictionary:
+	return table_actions().apply(intent)
+
+
+# Rewrites the scene from the current state, which is what a script uses after
+# changing something outside an intent. It is the same reconcile every intent
+# already runs at the end.
+func render_state() -> void:
+	var actions = table_actions()
+	actions.sync()
+	TableRendererScript.reconcile(self, actions.state, actions.get_seat())
+
+
+# Tells the player why a click did nothing, using the same line the resource
+# payment already uses.
+func report_intent(result : Dictionary) -> void:
+	if bool(result.get("ok", false)):
+		return
+	show_resource_message(str(result.get("message", "")))
+
+
 # Attached cards are the character's energy, so damage takes them away one by
 # one and the owner recovers them in the Resources/Discard pile. Losing the
 # last one knocks the character out.
@@ -408,30 +444,27 @@ func knockout_character(card: Card) -> void:
 
 # Sends a character on the scene to the opponent's prize area. Attached cards
 # return to their owner's Resources/Discard, as the character leaves the field.
+# The whole thing is the intent, so the button, the knockout and a script share
+# the same validation and the same transaction.
 func send_character_to_opponent_prizes(card: Card) -> void:
 	if not is_instance_valid(card) or card.get_parent() != self \
 			or not card.is_battle_scenes_character():
 		return
-	if not Multiplayer.is_session_active():
-		show_resource_message(
-				"Prêmios do adversário só estão disponíveis em partidas multiplayer.")
+	var card_name := card.canonical_name
+	var result := apply_intent({"op": "enviar_aos_prêmios", "card": card})
+	if not result.get("ok", false):
+		show_resource_message(str(result.get("message", "")))
 		return
+	show_resource_message(card_name + " foi para os Prêmios do adversário.")
+
+
+# The network half of the prize send. The intent is what takes the card off the
+# table, so this only builds and queues the payload.
+func send_card_to_opponent_prizes(card: Card) -> bool:
 	var sync = get_node_or_null("MultiplayerSync")
-	if not sync or not sync.has_method("send_card_to_opponent_prizes") \
-			or not sync.send_card_to_opponent_prizes(card):
-		show_resource_message(
-				"Não foi possível enviar a carta para os Prêmios.")
-		return
-	_release_card_attachments_to_discard(card)
-	if card._placement_slot:
-		card._placement_slot.occupying_card = null
-		card._placement_slot = null
-	card.remove_from_group("cards")
-	card.monitoring = false
-	card.monitorable = false
-	card.visible = false
-	card.queue_free()
-	show_resource_message(card.canonical_name + " foi para os Prêmios do adversário.")
+	if not sync or not sync.has_method("send_card_to_opponent_prizes"):
+		return false
+	return bool(sync.send_card_to_opponent_prizes(card))
 
 
 # Removes a support from the scene together with the cards attached under it.
@@ -453,13 +486,7 @@ func _release_card_attachments_to_discard(card: Card) -> void:
 
 
 func get_available_resource_count() -> int:
-	var resource_pile: Pile = cfc.NMAP.discard
-	var available_count := 0
-	for card in resource_pile.get_all_cards():
-		if card.get_parent() == resource_pile \
-				or "CardPopUpSlot" in card.get_parent().name:
-			available_count += 1
-	return available_count
+	return TableSnapshotScript.resource_count(cfc.NMAP.discard)
 
 
 func show_resource_message(message: String) -> void:

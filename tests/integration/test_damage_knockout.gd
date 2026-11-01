@@ -4,6 +4,7 @@ extends "res://tests/UTcommon.gd"
 # opponent prizes, and the first prize area to reach fifteen wins.
 
 const CHAR_NAME := "Char Energia 10"
+const Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 
 
 func after_each():
@@ -73,7 +74,10 @@ func _take_hand_card() -> Card:
 	return null
 
 
-func _place_character() -> Card:
+# The intents validate against the table state, which only knows cards settled
+# on a field slot. A character has to occupy one; an attachment does not, since
+# the host keeps it in its own array.
+func _place_character(settle := true) -> Card:
 	var card := _take_hand_card()
 	if not card:
 		return null
@@ -82,13 +86,25 @@ func _place_character() -> Card:
 	card.set_is_faceup(true, true)
 	card.set_state(Card.CardState.ON_PLAY_BOARD)
 	card.global_position = board.rect_size * 0.5
+	if settle:
+		var grid: BoardPlacementGrid = Snapshot.field_grid(board)
+		var slot = null
+		if grid:
+			for candidate in grid.get_all_slots():
+				if candidate.occupying_card == null:
+					slot = candidate
+					break
+		assert_true(is_instance_valid(slot), "A mesa tem um slot livre")
+		card.global_position = slot.rect_global_position
+		slot.occupying_card = card
+		card._placement_slot = slot
 	return card
 
 
 # Attachments only need to be on the board: from there the host takes them into
 # its own array without asking the placement grid for a slot.
 func _attach_energy(host: Card) -> Card:
-	var energy := _place_character()
+	var energy := _place_character(false)
 	if not energy:
 		return null
 	energy.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND

@@ -36,6 +36,15 @@ var resizing_labels := []
 
 var font_thread: Thread
 
+# Rich text is never drawn smaller than this. A DynamicFont asked for size 0 or
+# less has no glyph in its cache, so the label reports a garbage height and the
+# web build aborts. The fitting loop stops here as well.
+const MIN_RTL_FONT_SIZE := 6
+# A card label measures a few hundred pixels at most. Anything above this is
+# the label answering with uninitialised memory while its font cache is being
+# rebuilt, so the measurement is thrown away instead of being fitted.
+const MAX_RTL_CONTENT_HEIGHT := 10000
+
 
 # Stores a reference to the Card that is hosting this node
 onready var card_owner = get_parent().get_parent().get_parent()
@@ -172,8 +181,11 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 	_capture_rt_font_size_variations(node)
 	var cached_font_size = get_cached_font_size(node,value,scale)
 	if cached_font_size:
-		_set_card_rtl_fonts(node, label_fonts, cached_font_size)
-		_assign_bbcode_text(node, value, cached_font_size)
+		# A cache written before the floor existed can name a size that the
+		# font cannot draw, so it is raised to the minimum here as well.
+		var cached_size: int = max(int(cached_font_size), MIN_RTL_FONT_SIZE)
+		_set_card_rtl_fonts(node, label_fonts, cached_size)
+		_assign_bbcode_text(node, value, cached_size)
 	else:
 		var starting_font_size: int = font_sizes[node.name]
 		var font_adjustment:= 0
@@ -187,6 +199,7 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 		yield(get_tree(), "idle_frame")
 		var _retries := 0
 		var bbcode_height = node.get_content_height()
+		var measuring_gave_up := false
 #		print_debug([bbcode_height, label_size.y])
 		while bbcode_height == 0 or bbcode_height > 1000:
 			_retries += 1
@@ -194,8 +207,15 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 			yield(get_tree(), "idle_frame")
 			bbcode_height = node.get_content_height()
 #			print_debug(["Retry", _retries, "Code Height", bbcode_height])
+			if bbcode_height > MAX_RTL_CONTENT_HEIGHT:
+				measuring_gave_up = true
+				break
 			if _retries >= 10:
 				break
+		if measuring_gave_up:
+			# No measurement is possible while the font cache is rebuilding;
+			# keep the starting size instead of shrinking against a bogus value.
+			bbcode_height = label_size.y
 		# To save some time, we use the same trick we do in normal labels
 		# where we reduce the font size to fits its rect
 		# However unlike normal labels, we might have icons and different font sizes
@@ -203,10 +223,15 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 		# Therefore this gives us the starting point, but further reduction might be
 		# needed.
 		if bbcode_height > label_size.y:
-			font_adjustment = _adjust_font_size(label_fonts["normal_font"], node.text, label_size)
+			font_adjustment = max(
+					_adjust_font_size(label_fonts["normal_font"], node.text, label_size),
+					MIN_RTL_FONT_SIZE - starting_font_size)
 			_set_card_rtl_fonts(node, label_fonts, starting_font_size + font_adjustment)
 			yield(get_tree(), "idle_frame")
 			bbcode_height = node.get_content_height()
+			if bbcode_height > MAX_RTL_CONTENT_HEIGHT:
+				measuring_gave_up = true
+				bbcode_height = label_size.y
 #			print_debug(["Font Adjustment", font_adjustment, "Code Height", bbcode_height])
 	#		print_debug(bbcode_height, ':', font_adjustment, ':', label_size.y)
 		# If the reduction of font sizes when checking against the normal font
@@ -217,8 +242,12 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 		# * Wait for the next frame
 		# * grab the new rich text height
 		# Unitl the rich text height is smaller than the labels' rect size.
+		# The size is never allowed to go under the minimum: without this floor
+		# the loop could skip from 6 straight to 5 and never reach the minimum
+		# check below, shrinking forever against a height it cannot trust.
 		var small_size_retries := 0
-		while bbcode_height > label_size.y:
+		while bbcode_height > label_size.y \
+				and starting_font_size + font_adjustment > MIN_RTL_FONT_SIZE:
 			font_adjustment -= 1
 			_set_card_rtl_fonts(node, label_fonts, starting_font_size + font_adjustment)
 			_assign_bbcode_text(node, value, starting_font_size + font_adjustment)
@@ -231,8 +260,14 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 #				print_debug("BBcode height:" + str(bbcode_height) + " retrying: " + str(_retries))
 				yield(get_tree(), "idle_frame")
 				bbcode_height = node.get_content_height()
+				if bbcode_height > MAX_RTL_CONTENT_HEIGHT:
+					measuring_gave_up = true
+					break
 				if _retries >= 10:
 					break
+			if measuring_gave_up:
+				bbcode_height = label_size.y
+				break
 			# If we don't keep the card front face-up while setting the RTL,
 			# The bbcode_height will be returned as either 0 or 1000 after setting the
 			# bbcode_text. Regardless of how long we wait.
@@ -243,15 +278,18 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 	#			_assign_bbcode_text(node, value, starting_font_size + font_adjustment)
 	#			yield(get_tree(), "idle_frame")
 	#			bbcode_height = node.get_content_height()
-			if starting_font_size + font_adjustment == 6:
+			if starting_font_size + font_adjustment <= MIN_RTL_FONT_SIZE:
 				if small_size_retries <= 2:
-					print_debug("WARN:CGF:{0} rich text label reached minimum size (6).\nRestarting font size calulcations retry: {4}\nstarting_font_size {1}\nbbcode_height: {2} > label_size.y: {3}".format(
-							[card_owner.canonical_name, starting_font_size, bbcode_height, label_size.y, small_size_retries]))
+					print_debug("WARN:CGF:{0} rich text label reached minimum size ({4}).\nRestarting font size calulcations retry: {5}\nstarting_font_size {1}\nbbcode_height: {2} > label_size.y: {3}".format(
+							[card_owner.canonical_name, starting_font_size, bbcode_height, label_size.y, MIN_RTL_FONT_SIZE, small_size_retries]))
 					small_size_retries += 1
-					font_adjustment = _adjust_font_size(label_fonts["normal_font"], node.text, label_size)
+					font_adjustment = max(
+							_adjust_font_size(label_fonts["normal_font"], node.text, label_size),
+							MIN_RTL_FONT_SIZE - starting_font_size)
 				else:
 					break
-		_cache_font_size(node,value,starting_font_size + font_adjustment, scale)
+		_cache_font_size(node,value,
+				max(starting_font_size + font_adjustment, MIN_RTL_FONT_SIZE), scale)
 	modulate.a = 1
 	resizing_labels.erase(node)
 
@@ -289,7 +327,9 @@ func _assign_bbcode_text(rtlabel: RichTextLabel, bbcode_text : String, font_size
 	var format = _get_bbcode_format()
 	rtlabel.clear()
 	var bbcode_format := {}
-	var icon_size = font_size - 2
+	# A non-positive image size makes the rich text report an absurd content
+	# height, so the icon keeps at least one pixel even at the font minimum.
+	var icon_size: int = max(font_size - 2, 1)
 	bbcode_format["icon_size"] = '{icon_size}x{icon_size}'.format({"icon_size":icon_size})
 	for key in format:
 		format[key] = format[key].format(bbcode_format)
@@ -363,7 +403,11 @@ func _capture_rt_font_size_variations(label: RichTextLabel) -> void:
 # adjusted in relation to the normal font.
 func _set_card_rtl_fonts(label: RichTextLabel, fonts_dict: Dictionary, new_size: int) -> void:
 	for font_type in fonts_dict:
-		fonts_dict[font_type].size = new_size + rich_text_font_size_variations[label][font_type]
+		# Each font keeps its difference from the normal font, but never goes
+		# under the minimum: a size of 0 leaves the DynamicFont without a
+		# cache entry and the label without a usable measurement.
+		var font_size: int = new_size + rich_text_font_size_variations[label][font_type]
+		fonts_dict[font_type].size = max(font_size, MIN_RTL_FONT_SIZE)
 		label.add_font_override(font_type, fonts_dict[font_type])
 
 
@@ -378,6 +422,10 @@ func _adjust_font_size(
 		line_spacing := 3) -> int:
 	var adjustment_font := font.duplicate(true)
 	var line_height = font.get_height()
+	# A font without a cache reports no line height; dividing by it would give
+	# an infinite measure and shrink the text to nothing.
+	if line_height <= 0.0:
+		return 0
 	var adjustment := 0
 	# line_spacing should be calculated into rect_size
 	# This calculates the amount of vertical pixels the text would take
@@ -394,6 +442,8 @@ func _adjust_font_size(
 		adjustment -= 1
 		adjustment_font.size = font.size + adjustment
 		line_height = adjustment_font.get_height()
+		if line_height <= 0.0:
+			break
 		label_rect_y = adjustment_font.get_wordwrap_string_size(
 				text,label_size.x).y \
 				/ line_height \

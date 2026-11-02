@@ -17,9 +17,7 @@ var actions
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		await setup.completed
+	await setup_board()
 	# The test board has no scenario slot; adding it the same way the production
 	# scene does keeps the zone counts equivalent.
 	var scenario_grid = SCENARIO_GRID_SCENE.instantiate()
@@ -114,11 +112,11 @@ func test_the_console_text_format_runs_as_typed():
 			+ "{\"op\": \"comprar\"}," \
 			+ "{\"expect\": {\"zones\": {\"hand\": 1}}}]}"
 	var test_json_conv = JSON.new()
-	test_json_conv.parse(text)
-	var parsed := test_json_conv.get_data()
+	var parse_error := test_json_conv.parse(text)
+	var parsed = test_json_conv.get_data()
 
-	assert_eq(parsed.error, OK, str(parsed.error_string))
-	var result := Runner.run(actions, parsed.result, 1)
+	assert_eq(parse_error, OK, test_json_conv.get_error_message())
+	var result := Runner.run(actions, parsed, 1)
 	assert_true(_ok(result), str(result))
 	assert_eq(int(actions.state.hand_count(1)), 1)
 

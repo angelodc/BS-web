@@ -40,3 +40,22 @@
   for = "/game/index.html"
   [headers.values]
     Cache-Control = "no-cache"
+
+# PWA: o manifest precisa do MIME certo para o navegador oferecer a instalação.
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# O service worker é o que torna o site instalável; sempre revalidar para uma
+# publicação nova ser adotada na próxima visita.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/pwa.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

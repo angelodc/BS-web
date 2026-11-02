@@ -27,11 +27,14 @@ const SERVER_PROBE_SECONDS := 20.0
 # Depois de digitar, uma pausa curta antes de sondar: cada tecla remarca a
 # espera, entao a requisicao sai quando o endereco esta completo.
 const SERVER_PROBE_AFTER_TYPING := 2.0
+const PWA_BUTTON_SIZE := Vector2(160, 34)
+const PWA_BUTTON_MARGIN := 16.0
 
 var _lobby_busy := false
 var _entering_game := false
 var _probe_elapsed := SERVER_PROBE_SECONDS
 var _probe_pending := false
+var _pwa_button: Button
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -55,6 +58,7 @@ func _ready() -> void:
 	match_status.text = Rede.get_status()
 	_apply_backdrop()
 	_update_lobby_controls()
+	_setup_pwa_entry()
 	_probe_server()
 	# warning-ignore:return_value_discarded
 	get_viewport().size_changed.connect(_on_Menu_resized)
@@ -376,6 +380,57 @@ func _show_action_error(message: String) -> void:
 	match_status.text = message
 	action_error.dialog_text = message
 	action_error.popup_centered(Vector2(520, 170))
+
+
+# No navegador o jogo pode ser instalado como app (manifest + service worker
+# em online/site). O botao so aparece quando a pagina ofereceu a instalacao ou
+# quando o aparelho e iOS, onde o navegador nao expoe o prompt.
+func _setup_pwa_entry() -> void:
+	if not OS.has_feature("web"):
+		return
+	if not _js_flag("typeof window.bsPwaCanInstall === 'function'"):
+		return
+	if _js_flag("window.bsPwaIsInstalled()"):
+		return
+	_pwa_button = Button.new()
+	_pwa_button.name = "PwaInstall"
+	_pwa_button.text = "Instalar app"
+	_pwa_button.tooltip_text = \
+			"Abrir o BS Web em uma janela propria, sem a barra do navegador."
+	_pwa_button.pressed.connect(_on_pwa_install_pressed)
+	add_child(_pwa_button)
+	_place_pwa_button()
+	get_viewport().size_changed.connect(_place_pwa_button)
+
+
+func _place_pwa_button() -> void:
+	if not is_instance_valid(_pwa_button):
+		return
+	var area: Vector2 = get_viewport().get_visible_rect().size
+	_pwa_button.position = Vector2(
+			area.x - PWA_BUTTON_SIZE.x - PWA_BUTTON_MARGIN, PWA_BUTTON_MARGIN)
+	_pwa_button.size = PWA_BUTTON_SIZE
+
+
+func _on_pwa_install_pressed() -> void:
+	if _js_flag("window.bsPwaCanInstall()"):
+		JavaScriptBridge.eval("window.bsPwaInstall();", true)
+		# O dialogo e do navegador; esconde o botao para nao ficar atras dele.
+		_pwa_button.hide()
+		return
+	if _js_flag("window.bsPwaIsIos()"):
+		_show_action_error("No iPhone/iPad: toque em Compartilhar e depois em "
+				+ "\"Adicionar a Tela de Inicio\".")
+		return
+	_show_action_error("No menu do navegador, escolha Instalar aplicativo "
+			+ "(Chrome/Edge) ou Adicionar a Tela de Inicio.")
+
+
+func _js_flag(expression: String) -> bool:
+	var value = JavaScriptBridge.eval("String(%s)" % expression, true)
+	if value == null:
+		return false
+	return str(value).strip_edges().to_lower() == "true"
 
 
 func _on_lobby_ready() -> void:

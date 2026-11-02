@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14161a">
 <title>Battle Scenes - Salas</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/pwa-180.png">
 <style>
   :root { color-scheme: dark; }
   body {
@@ -57,6 +60,7 @@
   <div class="actions">
     <a class="button primary" id="open-game" href="/game/">Abrir o jogo</a>
     <button type="button" id="refresh">Atualizar</button>
+    <button type="button" id="install" hidden>Instalar app</button>
   </div>
 
   <ul id="rooms"></ul>
@@ -162,5 +166,6 @@
   load();
   setInterval(load, REFRESH_MS);
 </script>
+<script src="/pwa.js" defer></script>
 </body>
 </html>

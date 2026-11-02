@@ -41,6 +41,31 @@ Instale os templates de exportação do Godot 4.7.2 e use
 **Projeto → Exportar → Web**. A saída configurada é
 `online/site/game/index.html`.
 
+### PWA (instalar como app)
+
+O site é instalável como app pelo próprio navegador. Os arquivos ficam na raiz
+do site, fora do build do jogo:
+
+| Arquivo | Papel |
+| --- | --- |
+| `site/manifest.webmanifest` | nome, ícones, `start_url` `/` e modo `standalone` |
+| `site/sw.js` | service worker: cacheia o lobby e deixa `/game/` sempre na rede |
+| `site/pwa.js` | registra o service worker e expõe a ponte `bsPwaCanInstall`/`bsPwaInstall` usada pelo jogo |
+| `site/icons/pwa-192.png`, `pwa-512.png` | ícones do manifest (gerados a partir de `icon.png`, placeholders até a arte própria) |
+
+`start_url` é `/` de propósito: o app instalado abre o lobby, que consulta
+`/api/salas` e anexa `?relay=` no link do jogo. Os arquivos do jogo **não**
+entram no cache do service worker — o `.pck`/`.wasm` continua com
+`must-revalidate`, então uma publicação nova não fica presa atrás do SW.
+Offline, o lobby abre; a partida precisa de rede.
+
+O lobby carrega o manifest e o `pwa.js` direto no HTML. O jogo recebe as mesmas
+tags pelo `html/head_include` do preset Web em
+[../export_presets.cfg](../export_presets.cfg), então reexportar não perde a
+PWA. O menu do jogo mostra o botão **Instalar app** só na versão web
+(`MainMenu.gd`); no iPhone/iPad ele explica o caminho manual (Compartilhar →
+Adicionar à Tela de Início).
+
 ## Testar localmente
 
 1. Suba o relay em outro terminal:
@@ -63,6 +88,12 @@ RELAY_URL=http://127.0.0.1:9080 netlify dev
 
 Jogo em `http://localhost:8888/game/` (depois do export) e lobby em
 `http://localhost:8888/` (funciona sem o export).
+
+Para testar a PWA, `localhost` já conta como contexto seguro: abra
+`http://localhost:8888/`, confira **DevTools → Application → Manifest** e
+**Service Workers** e use **Instalar app** (Chrome/Edge). O prompt de
+instalação só aparece com manifest, service worker controlando a página e
+HTTPS (ou localhost); em produção o Netlify serve os dois.
 
 A Function lê `RELAY_URL` **HTTP(S)** (sem barra final), por exemplo
 `https://129-159-222-25.sslip.io`. Não use `wss://` aqui: o proxy faz

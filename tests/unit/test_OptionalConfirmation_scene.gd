@@ -12,9 +12,7 @@ func after_all():
 	cfc.game_settings.fancy_movement = true
 
 func before_each():
-	var confirm_return = setup_board()
-	if confirm_return is GDScriptFunctionState: # Still working.
-		confirm_return = await confirm_return.completed
+	await setup_board()
 	confirm = CFUtils._OPTIONAL_CONFIRM_SCENE.instantiate()
 
 func test_title_and_buttons():

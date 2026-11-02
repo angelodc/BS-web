@@ -52,11 +52,10 @@ static func get_altered_value(
 # Non-suspending variant of get_altered_value() for synchronous callers
 # like Card.get_property().
 #
-# Returns the same dictionary as get_altered_value() when the value can be
-# computed without waiting (cache hit, or no objects with alterant scripts
-# on the table). Returns an empty dictionary when alterant scripts exist
-# and would need to be executed asynchronously; the caller decides how to
-# proceed in that case.
+# Runs the alterant engines and returns the same dictionary as
+# get_altered_value() when they complete without suspending. Returns an empty
+# dictionary only when an alterant needs to wait (custom scripts, per_
+# queries); the caller decides how to proceed in that case.
 static func get_altered_value_no_wait(
 		_owner,
 		task_name: String,
@@ -67,11 +66,23 @@ static func get_altered_value_no_wait(
 			_owner, task_name, task_properties, value)
 	if cfc.alterant_cache.get(alterant_cache_key):
 		return(cfc.alterant_cache[alterant_cache_key])
-	var alterant_scripts := _find_alterant_scripts(
-			_owner, task_name, task_properties, subject)
-	if not alterant_scripts.is_empty():
-		return({})
-	return(_finalize_altered_value(alterant_cache_key, value, 0, {}))
+	var value_alteration := 0
+	var alterants_details := {}
+	for entry in _find_alterant_scripts(
+			_owner, task_name, task_properties, subject):
+		var alteng = cfc.alterant_engine.new(
+				_owner,
+				entry.obj,
+				entry.state_scripts,
+				entry.task_details,
+				subject)
+		if not alteng.all_alterations_completed:
+			return({})
+		value_alteration += alteng.alteration
+		if alteng.alteration != 0:
+			alterants_details[entry.obj] = alteng.alteration
+	return(_finalize_altered_value(
+			alterant_cache_key, value, value_alteration, alterants_details))
 
 
 # The key for the alterant cache is the hash of the

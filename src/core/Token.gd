@@ -4,6 +4,9 @@ class_name Token
 extends HBoxContainer
 
 
+# `count` reads through get_count(), which applies the alterants, so the getter
+# needs a plain field to read or it would call itself forever.
+var _count := 0
 @export var count := 0: get = get_count, set = set_count
 
 var token_drawer
@@ -44,7 +47,7 @@ func set_count(value := 1) -> void:
 	# We do not allow tokens to be set to negative values
 	if value < 0:
 		value = 0
-	count = value
+	_count = value
 	# Solution taken from
 	# https://github.com/godotengine/godot/issues/30460#issuecomment-509697259
 	if is_inside_tree():
@@ -75,7 +78,7 @@ func get_count_and_alterants() -> Dictionary:
 			token_drawer.owner_card,
 			"get_token",
 			{SP.KEY_TOKEN_NAME: name,},
-			count)
+			_count)
 		if sync_alteration.is_empty():
 			push_warning("Alterant scripts on the table need the async " +
 					"get_altered_value(); get_count() skipped them for " +
@@ -83,7 +86,7 @@ func get_count_and_alterants() -> Dictionary:
 		else:
 			alteration = sync_alteration
 	var return_dict := {
-		"count": count + alteration.value_alteration,
+		"count": _count + alteration.value_alteration,
 		"alteration": alteration
 	}
 	return(return_dict)

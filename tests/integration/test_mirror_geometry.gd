@@ -32,7 +32,7 @@ func _add_scene_grid() -> BoardPlacementGrid:
 	board.add_child(grid)
 	autofree(grid)
 	grid.position = Vector2(156, SPLIT_Y)
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	return grid
 
 
@@ -47,9 +47,7 @@ func _add_sync():
 # The reflection is a 180 degree turn: x and y both invert around the middle
 # line and the board centre, and turning the result again returns the box.
 func test_mirror_rect_turns_a_box_around_the_middle_line():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		setup = await setup.completed
+	await setup_board()
 	_add_opponent_band()
 	var sync = _add_sync()
 
@@ -69,11 +67,9 @@ func test_mirror_rect_turns_a_box_around_the_middle_line():
 # Every slot of the owner's field has a slot on the other side, mirrored across
 # the middle line, which is what makes the two rows face each other.
 func test_scene_slots_are_the_reflection_of_the_local_slots():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		setup = await setup.completed
+	await setup_board()
 	_add_opponent_band()
-	var grid: BoardPlacementGrid = await _add_scene_grid().completed
+	var grid: BoardPlacementGrid = await _add_scene_grid()
 	var sync = _add_sync()
 	assert_true(grid.get_slot_count() > 0, "The scene grid has slots")
 
@@ -94,9 +90,7 @@ func test_scene_slots_are_the_reflection_of_the_local_slots():
 # reflected. The first card of the pile therefore sits on the opposite corner
 # and the columns read in reverse on this side of the table.
 func test_resource_cells_reflect_the_local_grid():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		setup = await setup.completed
+	await setup_board()
 	# The UT discard sits on the right column; the shipped board puts it on the
 	# left, under the deck, which is the box the mirror is authored for.
 	discard.position = Vector2(0, 372.2)
@@ -142,9 +136,7 @@ func test_resource_cells_reflect_the_local_grid():
 # into it would answer the pointer while the player is still over the text, and
 # the preview would pop up before any card is touched.
 func test_resource_cells_stay_below_the_opponent_label():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		setup = await setup.completed
+	await setup_board()
 	discard.position = Vector2(0, 372.2)
 	discard._layout_panel()
 	var visual := _add_opponent_band()

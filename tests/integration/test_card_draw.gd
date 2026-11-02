@@ -1,9 +1,7 @@
 extends "res://tests/UTcommon.gd"
 
 func before_each():
-	var confirm_return = setup_board()
-	if confirm_return is GDScriptFunctionState: # Still working.
-		confirm_return = await confirm_return.completed
+	await setup_board()
 
 
 func test_single_card_draw_use_rectangle():
@@ -13,8 +11,8 @@ func test_single_card_draw_use_rectangle():
 			"Correct amount of cards drawn")
 	assert_true(card0.visible,
 			"Cards drawn is visible")
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card0._tween, "tween_all_completed", 1)
+	await yield_to(card0._tween, "tween_all_completed", 1)
 	assert_almost_eq(449.5,card0.recalculate_position().x,5.0,
 			"Card position x is recalculated correctly")
 	assert_almost_eq(0.0,card0.recalculate_position().y,5.0,
@@ -34,8 +32,8 @@ func test_single_card_draw_use_oval():
 			"Correct amount of cards drawn")
 	assert_true(card0.visible,
 			"Cards drawn is visible")
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card0._tween, "tween_all_completed", 1)
+	await yield_to(card0._tween, "tween_all_completed", 1)
 	assert_almost_eq(449.5,card0.recalculate_position().x,5.0,
 			"Card position x is recalculated correctly")
 	assert_almost_eq(-52.5,card0.recalculate_position().y,5.0,
@@ -51,18 +49,18 @@ func test_single_card_draw_use_oval():
 func test_draw_multiple_cards_slow_use_rectangle():
 	cfc.game_settings.hand_use_oval_shape = false
 	var card0: Card = hand.draw_card()
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card0._tween, "tween_all_completed", 1)
+	await yield_to(card0._tween, "tween_all_completed", 1)
 	var card1: Card = hand.draw_card()
-	await yield_to(card1.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card1.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card1._tween, "tween_all_completed", 1)
+	await yield_to(card1._tween, "tween_all_completed", 1)
 	assert_almost_eq(card0.recalculate_position(),card0.position,Vector2(2,2),
 			"Card at index 0 placed in correct position")
 	assert_almost_eq(card1.recalculate_position(),card1.position,Vector2(2,2),
 			"Card at index 1 placed in correct position")
 	var card2: Card = hand.draw_card()
-	await yield_to(card2.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card2.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card2._tween, "tween_all_completed", 1)
+	await yield_to(card2._tween, "tween_all_completed", 1)
 	assert_almost_eq(391.0,card0.recalculate_position().x,5.0,
 			"Index 0 card position x is recalculated correctly")
 	assert_almost_eq(0.0,card0.recalculate_position().y,5.0,
@@ -87,18 +85,18 @@ func test_draw_multiple_cards_slow_use_rectangle():
 func test_draw_multiple_cards_slow_use_oval():
 	cfc.game_settings.hand_use_oval_shape = true
 	var card0: Card = hand.draw_card()
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card0.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card0._tween, "tween_all_completed", 1)
+	await yield_to(card0._tween, "tween_all_completed", 1)
 	var card1: Card = hand.draw_card()
-	await yield_to(card1.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card1.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card1._tween, "tween_all_completed", 1)
+	await yield_to(card1._tween, "tween_all_completed", 1)
 	assert_almost_eq(card0.recalculate_position(),card0.position,Vector2(2,2),
 			"Card at index 0 placed in correct position")
 	assert_almost_eq(card1.recalculate_position(),card1.position,Vector2(2,2),
 			"Card at index 1 placed in correct position")
 	var card2: Card = hand.draw_card()
-	await yield_to(card2.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card2.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card2._tween, "tween_all_completed", 1)
+	await yield_to(card2._tween, "tween_all_completed", 1)
 	assert_almost_eq(266.46,card0.recalculate_position().x,5.0,
 			"Index 0 card position x is recalculated correctly")
 	assert_almost_eq(-42.1136,card0.recalculate_position().y,5.0,
@@ -122,18 +120,18 @@ func test_draw_multiple_cards_slow_use_oval():
 #
 func test_draw_multiple_cards_fast():
 	var card0: Card = hand.draw_card()
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	var card1: Card = hand.draw_card()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	var card2: Card = hand.draw_card()
-	await yield_for(0.3).YIELD
+	await yield_for(0.3)
 	var card3: Card = hand.draw_card()
-	await yield_for(0.5).YIELD
+	await yield_for(0.5)
 	var card4: Card = hand.draw_card()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	var card5: Card = hand.draw_card()
-	await yield_to(card5.get_node('Tween'), "tween_all_completed", 1).YIELD
-	await yield_to(card5.get_node('Tween'), "tween_all_completed", 1).YIELD
+	await yield_to(card5._tween, "tween_all_completed", 1)
+	await yield_to(card5._tween, "tween_all_completed", 1)
 	assert_almost_eq(card0.recalculate_position(),card0.position,Vector2(2,2),
 			"Card at index 0 placed in correct position")
 	assert_almost_eq(card1.recalculate_position(),card1.position,Vector2(2,2),
@@ -160,8 +158,8 @@ func test_container_custom_card_functions():
 	# warning-ignore:return_value_discarded
 	hand.draw_card()
 	var card5: Card = hand.draw_card()
-	await yield_to(card5._tween, "tween_all_completed", 1).YIELD
-	await yield_to(card5._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card5._tween, "tween_all_completed", 1)
+	await yield_to(card5._tween, "tween_all_completed", 1)
 	assert_eq(len(hand.get_all_cards()), 6,
 			"get_all_cards() returns right amount of cards")
 	assert_eq(hand.get_card_count(), 6,
@@ -174,30 +172,30 @@ func test_container_custom_card_functions():
 
 func test_card_does_not_become_focused_during_movement():
 	var card = hand.draw_card()
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	card._on_Card_mouse_entered()
 	assert_eq(Card.CardState.MOVING_TO_CONTAINER, card.state, "Card state is still MovingToContainer")
 
 
 func test_card_not_draggable_without_focus_first():
 	var card = hand.draw_card()
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
+	await yield_to(card._tween, "tween_all_completed", 1)
 	click_card(card, false)
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	assert_eq(Card.CardState.IN_HAND, card.state,
 			"Card state is still InHand because it wasn't focused first")
 
 
 func test_left_half_click_sends_card_to_resources():
 	var card: Card = hand.draw_card()
-	await yield_to(card.get_node("Tween"), "tween_all_completed", 1).YIELD
-	await yield_to(card.get_node("Tween"), "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
+	await yield_to(card._tween, "tween_all_completed", 1)
 	card.properties["_tipo"] = "Suporte"
 	card.set_state(Card.CardState.FOCUSED_IN_HAND)
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
-	click.button_pressed = false
+	click.pressed = false
 	click.position = Vector2(10, 50)
 
 	card._on_Card_gui_input(click)
@@ -208,13 +206,13 @@ func test_left_half_click_sends_card_to_resources():
 
 func test_right_half_click_discards_ability():
 	var card: Card = hand.draw_card()
-	await yield_to(card.get_node("Tween"), "tween_all_completed", 1).YIELD
-	await yield_to(card.get_node("Tween"), "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
+	await yield_to(card._tween, "tween_all_completed", 1)
 	card.properties["_tipo"] = "Habilidade"
 	card.set_state(Card.CardState.FOCUSED_IN_HAND)
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
-	click.button_pressed = false
+	click.pressed = false
 	click.position = Vector2(140, 50)
 
 	card._on_Card_gui_input(click)
@@ -227,8 +225,8 @@ func test_right_half_click_discards_ability():
 # framework puts inside the hand stays hidden instead of repeating the number.
 func test_hand_counter_is_hidden():
 	var card: Card = hand.draw_card()
-	await yield_to(card.get_node("Tween"), "tween_all_completed", 1).YIELD
-	await yield_to(card.get_node("Tween"), "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
+	await yield_to(card._tween, "tween_all_completed", 1)
 	hand._process(0)
 
 	assert_eq(hand.get_card_count(), 1, "The drawn card reached the hand")
@@ -239,8 +237,8 @@ func test_hand_counter_is_hidden():
 func test_resources_pile_has_a_view_button():
 	assert_true(discard.view_button.visible,
 			"Resources and discard pile can be opened for viewing")
-	assert_true(discard.view_button.is_connected(
-			"pressed", discard, "_on_View_Button_pressed"),
+	assert_true(discard.view_button.pressed.is_connected(
+			discard._on_View_Button_pressed),
 			"Pressing the view button opens the resources pile")
 
 
@@ -290,7 +288,7 @@ func test_search_selection_closes_immediately_after_card_click():
 
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
-	click.button_pressed = true
+	click.pressed = true
 	selection_window.on_selection_gui_input(click, card, card)
 
 	assert_false(selection_window.visible)
@@ -302,9 +300,7 @@ func test_clairvoyance_reveals_top_cards_then_restores_the_deck():
 	var expected_top := deck.get_top_card()
 	var deck_count := deck.get_card_count()
 	var top_cards: Array = deck.get_top_cards(2)
-	var reveal = deck._reveal_top_cards(top_cards)
-	if reveal is GDScriptFunctionState:
-		await reveal.completed
+	await deck._reveal_top_cards(top_cards)
 
 	assert_eq(deck.get_card_count(), deck_count)
 	assert_eq(deck.get_top_card(), expected_top)
@@ -314,11 +310,12 @@ func test_clairvoyance_reveals_top_cards_then_restores_the_deck():
 
 func test_searched_card_is_revealed_then_added_to_hand():
 	var card: Card = deck.get_top_card()
-	var search_move = deck._reveal_searched_card(card)
+	deck._reveal_searched_card(card)
 
+	await wait_until(func(): return card.get_parent() == board, 2)
 	assert_eq(card.get_parent(), board,
 			"The selected card is revealed on the table first")
-	await search_move.completed
+	await wait_until(func(): return card.get_parent() == hand, 6)
 
 	assert_eq(card.get_parent(), hand,
 			"The revealed card then moves into the player's hand")

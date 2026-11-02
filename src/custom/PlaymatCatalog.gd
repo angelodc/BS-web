@@ -171,10 +171,9 @@ static func _cropped_to_ratio(image: Image, ratio: float) -> Image:
 		image.convert(Image.FORMAT_RGBA8)
 	var offset := Vector2(int((size.x - target.x) * 0.5),
 			int((size.y - target.y) * 0.5))
-	var cropped := Image.new()
-	# create() and blit_rect() answer nothing in Godot 3.4, so the crop is
-	# confirmed by the size the new image ended up with.
-	cropped.create(target.x, target.y, false, Image.FORMAT_RGBA8)
+	# Image.create() is static in Godot 4: calling it on a fresh instance leaves
+	# that instance empty, so the crop is built from the returned image instead.
+	var cropped := Image.create(target.x, target.y, false, Image.FORMAT_RGBA8)
 	cropped.blit_rect(image, Rect2(offset, Vector2(target)), Vector2.ZERO)
 	if cropped.is_empty() or cropped.get_size() != target:
 		return image

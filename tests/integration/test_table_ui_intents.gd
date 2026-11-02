@@ -12,9 +12,7 @@ var runner
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		await setup.completed
+	await setup_board()
 	runner = board.table_actions()
 
 
@@ -77,7 +75,7 @@ func test_the_deck_mill_zone_goes_through_the_intent_log():
 func test_clicking_the_deck_draws_through_the_intent_log():
 	var event := InputEventMouseButton.new()
 	event.button_index = MOUSE_BUTTON_LEFT
-	event.button_pressed = true
+	event.pressed = true
 	event.position = Vector2(10, 10000)
 
 	deck._on_Deck_input_event(event)

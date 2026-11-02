@@ -31,8 +31,8 @@ func prep(title_reference: String, min_req: int, max_req : int) -> void:
 		# Adjustments below are to make the highlight fit over the whole window
 		# including its decoration.
 		var highlight_offset = Vector2(8, 27)
-		$HorizontalHighlights.size = size + highlight_offset
-		$VecticalHighlights.size = size + highlight_offset
+		$HorizontalHighlights.size = Vector2(size) + highlight_offset
+		$VecticalHighlights.size = Vector2(size) + highlight_offset
 		$HorizontalHighlights.position = -highlight_offset + Vector2(3.5, 3.5)
 		$VecticalHighlights.position = -highlight_offset + Vector2(3.5, 3.5)
 		_switch_red()

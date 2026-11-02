@@ -12,12 +12,10 @@ var leading_zeroes_regex := RegEx.new()
 @export var prevent_invalid_text: bool
 
 func _ready() -> void:
+	# The text_changed and text_submitted connections are stored in
+	# AskInteger.tscn, so connecting them here would duplicate them.
 	# warning-ignore:return_value_discarded
 	leading_zeroes_regex.compile("^0+([1-9]+)")
-	# warning-ignore:return_value_discarded
-	text_changed.connect(_on_IntegerLineEdit_text_changed)
-	# warning-ignore:return_value_discarded
-	text_submitted.connect(_on_IntegerLineEdit_text_entered)
 
 func _on_IntegerLineEdit_text_entered(new_text: String) -> void:
 	if new_text.is_valid_int() and \

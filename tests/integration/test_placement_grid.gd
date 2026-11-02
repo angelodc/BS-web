@@ -4,65 +4,63 @@ var cards := []
 var grid : BoardPlacementGrid
 
 func before_each():
-	var confirm_return = setup_board()
-	if confirm_return is GDScriptFunctionState: # Still working.
-		confirm_return = await confirm_return.completed
+	await setup_board()
 	board.get_node("BoardPlacementGrid").visible = true
 	cards = draw_test_cards(5)
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	grid = board.get_node("BoardPlacementGrid")
 	grid.position = Vector2(200,200)
 	grid.visible = true
 
 func test_placement_slots():
 	var card = cards[1]
-	await drag_card(card, Vector2(250,300)).completed
+	await drag_card(card, Vector2(250,300))
 	assert_eq(grid.get_highlighted_slot(), grid.get_slot(0),
 			"First slot highlighted")
 	assert_eq(grid.highlight,
 			grid.get_slot(0).get_node("Highlight").modulate,
 			"slot highlight matches the var of the grid container")
-	await move_mouse(Vector2(350,300)).completed
+	await move_mouse(Vector2(350,300))
 	assert_eq(grid.get_highlighted_slot(), grid.get_slot(1),
 			"Second slot highlighted")
 	grid.highlight = CFConst.TARGET_HOVER_COLOUR
-	await move_mouse(Vector2(420,300)).completed
+	await move_mouse(Vector2(420,300))
 	assert_eq(grid.get_highlighted_slot(), grid.get_slot(2),
 			"Third slot highlighted")
 	assert_eq(CFConst.TARGET_HOVER_COLOUR,
 			grid.get_slot(2).get_node("Highlight").modulate,
 			"Third slot highlighted with new colour")
-	await move_mouse(Vector2(560,300)).completed
+	await move_mouse(Vector2(560,300))
 	assert_eq(grid.get_highlighted_slot(), grid.get_slot(3),
 			"Fourth slot highlighted")
-	await move_mouse(Vector2(250,300)).completed
+	await move_mouse(Vector2(250,300))
 	assert_eq(grid.get_highlighted_slot(), grid.get_slot(0),
 			"First slot highlighted again")
 	assert_eq(grid.highlight,
 			grid.get_slot(0).get_node("Highlight").modulate,
 			"First slot highlighted with new colour")
 	drop_card(card,board._UT_mouse_position)
-	await yield_to(card._tween, "tween_all_completed", 0.5).YIELD
+	await yield_to(card._tween, "tween_all_completed", 0.5)
 	assert_almost_eq(grid.get_slot(0).global_position, card.global_position, Vector2(2,2),
 			"Card moved to the slot placement")
 	assert_eq(card._placement_slot, grid.get_slot(0),
 			"card refers to its placement slot")
 	assert_eq(grid.get_slot(0).occupying_card, card,
 			"placement slot refers to the card")
-	await drag_drop(card,Vector2(420,300)).completed
+	await drag_drop(card,Vector2(420,300))
 	assert_eq(card._placement_slot, grid.get_slot(2),
 			"card refers to  newplacement slot")
 	assert_null(grid.get_slot(0).occupying_card,
 			"old placement slot cleared reference")
 	assert_eq(grid.get_slot(2).occupying_card, card,
 			"new placement slot refers to the card")
-	await drag_drop(card,Vector2(1000,300)).completed
+	await drag_drop(card,Vector2(1000,300))
 	assert_null(card._placement_slot,
 			"card placement slot cleared when dropping to the table")
 	assert_null(grid.get_slot(2).occupying_card,
 			"placement slot clears reference to the card")
-	await drag_drop(card,Vector2(420,300)).completed
-	await drag_drop(card,Vector2(500,600)).completed
+	await drag_drop(card,Vector2(420,300))
+	await drag_drop(card,Vector2(500,600))
 	assert_null(card._placement_slot,
 			"card placement slot cleared when dropping to the hand")
 	assert_null(grid.get_slot(2).occupying_card,
@@ -71,15 +69,15 @@ func test_placement_slots():
 func test_any_grid_placement():
 	var card: Card = cards[0]
 	card.board_placement = Card.BoardPlacement.ANY_GRID
-	await drag_drop(card,Vector2(1000,300)).completed
+	await drag_drop(card,Vector2(1000,300))
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to board")
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(card,Vector2(420,300)).completed
+	await move_mouse(Vector2(300,200))
+	await drag_drop(card,Vector2(420,300))
 	assert_eq(card.get_parent(), board,
 		"Card moved to board")
-	await drag_drop(card,Vector2(1000,300)).completed
-	await yield_to(card._tween, "tween_all_completed", 0.5).YIELD
+	await drag_drop(card,Vector2(1000,300))
+	await yield_to(card._tween, "tween_all_completed", 0.5)
 	assert_almost_eq(grid.get_slot(2).global_position, card.global_position, Vector2(2,2),
 			"Card returned back to the slot")
 
@@ -87,17 +85,17 @@ func test_specific_grid_placement():
 	var card: Card = cards[0]
 	card.board_placement = Card.BoardPlacement.SPECIFIC_GRID
 	card.mandatory_grid_name = "GUT Grid"
-	await drag_drop(card,Vector2(1000,300)).completed
+	await drag_drop(card,Vector2(1000,300))
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to board")
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(card,Vector2(500,300)).completed
+	await move_mouse(Vector2(300,200))
+	await drag_drop(card,Vector2(500,300))
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to wrong grid name")
 	card.mandatory_grid_name = grid.name_label.text
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(card,Vector2(500,300)).completed
-	await yield_to(card._tween, "tween_all_completed", 0.5).YIELD
+	await move_mouse(Vector2(300,200))
+	await drag_drop(card,Vector2(500,300))
+	await yield_to(card._tween, "tween_all_completed", 0.5)
 	assert_eq(card.get_parent(), board,
 		"Card moved to correct grid name")
 
@@ -105,15 +103,15 @@ func test_specific_grid_placement():
 func test_occupied_slot():
 	var card: Card = cards[0]
 	card.board_placement = Card.BoardPlacement.ANY_GRID
-	await drag_drop(card,Vector2(500,300)).completed
+	await drag_drop(card,Vector2(500,300))
 	assert_eq(card.get_parent(), board,
 		"Card moved to board")
 	card = cards[3]
 	card.board_placement = Card.BoardPlacement.ANY_GRID
-	await drag_card(card, Vector2(500,300)).completed
+	await drag_card(card, Vector2(500,300))
 	assert_null(grid.get_highlighted_slot(),"No slot highlighted")
 	drop_card(card,board._UT_mouse_position)
-	await yield_to(card._tween, "tween_all_completed", 0.5).YIELD
+	await yield_to(card._tween, "tween_all_completed", 0.5)
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to board when slot is occupied")
 
@@ -125,13 +123,18 @@ func test_scenario_replaces_active_scenario():
 	first_scenario.properties["_tipo"] = "Cenário"
 	replacement_scenario.properties["_tipo"] = "Cenário"
 
-	await drag_drop(first_scenario, Vector2(250,300)).completed
+	await drag_drop(first_scenario, Vector2(250,300))
 	assert_eq(first_scenario.get_parent(), board,
 			"First scenario is placed on the board")
 	assert_eq(grid.get_slot(0).occupying_card, first_scenario,
 			"Active scenario slot references the first scenario")
 
-	await drag_drop(replacement_scenario, Vector2(250,300)).completed
+	await drag_drop(replacement_scenario, Vector2(250,300))
+	# Replacing chains two moves: the previous scenario travels to the discard
+	# pile first and only then the replacement is placed, so the drop tween of
+	# the replacement starts after that first move finishes.
+	await yield_to(replacement_scenario._tween, "tween_all_completed", 1)
+	await yield_to(replacement_scenario._tween, "tween_all_completed", 1)
 	assert_eq(first_scenario.get_parent(), discard,
 			"Previous scenario moves to the discard pile")
 	assert_eq(replacement_scenario.get_parent(), board,
@@ -145,7 +148,7 @@ func test_invalid_scenario_drop_returns_to_hand():
 	var scenario: Card = cards[0]
 	scenario.properties["_tipo"] = "Cenário"
 
-	await drag_drop(scenario, Vector2(900,300)).completed
+	await drag_drop(scenario, Vector2(900,300))
 	assert_eq(scenario.get_parent(), hand,
 			"Scenario stays in hand when dropped outside its active slot")
 	assert_eq(scenario.state, Card.CardState.IN_HAND,
@@ -153,7 +156,7 @@ func test_invalid_scenario_drop_returns_to_hand():
 
 
 func test_move_script_placed_card_out_of_grid():
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	var card: Card = cards[1]
 # warning-ignore:unused_variable
 	var target: Card
@@ -167,12 +170,12 @@ func test_move_script_placed_card_out_of_grid():
 			"subject": "self",
 			"grid_name":  "BoardPlacementGrid"}]}}
 	cards[0].execute_scripts()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	card.execute_scripts()
-	await yield_to(card._tween, "tween_all_completed", 0.5).YIELD
+	await yield_to(card._tween, "tween_all_completed", 0.5)
 	gut.p(card.board_placement)
-	await drag_drop(card,Vector2(1000,0)).completed
-	await move_mouse(Vector2(0,0)).completed
+	await drag_drop(card,Vector2(1000,0))
+	await move_mouse(Vector2(0,0))
 	assert_null(card._placement_slot,
 			"Card should have moved outside grid slot")
 
@@ -182,39 +185,39 @@ func test_grid_auto_placement():
 		c.mandatory_grid_name = grid.name_label.text
 	var card: Card = cards[0]
 	card.mandatory_grid_name = "GUT Grid"
-	await drag_drop(card,Vector2(1000,300)).completed
+	await drag_drop(card,Vector2(1000,300))
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to board")
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(card,Vector2(500,300)).completed
+	await move_mouse(Vector2(300,200))
+	await drag_drop(card,Vector2(500,300))
 	assert_eq(card.get_parent(), hand,
 		"Card not moved to wrong grid name")
 	card.mandatory_grid_name = grid.name_label.text
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(card,Vector2(1000,300)).completed
-	await yield_to(card._tween, "tween_all_completed", 0.5).YIELD
+	await move_mouse(Vector2(300,200))
+	await drag_drop(card,Vector2(1000,300))
+	await yield_to(card._tween, "tween_all_completed", 0.5)
 	assert_eq(card.get_parent(), board,
 		"Card moved to correct grid name")
 	assert_eq(card._placement_slot. get_grid_name(), grid.name_label.text,
 		"Card placed in correct grid")
 	var prev_slot = card._placement_slot
-	await drag_drop(card,Vector2(500,300)).completed
+	await drag_drop(card,Vector2(500,300))
 	assert_ne(card._placement_slot, prev_slot,
 		"Card can be reorganized in the same grid")
-	await drag_drop(cards[1],Vector2(1000,0)).completed
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(cards[2],Vector2(1000,0)).completed
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(cards[3],Vector2(1000,0)).completed
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(cards[4],Vector2(1000,0)).completed
+	await drag_drop(cards[1],Vector2(1000,0))
+	await move_mouse(Vector2(300,200))
+	await drag_drop(cards[2],Vector2(1000,0))
+	await move_mouse(Vector2(300,200))
+	await drag_drop(cards[3],Vector2(1000,0))
+	await move_mouse(Vector2(300,200))
+	await drag_drop(cards[4],Vector2(1000,0))
 	assert_eq(cards[1]._placement_slot. get_grid_name(), grid.name_label.text,
 		"Card placed in correct grid")
 	assert_eq(cards[4].get_parent(), hand,
 		"Last card not moved to board because grid is full")
 	grid.auto_extend = true
-	await move_mouse(Vector2(300,200)).completed
-	await drag_drop(cards[4],Vector2(1000,0)).completed
+	await move_mouse(Vector2(300,200))
+	await drag_drop(cards[4],Vector2(1000,0))
 	assert_eq(cards[4].get_parent(), board,
 		"Last card moved to autoextended grid")
 
@@ -222,7 +225,7 @@ func test_grid_auto_placement():
 func test_scenario_grid_matches_card_size():
 	var scenario_grid = add_child_autoqfree(
 			load("res://src/custom/CGFModifiedLabelGrid.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	# The active scenario uses its own scale so it stays smaller than the
 	# regular board cards.
 	var card_area: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
@@ -234,32 +237,34 @@ func test_scenario_grid_matches_card_size():
 			"Scenario slot matches the scenario card size")
 
 
-func test_scene_grid_is_three_by_two():
+# The scene authors the full field since the 2026-11-02 bake (rota B): seven
+# columns out of the box, no configure_width call needed at runtime.
+func test_scene_grid_is_seven_by_two():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
-	var separation: int = int(scene_grid.get_node("GridContainer").get_constant(
+	await yield_for(0.1)
+	var separation: int = int(scene_grid.get_node("GridContainer").get_theme_constant(
 			"h_separation"))
 	var slot_size: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
-	assert_eq(scene_grid.get_node("GridContainer").columns, 3,
-			"Scene grid has three columns")
-	assert_eq(scene_grid.get_slot_count(), 6,
-			"Scene grid holds six cards for the active player")
+	assert_eq(scene_grid.get_node("GridContainer").columns, 7,
+			"Scene grid authors seven columns")
+	assert_eq(scene_grid.get_slot_count(), 14,
+			"Scene grid holds fourteen slots for the active player")
 	assert_eq(scene_grid.get_slot(0).size, slot_size,
 			"Scene slot matches the size of a card on the board")
 	assert_almost_eq(scene_grid.size, Vector2(
-			3 * slot_size.x + 2 * separation,
+			7 * slot_size.x + 6 * separation,
 			2 * slot_size.y + MousePointer.MOUSE_RADIUS * 2 + 1)
 			+ Vector2(4, 4), Vector2(0.01, 0.01),
-			"Scene grid fits two rows of three sideways-wide slots")
+			"Scene grid fits two rows of seven sideways-wide slots")
 
 
 func test_scene_grid_uses_all_available_width():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(983.0)
-	var separation: int = int(scene_grid.get_node("GridContainer").get_constant(
+	var separation: int = int(scene_grid.get_node("GridContainer").get_theme_constant(
 			"h_separation"))
 	var slot_size: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
 	assert_eq(scene_grid.get_node("GridContainer").columns, 7,
@@ -276,10 +281,10 @@ func test_scene_grid_uses_all_available_width():
 func test_scene_grid_reserves_space_for_sideways_cards():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	var base_separation: int = MousePointer.MOUSE_RADIUS * 2 + 1
 	var slot_size: Vector2 = CFConst.CARD_SIZE * CFConst.PLAY_AREA_SCALE
-	var separation: int = int(scene_grid.get_node("GridContainer").get_constant(
+	var separation: int = int(scene_grid.get_node("GridContainer").get_theme_constant(
 			"h_separation"))
 	assert_eq(separation,
 			int(slot_size.y - slot_size.x + base_separation),
@@ -295,7 +300,7 @@ func test_scene_grid_reserves_space_for_sideways_cards():
 func test_scene_grid_keeps_minimum_columns():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(300.0)
 	assert_eq(scene_grid.get_node("GridContainer").columns, 2,
 			"Grid never goes below two columns")
@@ -306,7 +311,7 @@ func test_scene_grid_keeps_minimum_columns():
 func test_scene_grid_auto_placement_starts_at_center():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(983.0)
 	assert_eq(scene_grid.get_auto_placement_slot(), scene_grid.get_slot(3),
 			"First automatic card goes to the front center")
@@ -328,7 +333,7 @@ func test_scene_grid_auto_placement_starts_at_center():
 func test_support_prefers_back_center_with_characters_in_front():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(983.0)
 	cards[0].properties["_tipo"] = "Personagem"
 	cards[1].properties["_tipo"] = "Suporte"
@@ -343,7 +348,7 @@ func test_support_prefers_back_center_with_characters_in_front():
 func test_scene_grid_highlights_full_central_area():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(983.0)
 	var center := scene_grid.global_position + scene_grid.size * 0.5
 	scene_grid.update_auto_highlight(cards[0], center)
@@ -362,9 +367,9 @@ func test_scene_grid_highlights_full_central_area():
 func test_hand_drag_keeps_the_slot_chosen_by_the_pointer():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(983.0)
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	var slot: BoardPlacementSlot = scene_grid.get_slot(9)
 	var pointer: Vector2 = slot.global_position + slot.size * 0.5
 	scene_grid.update_auto_highlight(cards[0], pointer)
@@ -377,7 +382,7 @@ func test_hand_drag_keeps_the_slot_chosen_by_the_pointer():
 func test_scene_grid_does_not_block_card_input():
 	var scene_grid: BoardPlacementGrid = add_child_autoqfree(
 			load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	scene_grid.configure_width(983.0)
 	assert_eq(scene_grid.mouse_filter, Control.MOUSE_FILTER_IGNORE,
 			"Scene grid lets clicks through to cards")
@@ -397,7 +402,7 @@ func test_scene_grid_does_not_block_card_input():
 func test_hand_left_half_click_sends_card_to_resources():
 	var card: Card = cards[0]
 	card._handle_hand_half_click(true)
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
 	assert_eq(card.get_parent(), discard,
 			"Left half of a hand card sends it to Recursos/Descarte")
 
@@ -411,7 +416,7 @@ func test_hand_right_half_click_plays_character_to_scene():
 	card.properties["_tipo"] = "Personagem"
 	card.properties["ENERGIA"] = "0"
 	card._handle_hand_half_click(false)
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
 	assert_eq(card.get_parent(), board,
 			"Right half of a character card plays it to the scene")
 	assert_eq(card._placement_slot, scene_grid.get_slot(0),
@@ -422,7 +427,7 @@ func test_hand_right_half_click_discards_ability():
 	var card: Card = cards[0]
 	card.properties["_tipo"] = "Habilidade"
 	card._handle_hand_half_click(false)
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
 	assert_eq(card.get_parent(), discard,
 			"Ability cards are discarded by the right half click")
 
@@ -436,7 +441,7 @@ func test_hand_card_shows_type_legend():
 	assert_eq(legend.text, "Personagem", "Legend shows the rule type")
 	assert_true(legend.position.y >= CFConst.CARD_SIZE.y * 0.5,
 			"Legend sits at the foot of the card")
-	assert_true(legend.get_font("font").size <= 10,
+	assert_true(legend.get_theme_font("font").get_height(legend.get_theme_font_size("font_size")) <= 12,
 			"Legend uses a smaller font")
 	card.properties["_tipo"] = "Personagen"
 	card.set_state(Card.CardState.IN_HAND)
@@ -452,10 +457,10 @@ func test_support_knockout_sends_card_to_resources():
 	card.properties["_tipo"] = "Suporte"
 	card.properties["ENERGIA"] = "0"
 	card.move_to(board)
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
 	assert_eq(card.get_parent(), board, "Support starts in the scene")
 	board.knockout_support(card)
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
 	assert_eq(card.get_parent(), discard,
 			"Knocked out support goes to Recursos/Descarte")
 
@@ -465,7 +470,7 @@ func test_prizes_button_requires_multiplayer_session():
 	card.properties["_tipo"] = "Personagem"
 	card.properties["ENERGIA"] = "0"
 	card.move_to(board)
-	await yield_to(card._tween, "tween_all_completed", 1).YIELD
+	await yield_to(card._tween, "tween_all_completed", 1)
 	board.send_character_to_opponent_prizes(card)
 	assert_eq(card.get_parent(), board,
 			"Without a multiplayer session the card stays in the scene")
@@ -519,7 +524,7 @@ func test_missing_energy_is_not_silently_zeroed():
 func test_deck_validation_dialog_confirms_corrected_card():
 	var dialog = add_child_autoqfree(
 			load("res://src/custom/BSDBDeckValidationDialog.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	var type_field: OptionButton = dialog.get_node(
 			"VBox/Content/Fields/TypeField")
 	assert_eq(type_field.get_item_count(), 4,
@@ -641,7 +646,7 @@ func test_scene_slots_mirror_into_the_opponent_band():
 	var scene := Control.new()
 	scene.name = "OpponentScene"
 	visual.add_child(scene)
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	# The grid sits centred horizontally, so it is its own reflection; the
 	# scene is the same box on the other side of the middle line.
 	var grid_width: float = scene_grid.size.x
@@ -649,7 +654,7 @@ func test_scene_slots_mirror_into_the_opponent_band():
 	scene.size = scene_grid.size
 	scene.global_position = scene_grid.global_position \
 			- Vector2(0, scene_grid.size.y)
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 
 	var first: BoardPlacementSlot = scene_grid.get_slot(0)
 	var mirrored: Rect2 = sync._mirrored_slot_rect(0)
@@ -727,9 +732,9 @@ func test_mirror_resolves_the_owner_field_address():
 	scene_grid.name = "PlacementGridDemo"
 	board.add_child(scene_grid)
 	autofree(scene_grid)
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 	var columns := int(scene_grid.get_node("GridContainer").columns)
-	assert_eq(columns, 3, "The fixture has three columns")
+	assert_eq(columns, 7, "The fixture has seven columns")
 
 	var address: String = sync._board_address_for_slot(
 			scene_grid.get_slot(columns))
@@ -737,8 +742,8 @@ func test_mirror_resolves_the_owner_field_address():
 			"A slot names the owner row and column: " + address)
 	assert_eq(sync._slot_index_for_address(address), columns)
 	assert_eq(sync._slot_index_for_address("p1:campo:frente:3"), 2)
-	assert_eq(sync._slot_index_for_address("p1:campo:trás:3"), 5)
-	assert_eq(sync._slot_index_for_address("p1:campo:frente:4"), -1,
+	assert_eq(sync._slot_index_for_address("p1:campo:trás:3"), columns + 2)
+	assert_eq(sync._slot_index_for_address("p1:campo:frente:8"), -1,
 			"A column this grid does not have has no slot")
 	assert_eq(sync._slot_index_for_address("p1:mão:1"), -1,
 			"Only field addresses name a field slot")

@@ -9,17 +9,16 @@ const TEST_PATH := "user://tests/playmat_upload.png"
 
 
 func after_each():
-	var probe := File.new()
-	if not probe.file_exists(TEST_PATH):
+	if not FileAccess.file_exists(TEST_PATH):
 		return
-	var directory := DirAccess.new()
-	if directory.remove(TEST_PATH) != OK:
+	if DirAccess.remove_absolute(TEST_PATH) != OK:
 		gut.p("Could not remove " + TEST_PATH)
 
 
 func _picture(width: int, height: int) -> Image:
-	var image := Image.new()
-	image.create(width, height, false, Image.FORMAT_RGBA8)
+	# Image.create() is static in Godot 4; calling it on an instance leaves that
+	# instance empty, and an empty image is rejected by save_custom().
+	var image := Image.create(width, height, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0.2, 0.4, 0.8))
 	return image
 
@@ -30,7 +29,7 @@ func test_big_upload_is_cropped_and_capped():
 	assert_true(result.get("ok", false), "The upload was saved")
 	var saved := Image.new()
 	assert_eq(saved.load(TEST_PATH), OK, "The saved PNG can be read back")
-	assert_eq(saved.get_size(), Vector2(1920, 1080),
+	assert_eq(saved.get_size(), Vector2i(1920, 1080),
 			"A big picture ends up at the suggested playmat size")
 
 
@@ -38,7 +37,7 @@ func test_small_upload_keeps_its_own_resolution():
 	var result := PlaymatCatalog.save_custom(_picture(800, 600), TEST_PATH)
 
 	assert_true(result.get("ok", false), "The upload was saved")
-	assert_eq(result.get("size", Vector2.ZERO), Vector2(800, 450),
+	assert_eq(result.get("size", Vector2i.ZERO), Vector2i(800, 450),
 			"A small picture is only trimmed to 16:9, never enlarged")
 
 

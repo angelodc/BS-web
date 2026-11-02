@@ -15,9 +15,7 @@ func after_all():
 	cfc.game_settings.fancy_movement = true
 
 func before_each():
-	var confirm_return = setup_board()
-	if confirm_return is GDScriptFunctionState: # Still working.
-		confirm_return = await confirm_return.completed
+	await setup_board()
 	ask_integer = ScriptingEngine._ASK_INTEGER_SCENE.instantiate()
 	hh = ask_integer.get_node("HorizontalHighlights")
 	vh = ask_integer.get_node("VecticalHighlights")
@@ -79,28 +77,27 @@ func test_on_LineEdit_text_changed():
 	assert_eq("10005",line.text)
 
 func test_submit():
-	watch_signals(ask_integer)
 	ask_integer.prep("UT Card",1,5)
 	ask_integer._on_AskInteger_confirmed()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_eq(0,ask_integer.number)
-	assert_signal_not_emitted(ask_integer,"popup_hide")
+	assert_true(ask_integer.visible, "An empty value keeps the prompt open")
 	line.text = "11"
 	line._on_IntegerLineEdit_text_changed("11")
 	ask_integer._on_AskInteger_confirmed()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_eq(0,ask_integer.number)
-	assert_signal_not_emitted(ask_integer,"popup_hide")
+	assert_true(ask_integer.visible, "A value above the maximum is rejected")
 	line.text = "abd"
 	line._on_IntegerLineEdit_text_changed("abd")
 	ask_integer._on_AskInteger_confirmed()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_eq(0,ask_integer.number)
-	assert_signal_not_emitted(ask_integer,"popup_hide")
+	assert_true(ask_integer.visible, "Non-numeric text is rejected")
 	line.text = "2"
 	line._on_IntegerLineEdit_text_changed("2")
 	ask_integer._on_AskInteger_confirmed()
-	await yield_for(0.1).YIELD
-	assert_signal_emitted(ask_integer,"popup_hide")
+	await yield_for(0.1)
+	assert_false(ask_integer.visible, "A valid value closes the prompt")
 	assert_eq(2,ask_integer.number)
 

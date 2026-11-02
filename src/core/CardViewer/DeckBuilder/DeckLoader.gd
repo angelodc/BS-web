@@ -27,13 +27,15 @@ static func load_all_decks() -> Array:
 			push_error("Could not open deck file: " + deck)
 			continue
 		var test_json_conv = JSON.new()
-		test_json_conv.parse(file.get_as_text())
+		var parse_error := test_json_conv.parse(file.get_as_text())
 		var data = test_json_conv.get_data()
 		file.close()
-		# We expect decks in JSON Dictionary format
-		# In the future we might support plaintext as well.
-		if typeof(data.result) == TYPE_DICTIONARY:
-			loaded_decks_list.append(data.result)
+		# We expect decks in JSON Dictionary format. Only decks saved by the
+		# deck builder carry the precomputed total; other JSON files in the
+		# folder (BSDB deck links) are not loadable decks.
+		if parse_error == OK and typeof(data) == TYPE_DICTIONARY \
+				and data.has("total"):
+			loaded_decks_list.append(data)
 	return(loaded_decks_list)
 
 

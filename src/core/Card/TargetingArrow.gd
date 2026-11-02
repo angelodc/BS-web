@@ -73,7 +73,8 @@ func complete_targeting() -> void:
 #
 # It takes care to highlight potential cards which can serve as targets.
 func _on_ArrowHead_area_entered(area: Area2D) -> void:
-	if area.get_card_class() == 'Card' and not area in _potential_targets:
+	if area.has_method("get_card_class") \
+			and area.get_card_class() == 'Card' and not area in _potential_targets:
 		_potential_targets.append(area)
 		if 'highlight' in owner_object:
 			owner_object.highlight.highlight_potential_card(
@@ -85,7 +86,8 @@ func _on_ArrowHead_area_entered(area: Area2D) -> void:
 #
 # It clears potential highlights and adjusts potential cards as targets
 func _on_ArrowHead_area_exited(area: Area2D) -> void:
-	if area.get_card_class() == 'Card' and area in _potential_targets:
+	if area.has_method("get_card_class") \
+			and area.get_card_class() == 'Card' and area in _potential_targets:
 		# We remove the card we stopped hovering from the _potential_targets
 		_potential_targets.erase(area)
 		# And we explicitly hide its cards focus since we don't care about it anymore
@@ -133,15 +135,20 @@ func _draw_targeting_arrow() -> void:
 	# Finally we use the Curve2D object to get the points which will be drawn
 	# by our lined2D
 	set_points(curve.get_baked_points())
+	var point_count := get_point_count()
+	if point_count == 0:
+		return
 	# We place the arrowhead to start from the last point in the line2D
-	$ArrowHead.position = get_point_position(
-			get_point_count( ) - 1)
+	$ArrowHead.position = get_point_position(point_count - 1)
 	# We delete the last 3 Line2D points, because the arrowhead will
 	# be covering those areas
 	for _del in range(1,3):
-		remove_point(get_point_count( ) - 1)
+		if get_point_count() <= 1:
+			break
+		remove_point(get_point_count() - 1)
 	# We setup the angle the arrowhead is pointing by finding the angle of
 	# the last point on the line towards the mouse position
-	$ArrowHead.rotation = get_point_position(
-				get_point_count( ) - 1).direction_to(
+	var last_index := get_point_count() - 1
+	if last_index >= 0:
+		$ArrowHead.rotation = get_point_position(last_index).direction_to(
 				to_local(position + card_half_size + final_point)).angle()

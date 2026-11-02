@@ -241,7 +241,10 @@ func set_card_rotation(
 		return CFConst.ReturnCode.CHANGED
 	_store_card_rotation(value)
 	$CollisionShape2D.rotation_degrees = value
-	_add_tween_rotation($Control.rotation, value)
+	# Capacitar/incapacitar just lays the card on its side: a linear turn has no
+	# overshoot, bounce or extra spin.
+	_add_tween_rotation($Control.rotation_degrees, value,
+			0.2, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
 	if start_tween:
 		_tween.start()
 	emit_signal(

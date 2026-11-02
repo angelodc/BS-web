@@ -201,6 +201,7 @@ mouse_filter = 2
 clip_text = true
 theme_override_colors/font_color = Color( 1, 1, 1, 1 )
 theme_override_fonts/font = SubResource( 5 )
+theme_override_font_sizes/font_size = 9
 theme_override_styles/normal = SubResource( 4 )
 text = "SEM TIPO"
 align = 1

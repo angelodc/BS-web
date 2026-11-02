@@ -20,7 +20,6 @@ var _discard_position := Vector2.ZERO
 var _prizes_position := Vector2.ZERO
 var _deck_control_size := Vector2.ZERO
 var _resources_base_width := 156.0
-var _authored_opponent_scene_rect := Rect2()
 var pending_resource_host: Card
 var pending_resource_swap_card: Card
 var pending_resource_count := 0
@@ -41,11 +40,9 @@ func _ready() -> void:
 	# covering the deck corner.
 	$Counters.visible = false
 	cfc.map_node(self)
-	# We use the below while to wait until all the nodes we need have been mapped
-	# "hand" should be one of them.
-	# We're assigning our positions programmatically,
-	# instead of defining them on the scene.
-	# This way any they will work with any size of viewport in a game.
+	# The field geometry is authored in CGFBoard.tscn (rota B), so there is no
+	# per-viewport positioning to derive here; the deferred layout call only
+	# syncs the mirrored opponent band to the grid and re-fans the hand.
 	# Discard pile goes bottom right
 	$FancyMovementToggle.button_pressed = cfc.game_settings.fancy_movement
 	$OvalHandToggle.button_pressed = cfc.game_settings.hand_use_oval_shape
@@ -65,7 +62,7 @@ func _ready() -> void:
 		cfc.game_rng_seed = CFUtils.generate_random_seed()
 		if not multiplayer_session:
 			$SeedLabel.text = "Game Seed is: " + cfc.game_rng_seed
-	if not get_tree().get_root().has_node('Gut') and not multiplayer_session:
+	if not cfc.ut and not multiplayer_session:
 		load_test_cards(false)
 	# warning-ignore:return_value_discarded
 	$DeckBuilderPopup.popup_hide.connect(_on_DeckBuilder_hide)
@@ -136,61 +133,23 @@ func _setup_multiplayer(hud: Control) -> void:
 	Multiplayer.register_board(self, hud, sync)
 
 
+# The scene is the source of truth for the field: the grid, the scenario slot
+# and its caption are authored in CGFBoard.tscn and survive F5/F6 untouched.
+# The runtime only keeps the mirrored opponent band glued to the real grid and
+# re-fans the hand over its authored origin.
 func _apply_battle_scenes_layout() -> void:
 	if cfc.ut:
 		return
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
-	var deck: Pile = get_node("Deck")
-	var discard: Pile = get_node("Discard")
-	var prizes: Pile = get_node("Prêmios")
 	var scene_grid: BoardPlacementGrid = get_node("PlacementGridDemo")
-	var opponent_visual: Control = get_node("OpponentFieldVisual")
-	# The strip height and the column widths are authored in CGFBoard.tscn. The
-	# opponent deck box is the mirrored copy of the local left column.
-	var strip_bottom: float = opponent_visual.get_node(
-			"OpponentFieldBackground").position.y
-	var left_column_width: float = opponent_visual.get_node(
-			"OpponentDeck").size.x
-
-	scene_grid.configure_width(_prizes_position.x - left_column_width)
-	var scene_size: Vector2 = scene_grid.size
-	var player_field_y: float = strip_bottom + scene_size.y
-
-	# The deck lies turned 270 degrees in the bottom-left corner; its slot and
-	# the two other pile slots are the authored ones.
-	deck.rotation_degrees = 270
-	deck.position = _deck_position
-	discard.position = _discard_position
-	prizes.position = _prizes_position
-	deck.call_deferred("keep_children_upright")
-	scene_grid.position = Vector2(
-			(viewport_size.x - scene_size.x) * 0.5, player_field_y)
+	# Auto-arranged columns follow the authored width: widening the grid in
+	# the editor widens the field here, with no recompute from the piles.
+	scene_grid.configure_width(scene_grid.size.x)
 	# The mirror reads this rect for every slot and floating card, so the
 	# opponent scene has to keep matching the real grid.
-	if $Debug.pressed:
-		_warn_if_opponent_scene_drifted(
-				Vector2(scene_grid.position.x, strip_bottom), scene_size)
-	var opponent_scene: Control = opponent_visual.get_node("OpponentScene")
-	opponent_scene.position = Vector2(
-			scene_grid.position.x, strip_bottom)
-	opponent_scene.size = scene_size
-
-	# The scenario slot is centred in the right column, the same width as the
-	# mirrored deck slot, so it lines up with the prize box below it.
-	var scenario_grid: BoardPlacementGrid = get_node("ModifiedLabelGrid")
-	scenario_grid.position = Vector2(
-			_prizes_position.x \
-					+ (left_column_width - scenario_grid.size.x) * 0.5,
-			player_field_y + 2)
-	var scene_caption: Label = scenario_grid.get_node("Control/Label")
-	scene_caption.size = Vector2(left_column_width, 20)
-	# Above the card this caption lands on the opponent resources row, so it
-	# sits under the scenario card instead.
-	scene_caption.global_position = Vector2(
-			_prizes_position.x,
-			scenario_grid.global_position.y + scenario_grid.size.y + 2)
-	scene_caption.align = HORIZONTAL_ALIGNMENT_CENTER
-
+	var opponent_scene: Control = \
+			get_node("OpponentFieldVisual/OpponentScene")
+	opponent_scene.position = scene_grid.position
+	opponent_scene.size = scene_grid.size
 	# The hand cards are drawn above the hand node origin (the oval fan); the
 	# margin authored in CGFHand.tscn keeps the fan on the bottom edge.
 	var hand: Hand = get_node("Hand")
@@ -201,35 +160,21 @@ func _apply_battle_scenes_layout() -> void:
 # The pile slots and the mirrored resources width are authored in the scene, so
 # they are read once before any restack or hover can move them.
 func _capture_authored_layout() -> void:
-	var deck: Pile = get_node("Deck")
-	var discard: Pile = get_node("Discard")
-	var prizes: Pile = get_node("Prêmios")
-	_deck_position = deck.position
-	_discard_position = discard.position
-	_prizes_position = prizes.position
-	var resources: Control = get_node(
+	# The UT board is a trimmed scene without the prizes pile or the opponent
+	# band, so each slot is captured only when the node exists.
+	var deck = get_node_or_null("Deck")
+	if deck:
+		_deck_position = deck.position
+	var discard = get_node_or_null("Discard")
+	if discard:
+		_discard_position = discard.position
+	var prizes = get_node_or_null("Prêmios")
+	if prizes:
+		_prizes_position = prizes.position
+	var resources = get_node_or_null(
 			"OpponentFieldVisual/OpponentResourcesBackground")
-	_resources_base_width = resources.size.x
-	var opponent_scene: Control = get_node("OpponentFieldVisual/OpponentScene")
-	_authored_opponent_scene_rect = Rect2(
-			opponent_scene.position, opponent_scene.size)
-
-
-# The mirror scales the floating cards by scene/grid, so a stale authored rect
-# only shows up once cards are dragged. This warns before the runtime sync hides
-# the drift, which means the scene needs a re-bake.
-func _warn_if_opponent_scene_drifted(
-		expected_position: Vector2, expected_size: Vector2) -> void:
-	var drift := _authored_opponent_scene_rect.position.distance_to(
-			expected_position)
-	drift = max(drift,
-			(_authored_opponent_scene_rect.size - expected_size).length())
-	if drift <= 1.0:
-		return
-	print("LAYOUT: OpponentScene/ OpponentSceneLabel divergiram %.1f px do "
-			% drift
-			+ "grid; re-bake CGFBoard.tscn (cena %s, grid %s)"
-			% [_authored_opponent_scene_rect.size, expected_size])
+	if resources:
+		_resources_base_width = resources.size.x
 
 
 func resources_base_width() -> float:
@@ -277,16 +222,20 @@ func _refresh_hand_label() -> void:
 func _hold_pile_layout() -> void:
 	if cfc.ut:
 		return
-	var deck: Pile = get_node("Deck")
-	var discard: Pile = get_node("Discard")
-	var prizes: Pile = get_node("Prêmios")
-	if deck.position != _deck_position or int(deck.rotation_degrees) != 270:
+	# A bare test board only carries the framework piles.
+	var deck: Pile = get_node_or_null("Deck")
+	var discard: Pile = get_node_or_null("Discard")
+	var prizes: Pile = get_node_or_null("Prêmios")
+	if deck and (deck.position != _deck_position
+			or int(deck.rotation_degrees) != 270):
 		deck.rotation_degrees = 270
 		deck.position = _deck_position
-	if discard.position != _discard_position:
+	if discard and discard.position != _discard_position:
 		discard.position = _discard_position
-	if prizes.position != _prizes_position:
+	if prizes and prizes.position != _prizes_position:
 		prizes.position = _prizes_position
+	if not deck:
+		return
 	var deck_control: Control = deck.get_node("Control")
 	if deck_control.size != _deck_control_size:
 		_deck_control_size = deck_control.size

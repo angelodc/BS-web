@@ -20,10 +20,10 @@ Consequência: editar à mão hoje significa caçar constante dentro de duas fun
 
 | # | Decisão | Escolha |
 |---|---|---|
-| a | Largura do `PlacementGridDemo` | **Padrão atual**: continua calculada por `configure_width()` e centralizada; o grid não é arrastado no editor. |
+| a | Largura do `PlacementGridDemo` | ~~**Padrão atual**: continua calculada por `configure_width()` e centralizada; o grid não é arrastado no editor.~~ **Superada pela rota B (2026-11-02):** o grid é autoral, com 7 colunas e 14 slots assados em `CGFPlacementGridDemo.tscn`; arrastar a caixa no editor altera o campo em runtime (ver [Rota B](#rota-b--cena-como-fonte-da-verdade-2026-11-02)). |
 | b | Como gravar as posições no `.tscn` | **Coordenadas absolutas**: remover `anchor_left/right = 1.0` e as margens negativas da coluna direita. Com `window/stretch/mode="2d"` e `aspect="keep"`, a resolução de design é sempre 1280×720, então as âncoras não ganham nada e o Inspector fica legível ao arrastar. |
 | c | Dump de medição de rects | **Temporário**, removido antes da entrega. |
-| d | Rotação e área do deck | **Como está**: o monte continua deitado a 270° e a área do deck atual é preservada. A rotação segue reafirmada em código; só posição e tamanho vão para a cena. A pendência antiga de "monte em pé" está cancelada. |
+| d | Rotação e área do deck | **Como está**: o monte continua deitado a 270° e a área do deck atual é preservada. ~~A rotação segue reafirmada em código; só posição e tamanho vão para a cena.~~ Desde a rota B (2026-11-02) a rotação `270°` também está gravada no `Deck` da cena (o código só reafirma). A pendência antiga de "monte em pé" está cancelada. |
 
 ## Classificação dos nós
 
@@ -56,6 +56,8 @@ Gravar os números medidos em `src/custom/CGFBoard.tscn`, em coordenadas absolut
 
 ### ✅ Etapa 2 — Runtime burro
 
+> **Revisada pela rota B (2026-11-02):** `_apply_battle_scenes_layout()` ficou ainda menor (~15 linhas) e o grid passou a ser lido, não recalculado — ver [Rota B](#rota-b--cena-como-fonte-da-verdade-2026-11-02). Os itens abaixo descrevem a etapa original.
+
 Em `src/custom/CGFBoard.gd`: apagar `_layout_opponent_field()` (≈ 90 linhas) e reduzir `_apply_battle_scenes_layout()` para cerca de 20 linhas que
 
 1. mantêm `scene_grid.configure_width()` com o comportamento padrão;
@@ -71,6 +73,8 @@ Em `src/custom/CGFBoard.gd`: apagar `_layout_opponent_field()` (≈ 90 linhas) e
 `var bottom_margin` em [src/core/Hand.gd:17](./src/core/Hand.gd) vira `export var`, mantendo o mesmo default (`CFConst.BOTTOM_MARGIN_MULTIPLIER = 0.5`, [src/custom/CFConst.gd:154](./src/custom/CFConst.gd)), e o valor literal correspondente é gravado em `src/custom/CGFHand.tscn`. A linha `hand.bottom_margin = hand.card_size.y * 0.5` sai do `CGFBoard.gd`.
 
 ### ✅ Etapa 4 — Guarda de consistência
+
+> **Removida pela rota B (2026-11-02):** a guarda `_warn_if_opponent_scene_drifted()` foi apagada porque o `OpponentScene` deixou de ter valor autoral — o runtime grava nele o rect real do grid a cada ajuste, então não há mais o que divergir.
 
 Atrás do checkbox `$Debug` que já existe no board ([src/custom/CGFBoard.gd:31](./src/custom/CGFBoard.gd)), comparar o rect derivado do grid com o `OpponentScene` e avisar quando divergir mais de 1 px, listando os nós afetados. A comparação é de **posição e tamanho**: `_mirrored_board_point()` escala o tamanho da carta pela razão `scene/grid`, então um `OpponentScene` redimensionado encolhe ou cresce as cartas soltas do espelho mesmo que o canto continue alinhado. Esse é o sinal de que um re-bake é necessário — os únicos casos são mudança de `CFConst.PLAY_AREA_SCALE`, do número de colunas/linhas do grid ou da resolução de design.
 
@@ -104,7 +108,7 @@ O deck **não** está nesta lista: a decisão d manteve o monte deitado a 270° 
 - **Rota B — prévia no editor com script `tool`.** Extrair a matemática para um helper sem dependência de `cfc` e posicionar os nós na vista 2D sem rodar o jogo. Os autoloads não existem no editor, então o `tool` não pode tocar em `cfc`/`Multiplayer`, e cartas reais não aparecem — só caixas. Não é preciso se a cena virar a fonte da verdade.
 - **Rota C — reescrever o layout na cena em runtime.** Fazer o jogo gravar o `.tscn` via `ResourceSaver` é frágil: `Node.get_scene()` achata a cena e pode perder `ext_resource`, overrides de nós instanciados, grupos e conexões. Se um dia for necessário, o caminho é o despejo dos rects num arquivo fora da cena e um patch de texto nas linhas numéricas.
 - **Boot direto no tabuleiro.** Trocar `run/main_scene` ([project.godot:396](./project.godot)) para `CGFMain.tscn` faria o F5 abrir o campo sem passar pelo menu, mas o build HTML5 deixaria de abrir o lobby e o tratamento de `?room=`/`?relay=` do menu nunca rodaria. A alternativa segura é um gate por `OS.has_feature("editor")` mais variável de ambiente, no mesmo padrão de `BS_WINDOWED` ([src/custom/DisplayMode.gd](./src/custom/DisplayMode.gd)).
-- **Limitações que permanecem.** Cartas não aparecem na vista 2D (o framework as cria em runtime, só os painéis dos piles são autorais); o leque da mão não é arrastável; e os valores autorais passam a exigir re-bake quando a escala da carta ou a geometria do grid mudarem.
+- **Limitações que permanecem.** Cartas não aparecem na vista 2D (o framework as cria em runtime, só os painéis dos piles são autorais); o leque da mão não é arrastável. ~~os valores autorais passam a exigir re-bake quando a escala da carta ou a geometria do grid mudarem~~ — com a rota B o grid reage sozinho a `configure_width()`; o `OpponentScene` é sincronizado em runtime, então re-bake só seria necessário se a constante `CFConst.PLAY_AREA_SCALE` mudar (aí os slots autorais de `CGFPlacementGridDemo.tscn` pedem novo bake manual).
 
 ## Execução (2026-10-29)
 
@@ -131,3 +135,17 @@ Correções de 2026-10-30 (segunda rodada), depois do teste com dois clientes we
 - **Janela de visibilidade.** `_relayout_remote_resources()` escondia `index < order.size() - RESOURCES_GRID_MAX`; com pilha cheia sobrava a base, não o topo, e o grid aparecia deslocado a partir da segunda célula. Agora esconde `index >= RESOURCES_GRID_MAX`: as 6 mais novas ficam visíveis, como no painel local, que descarta a base da pilha primeiro.
 - **Hover pelo desenho.** `_card_screen_rect()` monta o retângulo a partir de `global_transform.xform()` de `(0,0)` e `CARD_SIZE` em vez de `card.global_position + CARD_SIZE * escala`. Uma miniatura cuja escala ou rotação ainda não alcançou o valor nominal responde onde a arte está desenhada, não onde o cálculo achava que ela estava.
 - **Adoção de espelhos órfãos.** `_adopt_missing_resource_mirrors()` acrescenta à ordem da zona qualquer carta de recursos que tenha chegado por um caminho que não alimentou `_remote_zone_order["resources"]` (snapshot restaurado, por exemplo). Sem isso ela ficava parada sobre o painel, fora do grid e do hover.
+
+## Rota B — cena como fonte da verdade (2026-11-02)
+
+O plano original acima assava a geometria uma vez e mantinha o runtime recalculando o campo a partir das pilhas (etapa 2). Isso resolvia "o editor mente", mas não o pedido seguinte: o Doug quer **trabalhar manualmente na cena** (F6 == F5) e ver o tabuleiro como ele renderiza. A rota B inverte a direção — a cena passa a mandar no campo inteiro:
+
+- **Grid autoral.** `CGFPlacementGridDemo.tscn` foi reescrito com as 7 colunas e 14 slots assados (`h_separation = 44`, `v_separation = 5`, slots de `99×138.6`). O runtime chama `scene_grid.configure_width(scene_grid.size.x)` — ponto fixo: com 961 px de largura autoral continua dando 7 colunas, então a chamada é idempotente e, ao mesmo tempo, **alargar a caixa no editor alarga o campo de jogo**.
+- **Cenário ativo e legenda autorais.** `ModifiedLabelGrid` (99×138.6 em `1152.5, 368.2`) e seu caption passaram a ter posição gravada na cena, em vez de serem derivados do grid no runtime.
+- **Deck com rotação na cena.** O `rotation = 270°` foi gravado no `Deck`; o código só reafirma (decisão d parcialmente superada: posição, tamanho **e rotação** são autorais).
+- **Runtime reduzido a sincronização.** `_apply_battle_scenes_layout()` tem ~15 linhas: `configure_width()` com a largura autoral, cópia do rect do grid para o `OpponentScene` (que os consumidores do espelho continuam lendo), `hand.re_place()`. A guarda de drift da etapa 4 foi removida — não há mais valor autoral para divergir.
+- **Limitação que caiu:** o grid agora **é** arrastável no editor. Continuam fora da vista 2D as cartas (criadas em runtime) e o leque da mão.
+
+O playmat continua runtime-only de propósito: o export web exclui `assets/playmats/*` do pacote, então a arte não pode ser referenciada pela cena. No editor vê-se a geometria real sobre o fundo cinza do projeto.
+
+A decisão de base de resolução (HD+ 1600×900 na web, HD/Full HD no desktop) foi registrada em [PLANEJAMENTO.md](./PLANEJAMENTO.md) §3 e ainda não foi implementada.

@@ -21,11 +21,11 @@ var scenario_grid: BoardPlacementGrid
 func before_each():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+		await setup.completed
 	grid = Snapshot.field_grid(board)
 	# The test board has no scenario slot, so one is added here the same way the
 	# production scene offers it.
-	scenario_grid = SCENARIO_GRID_SCENE.instance()
+	scenario_grid = SCENARIO_GRID_SCENE.instantiate()
 	scenario_grid.name = "ModifiedLabelGrid"
 	board.add_child(scenario_grid)
 	scenario_grid.add_slot()
@@ -132,7 +132,7 @@ func test_renderer_puts_each_field_card_on_the_slot_of_its_address():
 	assert_eq(grid.get_slot(1).occupying_card, cards[1])
 	assert_eq(grid.get_slot(columns).occupying_card, cards[2])
 	assert_eq(cards[2]._target_position,
-			grid.get_slot(columns).rect_global_position,
+			grid.get_slot(columns).global_position,
 			"The card heads to the slot position")
 	assert_true(changed["field"].has("p1:campo:frente:1"), str(changed))
 	assert_true(changed["field"].has("p1:campo:trás:1"), str(changed))
@@ -202,7 +202,7 @@ func test_growing_the_columns_keeps_each_field_address_on_its_row():
 	assert_eq(cards[3]._placement_slot, grid.get_slot(4),
 			"trás:2 keeps the back row")
 	assert_eq(cards[2]._target_position,
-			grid.get_slot(3).rect_global_position)
+			grid.get_slot(3).global_position)
 	# The column resize already redraws every card; a renderer pass after it has
 	# nothing left to fix.
 	var again = Renderer.reconcile(board, state, 1)
@@ -221,7 +221,7 @@ func test_renderer_puts_the_scenario_in_the_shared_slot():
 	assert_eq(scenario_grid.get_slot(0).occupying_card, scenario)
 	assert_eq(scenario._placement_slot, scenario_grid.get_slot(0))
 	assert_eq(scenario._target_position,
-			scenario_grid.get_slot(0).rect_global_position)
+			scenario_grid.get_slot(0).global_position)
 	assert_eq(changed["scenario"], [_id(scenario)])
 
 

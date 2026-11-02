@@ -16,8 +16,9 @@ var _preview_card: Card = null
 
 
 func _ready() -> void:
+	super._ready()
 	var label: Label = $Control/CenterContainer/VBoxContainer/Label
-	label.align = Label.ALIGN_CENTER
+	label.align = HORIZONTAL_ALIGNMENT_CENTER
 
 
 func _exit_tree() -> void:
@@ -37,26 +38,26 @@ func _process(_delta: float) -> void:
 # slot keeps a fixed quarter-size box at the pile origin.
 func _hold_panel() -> void:
 	var control: Control = get_node("Control")
-	control.rect_min_size = PANEL_SIZE
-	if control.rect_size != PANEL_SIZE:
-		control.rect_size = PANEL_SIZE
-	if control.rect_position != Vector2.ZERO:
-		control.rect_position = Vector2.ZERO
+	control.custom_minimum_size = PANEL_SIZE
+	if control.size != PANEL_SIZE:
+		control.size = PANEL_SIZE
+	if control.position != Vector2.ZERO:
+		control.position = Vector2.ZERO
 
 
 # Keeps the shrunken label in the right column and the buttons under it.
 func _layout_ui() -> void:
 	var label: Control = $Control/CenterContainer
 	var buttons: Control = $Control/ManipulationButtons
-	var label_center := label.rect_size * 0.5
-	label.rect_scale = Vector2(LABEL_SCALE, LABEL_SCALE)
-	label.rect_position = Vector2(
+	var label_center := label.size * 0.5
+	label.scale = Vector2(LABEL_SCALE, LABEL_SCALE)
+	label.position = Vector2(
 			PANEL_SIZE.x - 32.0 - label_center.x * LABEL_SCALE,
 			PANEL_SIZE.y * 0.5 - label_center.y * LABEL_SCALE)
 	var buttons_size: Vector2 = \
 			buttons.get_combined_minimum_size() * BUTTON_SCALE
-	buttons.rect_scale = Vector2(BUTTON_SCALE, BUTTON_SCALE)
-	buttons.rect_position = Vector2(
+	buttons.scale = Vector2(BUTTON_SCALE, BUTTON_SCALE)
+	buttons.position = Vector2(
 			PANEL_SIZE.x - buttons_size.x - 6.0,
 			PANEL_SIZE.y - buttons_size.y - 4.0)
 

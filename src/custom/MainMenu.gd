@@ -3,22 +3,22 @@ extends Panel
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const RedeScript = preload("res://src/custom/Rede.gd")
 
-onready var v_buttons := $MainMenu/VBox/Center/VButtons
-onready var main_menu := $MainMenu
-onready var backdrop := $MainMenu/Backdrop
-onready var checkpoint_list := $CheckpointList
-onready var action_error := $ActionError
-onready var player_name_input := $MainMenu/VBox/Center/VButtons/PlayerName
-onready var relay_address_input := $MainMenu/VBox/Center/VButtons/RelayAddress
-onready var room_code_input := $MainMenu/VBox/Center/VButtons/JoinRow/RoomCode
-onready var join_room_button := $MainMenu/VBox/Center/VButtons/JoinRow/JoinRoom
-onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
-onready var server_status := $MainMenu/VBox/Center/VButtons/ServerStatus
-onready var server_probe := $ServerProbe
-onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
-onready var solo_match_button := $MainMenu/VBox/Center/VButtons/SoloMatch
-onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
-onready var resume_button := $MainMenu/VBox/Center/VButtons/ResumeGame
+@onready var v_buttons := $MainMenu/VBox/Center/VButtons
+@onready var main_menu := $MainMenu
+@onready var backdrop := $MainMenu/Backdrop
+@onready var checkpoint_list := $CheckpointList
+@onready var action_error := $ActionError
+@onready var player_name_input := $MainMenu/VBox/Center/VButtons/PlayerName
+@onready var relay_address_input := $MainMenu/VBox/Center/VButtons/RelayAddress
+@onready var room_code_input := $MainMenu/VBox/Center/VButtons/JoinRow/RoomCode
+@onready var join_room_button := $MainMenu/VBox/Center/VButtons/JoinRow/JoinRoom
+@onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
+@onready var server_status := $MainMenu/VBox/Center/VButtons/ServerStatus
+@onready var server_probe := $ServerProbe
+@onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
+@onready var solo_match_button := $MainMenu/VBox/Center/VButtons/SoloMatch
+@onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
+@onready var resume_button := $MainMenu/VBox/Center/VButtons/ResumeGame
 
 # O relay pode voltar (o tunel se re-registra sozinho) ou cair com o menu
 # aberto, entao o estado e reconsultado. 20 s e bem mais lento que qualquer
@@ -37,29 +37,27 @@ var _probe_pending := false
 func _ready() -> void:
 	for option_button in v_buttons.get_children():
 		if option_button.has_signal('pressed'):
-			option_button.connect('pressed', self, 'on_button_pressed', [option_button.name])
-	join_room_button.connect(
-			'pressed', self, 'on_button_pressed', ['JoinRoom'])
-	checkpoint_list.connect("resume_requested", self, "_on_resume_requested")
+			option_button.pressed.connect(on_button_pressed.bind(option_button.name))
+	join_room_button.pressed.connect(on_button_pressed.bind('JoinRoom'))
+	checkpoint_list.resume_requested.connect(_on_resume_requested)
 	player_name_input.text = str(cfc.game_settings.get(
 			"multiplayer_username", ""))
 	_relay_setup()
 	room_code_input.text = _read_web_query("room").to_upper()
-	server_probe.connect("request_completed", self, "_on_server_probe_done")
-	relay_address_input.connect(
-			"text_changed", self, "_on_relay_address_changed")
-	Rede.connect("status_changed", self, "_on_match_status_changed")
-	Rede.connect("join_failed", self, "_on_join_failed")
-	action_error.get_label().autowrap = true
-	Multiplayer.connect("lobby_ready", self, "_on_lobby_ready")
-	Multiplayer.connect("session_ended", self, "_on_session_ended")
-	Multiplayer.connect("resume_status", self, "_on_resume_status")
+	server_probe.request_completed.connect(_on_server_probe_done)
+	relay_address_input.text_changed.connect(_on_relay_address_changed)
+	Rede.status_changed.connect(_on_match_status_changed)
+	Rede.join_failed.connect(_on_join_failed)
+	action_error.get_label().autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	Multiplayer.lobby_ready.connect(_on_lobby_ready)
+	Multiplayer.session_ended.connect(_on_session_ended)
+	Multiplayer.resume_status.connect(_on_resume_status)
 	match_status.text = Rede.get_status()
 	_apply_backdrop()
 	_update_lobby_controls()
 	_probe_server()
 	# warning-ignore:return_value_discarded
-	get_viewport().connect("size_changed", self, '_on_Menu_resized')
+	get_viewport().size_changed.connect(_on_Menu_resized)
 
 
 # Só o que roda por frame aqui é a cadência da sondagem; enquanto uma resposta
@@ -130,7 +128,7 @@ func on_button_pressed(_button_name : String) -> void:
 			if _lobby_busy:
 				return
 			var code: String = room_code_input.text.strip_edges().to_upper()
-			if code.empty():
+			if code.is_empty():
 				match_status.text = "Digite o codigo da sala."
 				room_code_input.grab_focus()
 				return
@@ -162,18 +160,18 @@ func _relay_setup() -> void:
 		# permitir ?relay= em testes locais.
 		relay_address_input.visible = false
 		var web_relay := _read_web_query("relay")
-		relay_address_input.text = web_relay if not web_relay.empty() \
+		relay_address_input.text = web_relay if not web_relay.is_empty() \
 				else Rede.get_default_address()
 		return
 	var saved := str(cfc.game_settings.get("multiplayer_relay_address", ""))
-	relay_address_input.text = saved if not saved.empty() \
+	relay_address_input.text = saved if not saved.is_empty() \
 			else Rede.get_default_address()
 
 
 func _read_web_query(key: String) -> String:
 	if not OS.has_feature("web"):
 		return ""
-	var value = JavaScript.eval(
+	var value = JavaScriptBridge.eval(
 			"new URLSearchParams(window.location.search).get('%s') || ''" % key,
 			true)
 	if value == null:
@@ -199,7 +197,7 @@ func _probe_server() -> void:
 		return
 	server_status.visible = true
 	var url := _server_probe_url()
-	if url.empty():
+	if url.is_empty():
 		_show_server_state(false, "Servidor: sem endereco para checar")
 		return
 	server_status.text = "Servidor: checando..."
@@ -219,14 +217,14 @@ func _is_local_relay_address() -> bool:
 func _server_probe_url() -> String:
 	if OS.has_feature("web"):
 		var origin := _web_origin()
-		return origin + "/api/salas" if not origin.empty() else ""
+		return origin + "/api/salas" if not origin.is_empty() else ""
 	return _relay_health_url(relay_address_input.text)
 
 
 func _web_origin() -> String:
 	if not OS.has_feature("web"):
 		return ""
-	var value = JavaScript.eval("window.location.origin", true)
+	var value = JavaScriptBridge.eval("window.location.origin", true)
 	if value == null:
 		return ""
 	return str(value).strip_edges().rstrip("/")
@@ -235,7 +233,7 @@ func _web_origin() -> String:
 # Aceita o que o campo aceita: "host:porta", "host", "ws://..." e "wss://...".
 func _relay_health_url(address: String) -> String:
 	var trimmed := address.strip_edges()
-	if trimmed.empty():
+	if trimmed.is_empty():
 		return ""
 	var target := trimmed
 	var bare := not trimmed.begins_with("ws://") \
@@ -262,18 +260,20 @@ func _relay_health_url(address: String) -> String:
 func _on_server_probe_done(
 		result: int,
 		response_code: int,
-		_headers: PoolStringArray,
-		body: PoolByteArray) -> void:
+		_headers: PackedStringArray,
+		body: PackedByteArray) -> void:
 	_probe_pending = false
 	_probe_elapsed = 0.0
 	if result != HTTPRequest.RESULT_SUCCESS:
 		_show_server_state(false, "Servidor: indisponível")
 		return
-	var parsed := JSON.parse(body.get_string_from_utf8())
-	if parsed.error != OK or typeof(parsed.result) != TYPE_DICTIONARY:
+	var test_json_conv = JSON.new()
+	var parse_error := test_json_conv.parse(body.get_string_from_utf8())
+	var parsed = test_json_conv.get_data()
+	if parse_error != OK or typeof(parsed) != TYPE_DICTIONARY:
 		_show_server_state(false, "Servidor: resposta inesperada")
 		return
-	var data: Dictionary = parsed.result
+	var data: Dictionary = parsed
 	if OS.has_feature("web"):
 		var relay: Dictionary = data.get("relay", {})
 		var online := bool(relay.get("online", false))
@@ -315,7 +315,7 @@ func _on_relay_address_changed(_new_text: String) -> void:
 
 func _prepare_identity() -> Dictionary:
 	var username: String = player_name_input.text.strip_edges()
-	if username.empty():
+	if username.is_empty():
 		match_status.text = "Digite um username antes de continuar."
 		player_name_input.grab_focus()
 		return {"ok": false}
@@ -324,7 +324,7 @@ func _prepare_identity() -> Dictionary:
 		_show_action_error(str(renamed.get("reason", "")))
 		return {"ok": false}
 	var address: String = relay_address_input.text.strip_edges()
-	if address.empty():
+	if address.is_empty():
 		address = Rede.get_default_address()
 		relay_address_input.text = address
 	if not OS.has_feature("web"):
@@ -358,7 +358,7 @@ func _enter_game() -> void:
 	_entering_game = true
 	cfc.current_deck = {}
 	# warning-ignore:return_value_discarded
-	get_tree().change_scene(CFConst.PATH_CUSTOM + "CGFMain.tscn")
+	get_tree().change_scene_to_file(CFConst.PATH_CUSTOM + "CGFMain.tscn")
 
 
 func _on_match_status_changed(text: String) -> void:
@@ -368,7 +368,7 @@ func _on_match_status_changed(text: String) -> void:
 
 
 func _on_join_failed(message: String) -> void:
-	if not message.empty():
+	if not message.is_empty():
 		_show_action_error(message)
 
 
@@ -414,4 +414,4 @@ func _on_resume_requested(
 
 
 func _on_Menu_resized() -> void:
-	main_menu.rect_size = get_viewport().get_visible_rect().size
+	main_menu.size = get_viewport().get_visible_rect().size

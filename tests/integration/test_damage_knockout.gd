@@ -36,7 +36,7 @@ func _free_all_cards() -> void:
 
 
 func _add_prize_pile() -> void:
-	var prizes = load("res://src/core/Pile.tscn").instance()
+	var prizes = load("res://src/core/Pile.tscn").instantiate()
 	prizes.name = "Prêmios"
 	board.add_child(prizes)
 	autofree(prizes)
@@ -45,10 +45,10 @@ func _add_prize_pile() -> void:
 func _start_match() -> void:
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
+		setup = await setup.completed
 	_add_prize_pile()
 	_free_all_cards()
-	yield(yield_for(0.2), YIELD)
+	await yield_for(0.2).YIELD
 
 	Multiplayer.begin_solo("Doug")
 	var sync = load("res://src/custom/MultiplayerSync.gd").new()
@@ -56,7 +56,7 @@ func _start_match() -> void:
 	board.add_child(sync)
 	autofree(sync)
 	Multiplayer.register_board(board, null, sync)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 	# The board setup reloads the set definitions, so the character is only
 	# known from here on.
 	cfc.card_definitions[CHAR_NAME] = _character_definition()
@@ -64,7 +64,7 @@ func _start_match() -> void:
 	Multiplayer.set_solo_pick_slot(2)
 	Multiplayer.select_deck(_character_deck())
 	assert_true(Multiplayer.request_start(), "Two full decks start the solo match")
-	yield(yield_for(0.3), YIELD)
+	await yield_for(0.3).YIELD
 
 
 func _take_hand_card() -> Card:
@@ -85,7 +85,7 @@ func _place_character(settle := true) -> Card:
 	board.add_child(card)
 	card.set_is_faceup(true, true)
 	card.set_state(Card.CardState.ON_PLAY_BOARD)
-	card.global_position = board.rect_size * 0.5
+	card.global_position = board.size * 0.5
 	if settle:
 		var grid: BoardPlacementGrid = Snapshot.field_grid(board)
 		var slot = null
@@ -95,7 +95,7 @@ func _place_character(settle := true) -> Card:
 					slot = candidate
 					break
 		assert_true(is_instance_valid(slot), "A mesa tem um slot livre")
-		card.global_position = slot.rect_global_position
+		card.global_position = slot.global_position
 		slot.occupying_card = card
 		card._placement_slot = slot
 	return card
@@ -122,7 +122,7 @@ func _mirror_meta(net_id: String) -> Dictionary:
 
 
 func test_damage_takes_one_attached_card_to_the_discard():
-	yield(_start_match(), "completed")
+	await _start_match().completed
 
 	var card := _place_character()
 	assert_true(card.is_battle_scenes_character(),
@@ -142,7 +142,7 @@ func test_damage_takes_one_attached_card_to_the_discard():
 
 
 func test_cards_outside_the_field_take_no_damage():
-	yield(_start_match(), "completed")
+	await _start_match().completed
 
 	var in_hand := _take_hand_card()
 	assert_eq(board.damage_character(in_hand, 1), CFConst.ReturnCode.FAILED,
@@ -152,7 +152,7 @@ func test_cards_outside_the_field_take_no_damage():
 
 
 func test_last_energy_knocks_the_character_into_the_opponent_prizes():
-	yield(_start_match(), "completed")
+	await _start_match().completed
 
 	var card := _place_character()
 	var card_id := Multiplayer.ensure_card_id(card)
@@ -160,7 +160,7 @@ func test_last_energy_knocks_the_character_into_the_opponent_prizes():
 	assert_eq(card.attachments.size(), 1, "The character carries one energy")
 
 	board.damage_character(card, 1)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 
 	assert_true(not is_instance_valid(card) or not card.is_inside_tree(),
 			"The knocked out character leaves the field")
@@ -176,19 +176,19 @@ func test_last_energy_knocks_the_character_into_the_opponent_prizes():
 
 
 func test_prizes_reaching_fifteen_win_the_match():
-	yield(_start_match(), "completed")
+	await _start_match().completed
 
 	var first := _place_character()
 	_attach_energy(first)
 	board.damage_character(first, 1)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 	assert_eq(board._victory_slot, 0,
 			"Ten energy in the prizes does not win yet")
 
 	var second := _place_character()
 	_attach_energy(second)
 	board.damage_character(second, 1)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 	assert_eq(board._victory_slot, 2,
 			"Twenty energy in the seat two prizes wins the match for seat two")
 
@@ -196,7 +196,7 @@ func test_prizes_reaching_fifteen_win_the_match():
 func test_only_the_first_side_to_reach_fifteen_wins():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
+		setup = await setup.completed
 
 	board.report_prize_energy(1, 14)
 	assert_eq(board._victory_slot, 0, "Fourteen energy is not enough")
@@ -211,16 +211,16 @@ func test_only_the_first_side_to_reach_fifteen_wins():
 # The knocked out character belongs to the other seat, so the swap turns the
 # mirror into a real card of the controlled player's prize pile.
 func test_swapping_seats_moves_the_prize_card_to_the_other_pile():
-	yield(_start_match(), "completed")
+	await _start_match().completed
 
 	var card := _place_character()
 	var card_id := Multiplayer.ensure_card_id(card)
 	_attach_energy(card)
 	board.damage_character(card, 1)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap changes the seat")
-	yield(yield_for(0.3), YIELD)
+	await yield_for(0.3).YIELD
 
 	var prizes = board.get_node_or_null("Prêmios")
 	var found := false

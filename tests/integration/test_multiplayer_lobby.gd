@@ -8,11 +8,11 @@ func test_match_found_assigns_player_role_and_opponent_name():
 	Rede.disconnect_game()
 	Rede.is_searching = true
 	watch_signals(Rede)
-	var packet: PoolByteArray = JSON.print({
+	var packet: PackedByteArray = JSON.stringify({
 		"t": "match_found",
 		"role": "H",
 		"opponent": "Jogador 2",
-	}).to_utf8()
+	}).to_utf8_buffer()
 
 	Rede._handle_packet(packet)
 
@@ -30,7 +30,7 @@ func test_match_found_keeps_resume_metadata():
 	Rede.disconnect_game()
 	Rede.is_searching = true
 
-	Rede._handle_packet(JSON.print({
+	Rede._handle_packet(JSON.stringify({
 		"t": "match_found",
 		"role": "C",
 		"opponent": "Alice",
@@ -38,7 +38,7 @@ func test_match_found_keeps_resume_metadata():
 		"mode": "resume",
 		"game_id": "game_1",
 		"participants": ["Alice", "Bob"],
-	}).to_utf8())
+	}).to_utf8_buffer())
 
 	assert_eq(Rede.match_mode, "resume")
 	assert_eq(Rede.game_id, "game_1")
@@ -52,11 +52,11 @@ func test_match_found_after_cancel_is_ignored():
 	Rede.is_searching = false
 	watch_signals(Rede)
 
-	Rede._handle_packet(JSON.print({
+	Rede._handle_packet(JSON.stringify({
 		"t": "match_found",
 		"role": "C",
 		"opponent": "Alice",
-	}).to_utf8())
+	}).to_utf8_buffer())
 
 	assert_false(Rede.is_connected)
 	assert_eq(Rede.peer_tag, "")
@@ -80,9 +80,9 @@ func test_private_envelopes_are_pruned():
 
 func test_unreadable_checkpoint_stays_joinable():
 	CheckpointStore.ensure_root()
-	var game_id := "gtest_corrupt_" + str(OS.get_ticks_usec())
+	var game_id := "gtest_corrupt_" + str(Time.get_ticks_usec())
 	var game_dir := CheckpointStore.game_directory(game_id)
-	var directory := Directory.new()
+	var directory := DirAccess.new()
 	directory.make_dir_recursive(game_dir)
 	var path := game_dir + "0.json"
 	var file := File.new()
@@ -95,7 +95,7 @@ func test_unreadable_checkpoint_stays_joinable():
 		if str(game.get("game_id", "")) == game_id:
 			found = game
 
-	assert_false(found.empty())
+	assert_false(found.is_empty())
 	assert_true(bool(found.get("join_only", false)))
 	assert_eq(found.get("participants", []).size(), 0)
 	directory.remove(path)
@@ -133,9 +133,9 @@ func test_opponent_disconnect_clears_connected_state():
 	Rede.is_connected = true
 	watch_signals(Rede)
 
-	Rede._handle_packet(JSON.print({
+	Rede._handle_packet(JSON.stringify({
 		"t": "opponent_disconnected",
-	}).to_utf8())
+	}).to_utf8_buffer())
 
 	assert_false(Rede.is_connected)
 	assert_signal_emitted(Rede, "peer_disconnected")
@@ -145,13 +145,13 @@ func test_chunked_network_message_is_reassembled():
 	Rede.disconnect_game()
 	Rede.is_connected = true
 	watch_signals(Rede)
-	var text := JSON.print({
+	var text := JSON.stringify({
 		"t": "mp_test",
 		"payload": "x".repeat(25000),
 	})
 	var count := int(ceil(float(text.length()) / Rede.MAX_MESSAGE_CHARS))
 	for index in range(count):
-		Rede._handle_packet(JSON.print({
+		Rede._handle_packet(JSON.stringify({
 			"t": "mp_chunk",
 			"id": "chunk-test",
 			"i": index,
@@ -159,9 +159,9 @@ func test_chunked_network_message_is_reassembled():
 			"p": text.substr(
 					index * Rede.MAX_MESSAGE_CHARS,
 					Rede.MAX_MESSAGE_CHARS),
-		}).to_utf8())
+		}).to_utf8_buffer())
 
-	assert_true(Rede._incoming_chunks.empty())
+	assert_true(Rede._incoming_chunks.is_empty())
 	assert_signal_emitted(Rede, "message_received")
 	Rede.disconnect_game()
 
@@ -209,7 +209,7 @@ func test_begin_join_requires_username_and_code():
 
 
 func test_main_menu_contains_matchmaking_fields():
-	var menu: Control = load("res://src/custom/MainMenu.tscn").instance()
+	var menu: Control = load("res://src/custom/MainMenu.tscn").instantiate()
 
 	assert_true(menu.has_node(
 			"MainMenu/VBox/Center/VButtons/PlayerName"))
@@ -231,7 +231,7 @@ func test_main_menu_contains_matchmaking_fields():
 
 
 func test_main_menu_drops_deck_and_test_entries():
-	var menu: Control = load("res://src/custom/MainMenu.tscn").instance()
+	var menu: Control = load("res://src/custom/MainMenu.tscn").instantiate()
 	var buttons := "MainMenu/VBox/Center/VButtons/"
 
 	for removed_button in ["SavedDecks", "Deckbuilder", "CardLibrary", "GUT"]:
@@ -242,26 +242,26 @@ func test_main_menu_drops_deck_and_test_entries():
 
 
 func test_main_menu_error_dialog_has_ok_button():
-	var menu: Control = load("res://src/custom/MainMenu.tscn").instance()
+	var menu: Control = load("res://src/custom/MainMenu.tscn").instantiate()
 	add_child(menu)
 	menu._show_action_error("Mensagem de teste")
 
 	assert_true(menu.action_error.visible)
 	assert_eq(menu.action_error.dialog_text, "Mensagem de teste")
-	assert_true(menu.action_error.get_ok() != null)
+	assert_true(menu.action_error.get_ok_button() != null)
 	assert_true(menu.action_error.get_label().autowrap)
 	menu.action_error.hide()
 	menu.free()
 
 
 func test_deck_catalog_lists_saved_decks():
-	var directory := Directory.new()
+	var directory := DirAccess.new()
 	var make_error := directory.make_dir_recursive(CFConst.DECKS_PATH)
 	assert_true(make_error == OK or make_error == ERR_ALREADY_EXISTS)
 	var path: String = CFConst.DECKS_PATH + "gut_deck_catalog.json"
 	var file := File.new()
 	assert_eq(file.open(path, File.WRITE), OK)
-	file.store_string(JSON.print({
+	file.store_string(JSON.stringify({
 		"name": "GUT Catalog",
 		"cards": {"BSCA_001": 2, "BSCA_002": 1},
 	}))
@@ -272,8 +272,8 @@ func test_deck_catalog_lists_saved_decks():
 	for entry in entries:
 		if str(entry["path"]) == path:
 			found = entry
-	assert_false(found.empty(), "Saved deck must be listed by the catalog")
-	if not found.empty():
+	assert_false(found.is_empty(), "Saved deck must be listed by the catalog")
+	if not found.is_empty():
 		assert_eq(str(found["name"]), "GUT Catalog")
 		assert_eq(int(found["count"]), 3)
 	directory.remove(path)
@@ -283,15 +283,15 @@ func test_deck_catalog_rejects_invalid_saved_decks():
 	var path: String = CFConst.DECKS_PATH + "gut_deck_catalog_invalid.json"
 	var file := File.new()
 	assert_eq(file.open(path, File.WRITE), OK)
-	file.store_string(JSON.print({"name": "Incompleto", "cards": {}}))
+	file.store_string(JSON.stringify({"name": "Incompleto", "cards": {}}))
 	file.close()
-	assert_true(DeckCatalog.load_deck(path).empty())
-	var directory := Directory.new()
+	assert_true(DeckCatalog.load_deck(path).is_empty())
+	var directory := DirAccess.new()
 	directory.remove(path)
 
 
 func test_match_hud_exposes_preparation_controls():
-	var hud: Control = load("res://src/custom/MatchHUD.tscn").instance()
+	var hud: Control = load("res://src/custom/MatchHUD.tscn").instantiate()
 
 	assert_true(hud.has_node("PreparePanel/Margin/VBox/DeckButtons/SavedDecks"))
 	assert_true(hud.has_node("PreparePanel/Margin/VBox/DisplayLabel"))
@@ -314,11 +314,11 @@ func test_checkpoint_private_payload_round_trip():
 	var restored_deck: Array = restored.get("deck", [])
 	assert_eq(restored_hand.size(), 1)
 	assert_eq(restored_deck.size(), 1)
-	assert_true(CheckpointStore.unprotect_payload(envelope, "Bob").empty())
+	assert_true(CheckpointStore.unprotect_payload(envelope, "Bob").is_empty())
 
 
 func test_reprotect_keeps_checkpoint_on_username_collision():
-	var suffix := str(OS.get_ticks_usec())
+	var suffix := str(Time.get_ticks_usec())
 	var host := "gut_host_" + suffix
 	var guest := "gut_guest_" + suffix
 	var renamed := "gut_renamed_" + suffix
@@ -359,7 +359,7 @@ func test_reprotect_keeps_checkpoint_on_username_collision():
 	assert_true(updated.get("ok", false))
 	assert_eq(str(updated["data"]["p1"]), renamed)
 
-	var directory := Directory.new()
+	var directory := DirAccess.new()
 	directory.remove(CheckpointStore.checkpoint_path(game_id, 0))
 	directory.remove(CheckpointStore.game_directory(game_id))
 

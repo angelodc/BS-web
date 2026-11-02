@@ -1,30 +1,30 @@
 [gd_scene load_steps=9 format=2]
 
 [ext_resource path="res://src/custom/MatchHUD.gd" type="Script" id=1]
-[ext_resource path="res://fonts/comfortaa/Comfortaa-Bold.ttf" type="DynamicFontData" id=2]
+[ext_resource path="res://fonts/comfortaa/Comfortaa-Bold.ttf" type="FontFile" id=2]
 
-[sub_resource type="DynamicFont" id=1]
+[sub_resource type="FontFile" id=1]
 size = 22
 outline_size = 3
 outline_color = Color( 0, 0, 0, 1 )
 use_filter = true
 font_data = ExtResource( 2 )
 
-[sub_resource type="DynamicFont" id=2]
+[sub_resource type="FontFile" id=2]
 size = 26
 outline_size = 3
 outline_color = Color( 0, 0, 0, 1 )
 use_filter = true
 font_data = ExtResource( 2 )
 
-[sub_resource type="DynamicFont" id=3]
+[sub_resource type="FontFile" id=3]
 size = 13
 outline_size = 2
 outline_color = Color( 0, 0, 0, 1 )
 use_filter = true
 font_data = ExtResource( 2 )
 
-[sub_resource type="DynamicFont" id=6]
+[sub_resource type="FontFile" id=6]
 size = 16
 outline_size = 2
 outline_color = Color( 0, 0, 0, 1 )
@@ -68,60 +68,60 @@ __meta__ = {
 [node name="TopBar" type="PanelContainer" parent="."]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -435.0
-margin_top = 6.0
-margin_right = -8.0
-margin_bottom = 88.0
+offset_left = -435.0
+offset_top = 6.0
+offset_right = -8.0
+offset_bottom = 88.0
 mouse_filter = 2
-custom_styles/panel = SubResource( 4 )
+theme_override_styles/panel = SubResource( 4 )
 
 [node name="Margin" type="MarginContainer" parent="TopBar"]
 mouse_filter = 2
-custom_constants/margin_left = 12
-custom_constants/margin_top = 4
-custom_constants/margin_right = 150
-custom_constants/margin_bottom = 4
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 150
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="TopBar/Margin"]
 mouse_filter = 2
-custom_constants/separation = 1
+theme_override_constants/separation = 1
 
 [node name="PhaseLabel" type="Label" parent="TopBar/Margin/VBox"]
-custom_fonts/font = SubResource( 6 )
+theme_override_fonts/font = SubResource( 6 )
 text = "PREPARAÇÃO"
 
 [node name="InfoLabel" type="Label" parent="TopBar/Margin/VBox"]
-custom_fonts/font = SubResource( 3 )
-custom_colors/font_color = Color( 0.78, 0.82, 0.9, 1 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.78, 0.82, 0.9, 1 )
 text = "R1 · E1/10 · Sua vez"
-autowrap = true
+autowrap_mode = 3
 
 [node name="MatchMenu" type="MenuButton" parent="."]
-margin_left = 778.0
-margin_top = 14.0
-margin_right = 838.0
-margin_bottom = 46.0
+offset_left = 778.0
+offset_top = 14.0
+offset_right = 838.0
+offset_bottom = 46.0
 text = "Menu"
 
 [node name="AdvanceButton" type="Button" parent="."]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -150.0
-margin_top = 12.0
-margin_right = -18.0
-margin_bottom = 48.0
+offset_left = -150.0
+offset_top = 12.0
+offset_right = -18.0
+offset_bottom = 48.0
 text = "Avançar Fase"
 
 [node name="CheckpointLabel" type="Label" parent="."]
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -150.0
-margin_top = 52.0
-margin_right = -18.0
-margin_bottom = 76.0
+offset_left = -150.0
+offset_top = 52.0
+offset_right = -18.0
+offset_bottom = 76.0
 mouse_filter = 2
-custom_fonts/font = SubResource( 3 )
-custom_colors/font_color = Color( 0.7, 0.78, 0.65, 1 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.7, 0.78, 0.65, 1 )
 text = "Checkpoint #0"
 align = 2
 
@@ -129,34 +129,34 @@ align = 2
 visible = false
 anchor_left = 1.0
 anchor_right = 1.0
-margin_left = -150.0
-margin_top = 82.0
-margin_right = -18.0
-margin_bottom = 118.0
+offset_left = -150.0
+offset_top = 82.0
+offset_right = -18.0
+offset_bottom = 118.0
 text = "Controlar P2"
 
 [node name="LogPanel" type="PanelContainer" parent="."]
-margin_left = 8.0
-margin_top = 6.0
-margin_right = 300.0
-margin_bottom = 126.0
-custom_styles/panel = SubResource( 4 )
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 300.0
+offset_bottom = 126.0
+theme_override_styles/panel = SubResource( 4 )
 
 [node name="Margin" type="MarginContainer" parent="LogPanel"]
 mouse_filter = 2
-custom_constants/margin_left = 8
-custom_constants/margin_top = 4
-custom_constants/margin_right = 4
-custom_constants/margin_bottom = 4
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 4
 
 [node name="LogLabel" type="RichTextLabel" parent="LogPanel/Margin"]
 mouse_filter = 0
 size_flags_horizontal = 3
 size_flags_vertical = 3
-custom_fonts/normal_font = SubResource( 3 )
-custom_colors/default_color = Color( 0.82, 0.85, 0.9, 1 )
+theme_override_fonts/normal_font = SubResource( 3 )
+theme_override_colors/default_color = Color( 0.82, 0.85, 0.9, 1 )
 bbcode_enabled = true
-bbcode_text = "Sessão multiplayer iniciada."
+text = "Sessão multiplayer iniciada."
 text = "Sessão multiplayer iniciada."
 scroll_following = true
 
@@ -165,97 +165,97 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-margin_left = -290.0
-margin_top = -220.0
-margin_right = 290.0
-margin_bottom = 220.0
-custom_styles/panel = SubResource( 5 )
+offset_left = -290.0
+offset_top = -220.0
+offset_right = 290.0
+offset_bottom = 220.0
+theme_override_styles/panel = SubResource( 5 )
 
 [node name="Margin" type="MarginContainer" parent="PreparePanel"]
-custom_constants/margin_left = 24
-custom_constants/margin_top = 18
-custom_constants/margin_right = 24
-custom_constants/margin_bottom = 18
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 18
 
 [node name="VBox" type="VBoxContainer" parent="PreparePanel/Margin"]
-custom_constants/separation = 10
+theme_override_constants/separation = 10
 
 [node name="Title" type="Label" parent="PreparePanel/Margin/VBox"]
-custom_fonts/font = SubResource( 1 )
+theme_override_fonts/font = SubResource( 1 )
 text = "Preparação da Partida"
 align = 1
 
 [node name="RoomLabel" type="Label" parent="PreparePanel/Margin/VBox"]
-custom_fonts/font = SubResource( 3 )
-custom_colors/font_color = Color( 0.72, 0.8, 0.95, 1 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.72, 0.8, 0.95, 1 )
 text = "Sala · Anfitrião"
 align = 1
-autowrap = true
+autowrap_mode = 3
 
 [node name="Separator" type="HSeparator" parent="PreparePanel/Margin/VBox"]
 
 [node name="DeckStatus" type="Label" parent="PreparePanel/Margin/VBox"]
 text = "Seu deck: 0/60 · Oponente: aguardando"
 align = 1
-autowrap = true
+autowrap_mode = 3
 
 [node name="DisplayLabel" type="Label" parent="PreparePanel/Margin/VBox"]
-custom_fonts/font = SubResource( 3 )
-custom_colors/font_color = Color( 0.62, 0.68, 0.78, 1 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.62, 0.68, 0.78, 1 )
 text = "Você: tela 1920x1080 · lógico 1280x720\nOponente: aguardando resolução"
 align = 1
-autowrap = true
+autowrap_mode = 3
 
 [node name="Hint" type="Label" parent="PreparePanel/Margin/VBox"]
-custom_fonts/font = SubResource( 3 )
-custom_colors/font_color = Color( 0.78, 0.82, 0.88, 1 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.78, 0.82, 0.88, 1 )
 text = "Escolha um deck de 60 cartas ou importe um link do BSDB."
 align = 1
-autowrap = true
-rect_min_size = Vector2( 0, 34 )
+autowrap_mode = 3
+custom_minimum_size = Vector2( 0, 34 )
 
 [node name="SoloDeckButtons" type="HBoxContainer" parent="PreparePanel/Margin/VBox"]
 visible = false
 alignment = 1
-custom_constants/separation = 12
+theme_override_constants/separation = 12
 
 [node name="DeckP1" type="Button" parent="PreparePanel/Margin/VBox/SoloDeckButtons"]
-rect_min_size = Vector2( 250, 40 )
+custom_minimum_size = Vector2( 250, 40 )
 clip_text = true
 text = "P1 · Escolher deck"
 
 [node name="DeckP2" type="Button" parent="PreparePanel/Margin/VBox/SoloDeckButtons"]
-rect_min_size = Vector2( 250, 40 )
+custom_minimum_size = Vector2( 250, 40 )
 clip_text = true
 text = "P2 · Escolher deck"
 
 [node name="DeckButtons" type="HBoxContainer" parent="PreparePanel/Margin/VBox"]
 alignment = 1
-custom_constants/separation = 12
+theme_override_constants/separation = 12
 
 [node name="SavedDecks" type="MenuButton" parent="PreparePanel/Margin/VBox/DeckButtons"]
-rect_min_size = Vector2( 210, 38 )
+custom_minimum_size = Vector2( 210, 38 )
 text = "Decks salvos"
 
 [node name="LinkDeck" type="Button" parent="PreparePanel/Margin/VBox/DeckButtons"]
-rect_min_size = Vector2( 190, 38 )
+custom_minimum_size = Vector2( 190, 38 )
 text = "Deck por link"
 
 [node name="PlaymatButtons" type="HBoxContainer" parent="PreparePanel/Margin/VBox"]
 alignment = 1
-custom_constants/separation = 12
+theme_override_constants/separation = 12
 
 [node name="PlaymatLabel" type="Label" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
-custom_fonts/font = SubResource( 3 )
-custom_colors/font_color = Color( 0.78, 0.82, 0.88, 1 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.78, 0.82, 0.88, 1 )
 text = "Playmat"
 
 [node name="PlaymatOptions" type="OptionButton" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
-rect_min_size = Vector2( 210, 38 )
+custom_minimum_size = Vector2( 210, 38 )
 
 [node name="PlaymatUpload" type="Button" parent="PreparePanel/Margin/VBox/PlaymatButtons"]
-rect_min_size = Vector2( 170, 38 )
-hint_tooltip = "Escolha uma imagem do seu computador. Sugestão: 1920x1080 (16:9), JPG ou PNG."
+custom_minimum_size = Vector2( 170, 38 )
+tooltip_text = "Escolha uma imagem do seu computador. Sugestão: 1920x1080 (16:9), JPG ou PNG."
 text = "Subir playmat"
 
 [node name="Spacer" type="Control" parent="PreparePanel/Margin/VBox"]
@@ -263,11 +263,11 @@ size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="StartButton" type="Button" parent="PreparePanel/Margin/VBox"]
-rect_min_size = Vector2( 0, 44 )
+custom_minimum_size = Vector2( 0, 44 )
 text = "Aguardando decks"
 
 [node name="CancelButton" type="Button" parent="PreparePanel/Margin/VBox"]
-rect_min_size = Vector2( 0, 30 )
+custom_minimum_size = Vector2( 0, 30 )
 text = "Sair da sala"
 
 [node name="Overlay" type="ColorRect" parent="."]
@@ -287,29 +287,29 @@ anchor_bottom = 1.0
 mouse_filter = 2
 
 [node name="VBox" type="VBoxContainer" parent="Overlay/Center"]
-rect_min_size = Vector2( 660, 0 )
-custom_constants/separation = 16
+custom_minimum_size = Vector2( 660, 0 )
+theme_override_constants/separation = 16
 
 [node name="OverlayTitle" type="Label" parent="Overlay/Center/VBox"]
-custom_fonts/font = SubResource( 2 )
+theme_override_fonts/font = SubResource( 2 )
 text = "Jogo congelado"
 align = 1
 
 [node name="OverlayMessage" type="Label" parent="Overlay/Center/VBox"]
-rect_min_size = Vector2( 620, 0 )
-custom_fonts/font = SubResource( 3 )
+custom_minimum_size = Vector2( 620, 0 )
+theme_override_fonts/font = SubResource( 3 )
 text = "O oponente desconectou."
 align = 1
-autowrap = true
+autowrap_mode = 3
 
 [node name="Buttons" type="HBoxContainer" parent="Overlay/Center/VBox"]
 alignment = 1
-custom_constants/separation = 16
+theme_override_constants/separation = 16
 
 [node name="ReconnectButton" type="Button" parent="Overlay/Center/VBox/Buttons"]
-rect_min_size = Vector2( 210, 42 )
+custom_minimum_size = Vector2( 210, 42 )
 text = "Reconectar"
 
 [node name="LeaveButton" type="Button" parent="Overlay/Center/VBox/Buttons"]
-rect_min_size = Vector2( 210, 42 )
+custom_minimum_size = Vector2( 210, 42 )
 text = "Voltar ao menu"

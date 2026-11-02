@@ -21,7 +21,7 @@ class TestBattleScenesCapacity:
 				slot = candidate
 				break
 		assert_true(is_instance_valid(slot), "A mesa tem um slot livre")
-		card.global_position = slot.rect_global_position
+		card.global_position = slot.global_position
 		slot.occupying_card = card
 		card._placement_slot = slot
 

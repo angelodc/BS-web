@@ -47,7 +47,7 @@ const MAX_RTL_CONTENT_HEIGHT := 10000
 
 
 # Stores a reference to the Card that is hosting this node
-onready var card_owner = get_parent().get_parent().get_parent()
+@onready var card_owner = get_parent().get_parent().get_parent()
 
 
 ## Thread must be disposed (or "joined"), for portability.
@@ -69,12 +69,16 @@ func set_label_text(node: Label, value, scale: float = 1):
 	var label_font :Font = get_card_label_font(node)
 #	print_debug(scaled_fonts.get(node.name, 1))
 	var cached_font_size = get_cached_font_size(node,value,scale)
+	# No Godot 4 o tamanho da fonte é um override de tema por Control, não uma
+	# propriedade do FontFile. Guardamos o tamanho final e o aplicamos via
+	# add_theme_font_size_override depois de setar a fonte.
+	var final_size : int
 	if cached_font_size:
-		label_font.size = cached_font_size
+		final_size = max(int(cached_font_size), 1)
 	else:
 		# We add a yield here to allow the calling function to continue
 		# and thus avoid the game waiting for the label to resize
-		yield(get_tree(), "idle_frame")
+		await get_tree().process_frame
 		var working_value: String
 		# If the label node has been set to uppercase the text
 		# Then we need to work off-of uppercased text value
@@ -85,18 +89,18 @@ func set_label_text(node: Label, value, scale: float = 1):
 		else:
 			working_value = value
 		_capture_original_font_size(node)
-		var line_spacing = node.get("custom_constants/line_spacing")
+		var line_spacing = node.get("theme_override_constants/line_spacing")
 		if not line_spacing:
 			line_spacing = 3
-		var starting_font_size: int = font_sizes[node.name]
-		label_font.size = starting_font_size
-		var font_adjustment := _adjust_font_size(label_font, working_value, node.rect_min_size, line_spacing)
+		var starting_font_size: int = int(font_sizes[node.name])
+		var font_adjustment := _adjust_font_size(label_font, working_value, node.custom_minimum_size, starting_font_size, line_spacing)
 	#	if  node.name == "Abilities": font_adjustment = -17
 		# We always start shrinking the size, starting from the original size.
 #		print_debug(scaled_fonts.get(node.name, 1))
 		_cache_font_size(node,value,starting_font_size + font_adjustment,scale)
-		label_font.size = starting_font_size + font_adjustment
+		final_size = starting_font_size + font_adjustment
 	set_card_label_font(node, label_font)
+	node.add_theme_font_size_override("font_size", final_size)
 	node.text = value
 	resizing_labels.erase(node)
 
@@ -107,13 +111,9 @@ func set_label_text(node: Label, value, scale: float = 1):
 # by classes extending this, to allow them to use their own methods
 # (e.g. based on themes)
 func get_card_label_font(label: Label) -> Font:
-	var theme : Theme = self.theme
-	var label_font : Font
-	if theme:
-		label_font = theme.get_font("font", "Label").duplicate()
-	else:
-		label_font = label.get("custom_fonts/font").duplicate()
-	return(label_font)
+	# get_theme_font já resolve o fallback de tema/pai; não duplicamos porque o
+	# tamanho agora é aplicado via override de tema, não no próprio recurso.
+	return label.get_theme_font("font")
 
 
 # Sets the font to be used by the current label
@@ -122,7 +122,7 @@ func get_card_label_font(label: Label) -> Font:
 # by classes extending this, to allow them to use their own methods
 # (e.g. based on themes)
 func set_card_label_font(label: Label, font: Font) -> void:
-	label.add_font_override("font", font)
+	label.add_theme_font_override("font", font)
 
 
 # We use this as an alternative to scaling the card using the "scale" property.
@@ -140,10 +140,10 @@ func scale_to(scale_multiplier: float) -> void:
 		if scaled_fonts.get(l) != scale_multiplier:
 			scaled_fonts[l] = scale_multiplier
 			while card_labels[l] in resizing_labels:
-				yield(get_tree(), "idle_frame")
+				await get_tree().process_frame
 			if card_labels[l] as RichTextLabel:
 				var label : RichTextLabel = card_labels[l]
-				call_deferred("set_rich_label_text",label, label.bbcode_text, true, scale_multiplier)
+				call_deferred("set_rich_label_text",label, label.text, true, scale_multiplier)
 			else:
 				var label : Label = card_labels[l]
 				call_deferred("set_label_text",label, label.text, scale_multiplier)
@@ -190,13 +190,13 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 		var starting_font_size: int = font_sizes[node.name]
 		var font_adjustment:= 0
 	#	label_font.size = font_sizes[node.name]
-		var label_size = node.rect_min_size
+		var label_size = node.custom_minimum_size
 		_set_card_rtl_fonts(node, label_fonts, starting_font_size + font_adjustment)
 		_assign_bbcode_text(node, value, starting_font_size + font_adjustment)
 		# Rich Text has no way to grab its total size without setting the bbcode first
 		# After we set the bbcode, we need to wait for the next frame for the label to adjust
 		# and then we can grab its height
-		yield(get_tree(), "idle_frame")
+		await get_tree().process_frame
 		var _retries := 0
 		var bbcode_height = node.get_content_height()
 		var measuring_gave_up := false
@@ -204,7 +204,7 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 		while bbcode_height == 0 or bbcode_height > 1000:
 			_retries += 1
 #			print_debug("{0} BBcode height:{1} retrying: {2}".format([card_owner.canonical_name, bbcode_height, _retries]))
-			yield(get_tree(), "idle_frame")
+			await get_tree().process_frame
 			bbcode_height = node.get_content_height()
 #			print_debug(["Retry", _retries, "Code Height", bbcode_height])
 			if bbcode_height > MAX_RTL_CONTENT_HEIGHT:
@@ -224,10 +224,10 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 		# needed.
 		if bbcode_height > label_size.y:
 			font_adjustment = max(
-					_adjust_font_size(label_fonts["normal_font"], node.text, label_size),
+					_adjust_font_size(label_fonts["normal_font"], node.text, label_size, starting_font_size),
 					MIN_RTL_FONT_SIZE - starting_font_size)
 			_set_card_rtl_fonts(node, label_fonts, starting_font_size + font_adjustment)
-			yield(get_tree(), "idle_frame")
+			await get_tree().process_frame
 			bbcode_height = node.get_content_height()
 			if bbcode_height > MAX_RTL_CONTENT_HEIGHT:
 				measuring_gave_up = true
@@ -251,14 +251,14 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 			font_adjustment -= 1
 			_set_card_rtl_fonts(node, label_fonts, starting_font_size + font_adjustment)
 			_assign_bbcode_text(node, value, starting_font_size + font_adjustment)
-			yield(get_tree(), "idle_frame")
+			await get_tree().process_frame
 			bbcode_height = node.get_content_height()
 #			print_debug(["Font Adjustment", font_adjustment, "Code Height", bbcode_height])
 			_retries = 0
 			while bbcode_height == 0 or bbcode_height > 1000:
 				_retries += 1
 #				print_debug("BBcode height:" + str(bbcode_height) + " retrying: " + str(_retries))
-				yield(get_tree(), "idle_frame")
+				await get_tree().process_frame
 				bbcode_height = node.get_content_height()
 				if bbcode_height > MAX_RTL_CONTENT_HEIGHT:
 					measuring_gave_up = true
@@ -284,7 +284,7 @@ func set_rich_label_text(node: RichTextLabel, value: String, is_resize := false,
 							[card_owner.canonical_name, starting_font_size, bbcode_height, label_size.y, MIN_RTL_FONT_SIZE, small_size_retries]))
 					small_size_retries += 1
 					font_adjustment = max(
-							_adjust_font_size(label_fonts["normal_font"], node.text, label_size),
+							_adjust_font_size(label_fonts["normal_font"], node.text, label_size, starting_font_size),
 							MIN_RTL_FONT_SIZE - starting_font_size)
 				else:
 					break
@@ -323,7 +323,7 @@ func _capture_original_font_size(label) -> void:
 		font_sizes[label.name] = original_font_sizes[label.name]
 
 
-func _assign_bbcode_text(rtlabel: RichTextLabel, bbcode_text : String, font_size: int) -> void:
+func _assign_bbcode_text(rtlabel: RichTextLabel, text : String, font_size: int) -> void:
 	var format = _get_bbcode_format()
 	rtlabel.clear()
 	var bbcode_format := {}
@@ -335,9 +335,9 @@ func _assign_bbcode_text(rtlabel: RichTextLabel, bbcode_text : String, font_size
 		format[key] = format[key].format(bbcode_format)
 	if rtlabel == card_labels["Name"]:
 		_add_title_bbcode(rtlabel)
-	rtlabel.push_align(RichTextLabel.ALIGN_CENTER)
+	rtlabel.push_paragraph(HORIZONTAL_ALIGNMENT_CENTER)
 	# warning-ignore:return_value_discarded
-	rtlabel.append_bbcode(bbcode_text.format(format))
+	rtlabel.append_text(text.format(format))
 	#	print_debug(bbcode_text.format(format))
 	rtlabel.pop()
 	if rtlabel == card_labels["Name"]:
@@ -359,24 +359,17 @@ func _get_bbcode_format() -> Dictionary:
 
 # Goes through a rich text label, and retrieves all fonts used to define it.
 func _get_card_rtl_fonts(label: RichTextLabel) -> Dictionary:
-	var theme : Theme = self.theme
-	var all_rt_fonts:= {}
-	var label_font : Font
+	var all_rt_fonts := {}
+	# "title_font" não existe mais como item de tema no RichTextLabel do Godot 4.
 	for font_type in [
 			"normal_font",
 			"italics_font",
 			"bold_font",
 			"bold_italics_font",
-			"title_font",
 			"mono_font"]:
-		if theme:
-			label_font = theme.get_font(font_type, "RichTextLabel").duplicate()
-			if label_font:
-				all_rt_fonts[font_type] = label_font
-		else:
-			label_font = label.get("custom_fonts/" + font_type).duplicate()
-			if label_font:
-				all_rt_fonts[font_type] = label_font
+		var label_font : Font = label.get_theme_font(font_type)
+		if label_font != null:
+			all_rt_fonts[font_type] = label_font
 	return(all_rt_fonts)
 
 
@@ -388,14 +381,11 @@ func _capture_rt_font_size_variations(label: RichTextLabel) -> void:
 		return
 	var fvars := {}
 	var label_fonts := _get_card_rtl_fonts(label)
-	for font_type in [
-			"normal_font",
-			"italics_font",
-			"bold_font",
-			"bold_italics_font",
-			"title_font",
-			"mono_font"]:
-		fvars[font_type] = label_fonts[font_type].size - label_fonts["normal_font"].size
+	var normal_size := label.get_theme_font_size("normal_font_size")
+	# Iteramos sobre as fontes realmente presentes para que fvars tenha as mesmas
+	# chaves de fonts_dict (usado por _set_card_rtl_fonts).
+	for font_type in label_fonts:
+		fvars[font_type] = label.get_theme_font_size(font_type + "_size") - normal_size
 	rich_text_font_size_variations[label] = fvars
 
 
@@ -407,8 +397,9 @@ func _set_card_rtl_fonts(label: RichTextLabel, fonts_dict: Dictionary, new_size:
 		# under the minimum: a size of 0 leaves the DynamicFont without a
 		# cache entry and the label without a usable measurement.
 		var font_size: int = new_size + rich_text_font_size_variations[label][font_type]
-		fonts_dict[font_type].size = max(font_size, MIN_RTL_FONT_SIZE)
-		label.add_font_override(font_type, fonts_dict[font_type])
+		font_size = max(font_size, MIN_RTL_FONT_SIZE)
+		label.add_theme_font_override(font_type, fonts_dict[font_type])
+		label.add_theme_font_size_override(font_type + "_size", font_size)
 
 
 # figures out how much a font size has to be reduced, in order to fit
@@ -419,9 +410,11 @@ func _adjust_font_size(
 		font: Font,
 		text: String,
 		label_size: Vector2,
+		base_font_size: int,
 		line_spacing := 3) -> int:
-	var adjustment_font := font.duplicate(true)
-	var line_height = font.get_height()
+	# No Godot 4 a medição leva o tamanho como argumento; não mutamos o recurso.
+	var current_size : int = base_font_size
+	var line_height = font.get_height(current_size)
 	# A font without a cache reports no line height; dividing by it would give
 	# an infinite measure and shrink the text to nothing.
 	if line_height <= 0.0:
@@ -430,8 +423,7 @@ func _adjust_font_size(
 	# line_spacing should be calculated into rect_size
 	# This calculates the amount of vertical pixels the text would take
 	# once it was word-wrapped.
-	var label_rect_y = adjustment_font.get_wordwrap_string_size(
-			text, label_size.x).y \
+	var label_rect_y = _wrapped_text_height(font, text, label_size.x, current_size) \
 			/ line_height \
 			* (line_height + line_spacing) \
 			- line_spacing
@@ -440,18 +432,26 @@ func _adjust_font_size(
 	# it's small enough to stay within the boundaries
 	while label_rect_y > label_size.y:
 		adjustment -= 1
-		adjustment_font.size = font.size + adjustment
-		line_height = adjustment_font.get_height()
+		current_size = base_font_size + adjustment
+		line_height = font.get_height(current_size)
 		if line_height <= 0.0:
 			break
-		label_rect_y = adjustment_font.get_wordwrap_string_size(
-				text,label_size.x).y \
+		label_rect_y = _wrapped_text_height(font, text, label_size.x, current_size) \
 				/ line_height \
 				* (line_height + line_spacing) \
 				- line_spacing
-		if adjustment_font.size < 5:
+		if current_size < 5:
 			break
 	return(adjustment)
+
+
+# Mede a altura de um texto com quebra de linha. No Godot 4.7 a Font não tem
+# mais get_wordwrap_string_size; usamos TextParagraph, que faz o wordwrap real.
+func _wrapped_text_height(font: Font, text: String, width: float, font_size: int) -> float:
+	var para := TextParagraph.new()
+	para.set_width(width)
+	para.add_string(text, font, font_size)
+	return para.get_size().y
 
 
 # Overridable function which allows values to be replaced on the fly

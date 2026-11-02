@@ -37,8 +37,8 @@ online/
 
 ## Exportar o jogo
 
-Instale os templates de exportação do Godot 3.4.4 e use
-**Projeto → Exportar → HTML5**. A saída configurada é
+Instale os templates de exportação do Godot 4.7.2 e use
+**Projeto → Exportar → Web**. A saída configurada é
 `online/site/game/index.html`.
 
 ## Testar localmente

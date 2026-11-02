@@ -6,6 +6,7 @@ extends ManipulationButtons
 
 
 func _ready() -> void:
+	super._ready()
 	# The labels were swapped against what the card does: the button that tilts
 	# the character one way read as the other state. The node names stay because
 	# the visibility rules and the intent handlers hang off them.
@@ -23,22 +24,22 @@ func _ready() -> void:
 	var shield_menu: PopupMenu = PopupMenu.new()
 	shield_menu.name = "ShieldMenu"
 	add_child(shield_menu)
-	shield_menu.connect("id_pressed", self, "_on_ShieldMenu_id_pressed")
+	shield_menu.id_pressed.connect(_on_ShieldMenu_id_pressed)
 	for button in get_children():
 		if button is Button:
-			button.hint_tooltip = str(needed_buttons.get(button.name, button.name))
+			button.tooltip_text = str(needed_buttons.get(button.name, button.name))
 			if button.name in ["Capacitar", "Incapacitar"]:
-				button.rect_min_size = Vector2(100, 26)
+				button.custom_minimum_size = Vector2(100, 26)
 			elif button.name == "Escudo":
-				button.rect_min_size = Vector2(70, 26)
+				button.custom_minimum_size = Vector2(70, 26)
 			elif button.name == "Flip":
-				button.rect_min_size = Vector2(60, 26)
+				button.custom_minimum_size = Vector2(60, 26)
 			elif button.name == "Premios":
-				button.rect_min_size = Vector2(80, 26)
+				button.custom_minimum_size = Vector2(80, 26)
 			elif button.name == "Nocaute":
-				button.rect_min_size = Vector2(80, 26)
+				button.custom_minimum_size = Vector2(80, 26)
 			elif button.name == "Dano":
-				button.rect_min_size = Vector2(80, 26)
+				button.custom_minimum_size = Vector2(80, 26)
 
 
 func set_active(value = true) -> void:
@@ -47,7 +48,7 @@ func set_active(value = true) -> void:
 	_update_action_visibility(
 			value and is_on_board,
 			owner_node.is_battle_scenes_character())
-	.set_active(value and is_on_board)
+	super.set_active(value and is_on_board)
 
 
 func _update_action_visibility(is_available: bool, is_character: bool) -> void:
@@ -115,7 +116,7 @@ func _on_Escudo_pressed() -> void:
 				shield_count < amount)
 	var shield_button: Button = get_node("Escudo")
 	shield_menu.popup(Rect2(
-			shield_button.rect_global_position + Vector2(shield_button.rect_size.x, 0),
+			shield_button.global_position + Vector2(shield_button.size.x, 0),
 			Vector2(1, 1)))
 
 

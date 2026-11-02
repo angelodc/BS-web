@@ -16,7 +16,7 @@ var keyboard
 func before_each():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+		await setup.completed
 	actions = Actions.new(board, 1)
 	keyboard = Keyboard.new(actions)
 
@@ -139,8 +139,8 @@ func test_a_focused_text_field_blocks_the_shortcuts():
 			"The viewport reports the text field as focus owner")
 
 	var event := InputEventKey.new()
-	event.pressed = true
-	event.scancode = KEY_J
+	event.button_pressed = true
+	event.keycode = KEY_J
 
 	assert_false(keyboard.handle_event(event), "The shortcut stays off")
 	assert_eq(actions.history.size(), 0)

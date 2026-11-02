@@ -28,43 +28,43 @@ const PLAYMAT_WEB_MAX_BYTES := 12 * 1024 * 1024
 # chunks, which keeps the frames short while a large photo comes across.
 const WEB_CHUNK_SIZE := 262144
 
-onready var _top_bar: PanelContainer = $TopBar
-onready var _phase_label: Label = $TopBar/Margin/VBox/PhaseLabel
-onready var _info_label: Label = $TopBar/Margin/VBox/InfoLabel
-onready var _match_menu: MenuButton = $MatchMenu
-onready var _advance_button: Button = $AdvanceButton
-onready var _swap_seat_button: Button = $SwapSeatButton
-onready var _checkpoint_label: Label = $CheckpointLabel
-onready var _log_panel: PanelContainer = $LogPanel
-onready var _log_label: RichTextLabel = $LogPanel/Margin/LogLabel
-onready var _prepare_panel: PanelContainer = $PreparePanel
-onready var _room_label: Label = $PreparePanel/Margin/VBox/RoomLabel
-onready var _deck_status: Label = $PreparePanel/Margin/VBox/DeckStatus
-onready var _display_label: Label = $PreparePanel/Margin/VBox/DisplayLabel
-onready var _hint_label: Label = $PreparePanel/Margin/VBox/Hint
-onready var _solo_deck_buttons: HBoxContainer = $PreparePanel/Margin/VBox/SoloDeckButtons
-onready var _solo_deck_p1: Button = $PreparePanel/Margin/VBox/SoloDeckButtons/DeckP1
-onready var _solo_deck_p2: Button = $PreparePanel/Margin/VBox/SoloDeckButtons/DeckP2
-onready var _saved_decks: MenuButton = $PreparePanel/Margin/VBox/DeckButtons/SavedDecks
-onready var _link_deck_button: Button = $PreparePanel/Margin/VBox/DeckButtons/LinkDeck
-onready var _playmat_options: OptionButton = \
+@onready var _top_bar: PanelContainer = $TopBar
+@onready var _phase_label: Label = $TopBar/Margin/VBox/PhaseLabel
+@onready var _info_label: Label = $TopBar/Margin/VBox/InfoLabel
+@onready var _match_menu: MenuButton = $MatchMenu
+@onready var _advance_button: Button = $AdvanceButton
+@onready var _swap_seat_button: Button = $SwapSeatButton
+@onready var _checkpoint_label: Label = $CheckpointLabel
+@onready var _log_panel: PanelContainer = $LogPanel
+@onready var _log_label: RichTextLabel = $LogPanel/Margin/LogLabel
+@onready var _prepare_panel: PanelContainer = $PreparePanel
+@onready var _room_label: Label = $PreparePanel/Margin/VBox/RoomLabel
+@onready var _deck_status: Label = $PreparePanel/Margin/VBox/DeckStatus
+@onready var _display_label: Label = $PreparePanel/Margin/VBox/DisplayLabel
+@onready var _hint_label: Label = $PreparePanel/Margin/VBox/Hint
+@onready var _solo_deck_buttons: HBoxContainer = $PreparePanel/Margin/VBox/SoloDeckButtons
+@onready var _solo_deck_p1: Button = $PreparePanel/Margin/VBox/SoloDeckButtons/DeckP1
+@onready var _solo_deck_p2: Button = $PreparePanel/Margin/VBox/SoloDeckButtons/DeckP2
+@onready var _saved_decks: MenuButton = $PreparePanel/Margin/VBox/DeckButtons/SavedDecks
+@onready var _link_deck_button: Button = $PreparePanel/Margin/VBox/DeckButtons/LinkDeck
+@onready var _playmat_options: OptionButton = \
 		$PreparePanel/Margin/VBox/PlaymatButtons/PlaymatOptions
-onready var _playmat_upload: Button = \
+@onready var _playmat_upload: Button = \
 		$PreparePanel/Margin/VBox/PlaymatButtons/PlaymatUpload
-onready var _start_button: Button = $PreparePanel/Margin/VBox/StartButton
-onready var _cancel_button: Button = $PreparePanel/Margin/VBox/CancelButton
-onready var _overlay: ColorRect = $Overlay
-onready var _overlay_title: Label = $Overlay/Center/VBox/OverlayTitle
-onready var _overlay_message: Label = $Overlay/Center/VBox/OverlayMessage
-onready var _reconnect_button: Button = $Overlay/Center/VBox/Buttons/ReconnectButton
-onready var _leave_button: Button = $Overlay/Center/VBox/Buttons/LeaveButton
+@onready var _start_button: Button = $PreparePanel/Margin/VBox/StartButton
+@onready var _cancel_button: Button = $PreparePanel/Margin/VBox/CancelButton
+@onready var _overlay: ColorRect = $Overlay
+@onready var _overlay_title: Label = $Overlay/Center/VBox/OverlayTitle
+@onready var _overlay_message: Label = $Overlay/Center/VBox/OverlayMessage
+@onready var _reconnect_button: Button = $Overlay/Center/VBox/Buttons/ReconnectButton
+@onready var _leave_button: Button = $Overlay/Center/VBox/Buttons/LeaveButton
 
 var _saved_deck_list := []
 var _playmat_list := []
 var _logs := []
 var _status_note := ""
 var _last_display_summary := ""
-var _link_dialog: WindowDialog
+var _link_dialog: Window
 var _solo_deck_popup: PopupMenu
 var _preview_name := ""
 var _preview_card: Card = null
@@ -81,49 +81,48 @@ var _keyboard = null
 
 
 func _ready() -> void:
-	_saved_decks.get_popup().connect(
-			"index_pressed", self, "_on_saved_deck_pressed")
-	_saved_decks.connect("about_to_show", self, "_populate_saved_decks")
+	_saved_decks.get_popup().index_pressed.connect(_on_saved_deck_pressed)
+	_saved_decks.about_to_popup.connect(_populate_saved_decks)
 	_solo_deck_popup = PopupMenu.new()
 	add_child(_solo_deck_popup)
-	_solo_deck_popup.connect("index_pressed", self, "_on_saved_deck_pressed")
-	_solo_deck_p1.connect("pressed", self, "_on_solo_deck_pressed", [1])
-	_solo_deck_p2.connect("pressed", self, "_on_solo_deck_pressed", [2])
+	_solo_deck_popup.index_pressed.connect(_on_saved_deck_pressed)
+	_solo_deck_p1.pressed.connect(_on_solo_deck_pressed.bind(1))
+	_solo_deck_p2.pressed.connect(_on_solo_deck_pressed.bind(2))
 	var match_popup := _match_menu.get_popup()
 	match_popup.clear()
 	match_popup.add_item("Salvar jogo", MENU_SAVE)
 	match_popup.add_item("Voltar ao menu", MENU_LEAVE)
-	match_popup.connect("id_pressed", self, "_on_match_menu_pressed")
-	_link_deck_button.connect("pressed", self, "_on_link_deck_pressed")
-	_playmat_options.connect("item_selected", self, "_on_playmat_selected")
-	_playmat_upload.connect("pressed", self, "_on_playmat_upload_pressed")
+	match_popup.id_pressed.connect(_on_match_menu_pressed)
+	_link_deck_button.pressed.connect(_on_link_deck_pressed)
+	_playmat_options.item_selected.connect(_on_playmat_selected)
+	_playmat_upload.pressed.connect(_on_playmat_upload_pressed)
 	_populate_playmats()
-	_start_button.connect("pressed", self, "_on_start_pressed")
-	_cancel_button.connect("pressed", self, "_on_leave_pressed")
-	_advance_button.connect("pressed", self, "_on_advance_pressed")
-	_swap_seat_button.connect("pressed", self, "_on_swap_seat_pressed")
-	_reconnect_button.connect("pressed", self, "_on_reconnect_pressed")
-	_leave_button.connect("pressed", self, "_on_leave_pressed")
-	_link_dialog = LinkDeckScene.instance()
+	_start_button.pressed.connect(_on_start_pressed)
+	_cancel_button.pressed.connect(_on_leave_pressed)
+	_advance_button.pressed.connect(_on_advance_pressed)
+	_swap_seat_button.pressed.connect(_on_swap_seat_pressed)
+	_reconnect_button.pressed.connect(_on_reconnect_pressed)
+	_leave_button.pressed.connect(_on_leave_pressed)
+	_link_dialog = LinkDeckScene.instantiate()
 	add_child(_link_dialog)
-	_link_dialog.connect("deck_loaded", self, "_on_link_deck_loaded")
-	Multiplayer.connect("session_changed", self, "_refresh")
-	Multiplayer.connect("prep_changed", self, "_on_prep_changed")
-	Multiplayer.connect("phase_changed", self, "_refresh")
-	Multiplayer.connect("match_started", self, "_on_match_started")
-	Multiplayer.connect("checkpoint_saved", self, "_on_checkpoint_saved")
-	Multiplayer.connect("checkpoint_error", self, "_on_checkpoint_error")
-	Multiplayer.connect("resume_status", self, "_on_resume_status")
-	Multiplayer.connect("resume_finished", self, "_on_resume_finished")
-	Multiplayer.connect("session_ended", self, "_on_session_ended")
-	Multiplayer.connect("waiting_changed", self, "_on_waiting_changed")
-	Multiplayer.connect("action_logged", self, "_on_action_logged")
-	Multiplayer.connect("display_changed", self, "_on_display_changed")
-	Rede.connect("status_changed", self, "_on_network_status")
-	GameEvents.connect("game_event", self, "_on_game_event")
-	_log_label.connect("meta_hover_started", self, "_on_log_meta_hover_started")
-	_log_label.connect("meta_hover_ended", self, "_on_log_meta_hover_ended")
-	_log_label.connect("mouse_exited", self, "_on_log_mouse_exited")
+	_link_dialog.deck_loaded.connect(_on_link_deck_loaded)
+	Multiplayer.session_changed.connect(_refresh)
+	Multiplayer.prep_changed.connect(_on_prep_changed)
+	Multiplayer.phase_changed.connect(_refresh)
+	Multiplayer.match_started.connect(_on_match_started)
+	Multiplayer.checkpoint_saved.connect(_on_checkpoint_saved)
+	Multiplayer.checkpoint_error.connect(_on_checkpoint_error)
+	Multiplayer.resume_status.connect(_on_resume_status)
+	Multiplayer.resume_finished.connect(_on_resume_finished)
+	Multiplayer.session_ended.connect(_on_session_ended)
+	Multiplayer.waiting_changed.connect(_on_waiting_changed)
+	Multiplayer.action_logged.connect(_on_action_logged)
+	Multiplayer.display_changed.connect(_on_display_changed)
+	Rede.status_changed.connect(_on_network_status)
+	GameEvents.game_event.connect(_on_game_event)
+	_log_label.meta_hover_started.connect(_on_log_meta_hover_started)
+	_log_label.meta_hover_ended.connect(_on_log_meta_hover_ended)
+	_log_label.mouse_exited.connect(_on_log_mouse_exited)
 	if Multiplayer.is_session_active():
 		_append_log("Sessão multiplayer iniciada.")
 	else:
@@ -159,7 +158,7 @@ func _apply_last_deck() -> void:
 	if Multiplayer.is_local_deck_ready():
 		return
 	var entry := DeckCatalog.find_auto_deck()
-	if entry.empty():
+	if entry.is_empty():
 		return
 	_choose_deck(entry["deck"], str(entry["path"]))
 
@@ -171,7 +170,7 @@ func _apply_last_solo_decks() -> void:
 		if Multiplayer.is_solo_deck_ready(slot):
 			continue
 		var entry := DeckCatalog.find_seat_deck(slot)
-		if entry.empty():
+		if entry.is_empty():
 			continue
 		_choose_deck(entry["deck"], str(entry["path"]), slot)
 
@@ -183,7 +182,7 @@ func _populate_saved_decks() -> void:
 func _populate_deck_popup(popup: PopupMenu) -> void:
 	popup.clear()
 	_saved_deck_list = DeckCatalog.list_decks()
-	if _saved_deck_list.empty():
+	if _saved_deck_list.is_empty():
 		popup.add_item("Nenhum deck salvo encontrado")
 		return
 	for deck in _saved_deck_list:
@@ -258,20 +257,19 @@ func _open_playmat_dialog() -> void:
 	if _playmat_dialog == null:
 		_playmat_dialog = FileDialog.new()
 		_playmat_dialog.name = "PlaymatFileDialog"
-		_playmat_dialog.mode = FileDialog.MODE_OPEN_FILE
+		_playmat_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 		_playmat_dialog.access = FileDialog.ACCESS_FILESYSTEM
-		_playmat_dialog.filters = PoolStringArray(
+		_playmat_dialog.filters = PackedStringArray(
 				["*.png, *.jpg, *.jpeg, *.webp ; Imagens"])
-		_playmat_dialog.connect("file_selected", self,
-				"_on_playmat_file_selected")
+		_playmat_dialog.file_selected.connect(_on_playmat_file_selected)
 		# Parented to the window so the dialog opens centered on screen.
 		get_tree().root.add_child(_playmat_dialog)
-	_playmat_dialog.popup_centered(Vector2(760, 500))
+	_playmat_dialog.popup_centered(Vector2i(760, 500))
 
 
 func _on_playmat_file_selected(path: String) -> void:
-	var image := Image.new()
-	if image.load(path) != OK:
+	var image := Image.load_from_file(path)
+	if image == null:
 		_playmat_note("Não foi possível ler " + path.get_file() + ".")
 		return
 	_store_playmat(image)
@@ -280,7 +278,7 @@ func _on_playmat_file_selected(path: String) -> void:
 # Assembled at call time instead of kept as a constant: the size limit stays in
 # one place, and a GDScript constant expression cannot call str().
 static func web_picker_js() -> String:
-	return PoolStringArray([
+	return("\n".join(PackedStringArray([
 		"window.__bsPlaymat = window.__bsPlaymat || {",
 		"  data: '', name: '', error: '', busy: false };",
 		"window.__bsPlaymatStatus = function () {",
@@ -337,12 +335,12 @@ static func web_picker_js() -> String:
 		"  }, 300000);",
 		"  return 'ok';",
 		"};",
-	]).join("\n")
+	])))
 
 
 func _begin_web_playmat_pick() -> void:
-	JavaScript.eval(web_picker_js(), true)
-	var started := str(JavaScript.eval("window.__bsPlaymatPick()", true))
+	JavaScriptBridge.eval(web_picker_js(), true)
+	var started := str(JavaScriptBridge.eval("window.__bsPlaymatPick()", true))
 	if started != "ok":
 		_playmat_note(_web_pick_note(started))
 		return
@@ -355,7 +353,7 @@ func _begin_web_playmat_pick() -> void:
 		_playmat_poll.name = "PlaymatPickPoll"
 		_playmat_poll.wait_time = 0.2
 		add_child(_playmat_poll)
-		_playmat_poll.connect("timeout", self, "_poll_web_playmat")
+		_playmat_poll.timeout.connect(_poll_web_playmat)
 	_playmat_poll.start()
 
 
@@ -363,22 +361,22 @@ func _begin_web_playmat_pick() -> void:
 # it all in a single frame would stall the board behind this panel.
 func _poll_web_playmat() -> void:
 	if _playmat_total < 0:
-		var status := str(JavaScript.eval("window.__bsPlaymatStatus()", true))
+		var status := str(JavaScriptBridge.eval("window.__bsPlaymatStatus()", true))
 		if status == "busy":
 			return
 		if status != "ready":
 			_stop_playmat_poll()
 			_playmat_note(_web_pick_note(status))
 			return
-		_playmat_total = int(JavaScript.eval("window.__bsPlaymatLength()", true))
+		_playmat_total = int(JavaScriptBridge.eval("window.__bsPlaymatLength()", true))
 		if _playmat_total <= 0:
 			_stop_playmat_poll()
 			_playmat_note("A imagem escolhida veio vazia.")
 			return
-	var chunk := str(JavaScript.eval(
+	var chunk := str(JavaScriptBridge.eval(
 			"window.__bsPlaymatChunk(%d, %d)" % [_playmat_offset, WEB_CHUNK_SIZE],
 			true))
-	if chunk.empty():
+	if chunk.is_empty():
 		_stop_playmat_poll()
 		_playmat_note("Não foi possível ler a imagem do navegador.")
 		return
@@ -388,7 +386,7 @@ func _poll_web_playmat() -> void:
 		return
 	_stop_playmat_poll()
 	var image := _web_playmat_image(_playmat_chunk)
-	JavaScript.eval("window.__bsPlaymatReset()", true)
+	JavaScriptBridge.eval("window.__bsPlaymatReset()", true)
 	_playmat_chunk = ""
 	if image == null:
 		_playmat_note("Use uma imagem PNG, JPG ou WebP.")
@@ -468,7 +466,7 @@ func _choose_deck(deck: Dictionary, path: String = "", slot: int = 0) -> void:
 	if not result.get("ok", false):
 		_hint_label.text = str(result.get("reason", "Não foi possível usar o deck."))
 		return
-	if not path.empty():
+	if not path.is_empty():
 		DeckCatalog.remember_deck(path)
 		if target > 0:
 			DeckCatalog.remember_seat_deck(target, path)
@@ -588,7 +586,7 @@ func _on_leave_pressed() -> void:
 	Multiplayer.leave_session("Partida encerrada pelo jogador.")
 	cfc.quit_game()
 	# warning-ignore:return_value_discarded
-	get_tree().change_scene("res://src/custom/MainMenu.tscn")
+	get_tree().change_scene_to_file("res://src/custom/MainMenu.tscn")
 
 
 #-----------------------------------------------------------------------------
@@ -634,20 +632,20 @@ func _refresh_texts() -> void:
 			turn = "Você é " + Multiplayer.get_my_username() \
 					+ " · vez de " + actor
 		_phase_label.text = Multiplayer.get_phase_label().to_upper()
-		_phase_label.add_color_override(
+		_phase_label.add_theme_color_override(
 				"font_color", Multiplayer.get_phase_color())
 		var lines := ["R" + str(Multiplayer.round_number) + " · E" \
 				+ str(Multiplayer.step_index + 1) + "/10 · " + turn]
 		var extras := []
 		var starter := Multiplayer.get_slot_username(Multiplayer.starting_slot)
-		if not starter.empty():
+		if not starter.is_empty():
 			extras.append("Começa: " + starter)
 		var rolls := Multiplayer.get_rolls_text()
-		if not rolls.empty():
+		if not rolls.is_empty():
 			extras.append("Dados: " + rolls)
-		if not extras.empty():
-			lines.append(PoolStringArray(extras).join(" · "))
-		_info_label.text = PoolStringArray(lines).join("\n")
+		if not extras.is_empty():
+			lines.append(" · ".join(PackedStringArray(extras)))
+		_info_label.text = "\n".join(PackedStringArray(lines))
 
 
 func _refresh_prepare() -> void:
@@ -659,10 +657,10 @@ func _refresh_prepare() -> void:
 	var role := "Você controla os dois assentos" if solo \
 			else ("Anfitrião" if Multiplayer.is_authority() else "Convidado")
 	var opponent := Multiplayer.get_opponent_username()
-	if opponent.empty():
+	if opponent.is_empty():
 		opponent = "aguardando oponente"
 	var room := "Mesa local" if solo else "Conectando ao relay..."
-	if not solo and not Rede.room_id.empty():
+	if not solo and not Rede.room_id.is_empty():
 		room = "Sala " + Rede.room_id
 	_room_label.text = room + " · " + role \
 			+ " · " + Multiplayer.get_my_username() + " vs " + opponent
@@ -686,9 +684,9 @@ func _refresh_prepare() -> void:
 		_hint_label.text = "Os dois decks estão prontos. Inicie a partida."
 	elif Multiplayer.is_local_deck_ready():
 		_hint_label.text = "Seu deck está pronto. Aguardando o oponente."
-	elif not Multiplayer.get_opponent_username().empty():
+	elif not Multiplayer.get_opponent_username().is_empty():
 		_hint_label.text = "Escolha um deck salvo de 60 cartas ou importe um link do BSDB."
-	elif Rede.room_id.empty():
+	elif Rede.room_id.is_empty():
 		_hint_label.text = Rede.get_status()
 	else:
 		_hint_label.text = "Aguardando um oponente entrar na sala."
@@ -700,16 +698,16 @@ func _refresh_solo_deck_buttons() -> void:
 	var active := int(Multiplayer.solo_pick_slot)
 	_solo_deck_p1.text = _solo_deck_button_text(1)
 	_solo_deck_p2.text = _solo_deck_button_text(2)
-	_solo_deck_p1.add_color_override("font_color",
+	_solo_deck_p1.add_theme_color_override("font_color",
 			ACTIVE_SEAT_COLOR if active == 1 else IDLE_SEAT_COLOR)
-	_solo_deck_p2.add_color_override("font_color",
+	_solo_deck_p2.add_theme_color_override("font_color",
 			ACTIVE_SEAT_COLOR if active == 2 else IDLE_SEAT_COLOR)
 
 
 func _solo_deck_button_text(slot: int) -> String:
 	var label := Multiplayer.get_slot_username(slot) + " · "
 	var deck := Multiplayer.get_solo_deck(slot)
-	if deck.empty():
+	if deck.is_empty():
 		return label + "Escolher deck"
 	return label + str(deck.get("name", "Deck")) + " (" \
 			+ str(DeckCatalog.count_cards(deck)) + "/60)"
@@ -723,13 +721,13 @@ func _refresh_overlay() -> void:
 		_overlay_title.text = "Jogo congelado"
 		_reconnect_button.visible = Multiplayer.can_manual_reconnect()
 		var message := Multiplayer.waiting_message
-		if not _status_note.empty():
+		if not _status_note.is_empty():
 			message = _status_note
 		_overlay_message.text = message
 	elif Multiplayer.is_ended():
 		_overlay_title.text = "Partida encerrada"
 		_overlay_message.text = Multiplayer.ended_message \
-				if not Multiplayer.ended_message.empty() \
+				if not Multiplayer.ended_message.is_empty() \
 				else "A sessão terminou."
 	else:
 		_overlay_title.text = "Iniciando partida"
@@ -756,7 +754,7 @@ func _on_game_event(entry) -> void:
 
 
 func _append_log(text: String, card_name := "") -> void:
-	if text.empty():
+	if text.is_empty():
 		return
 	_logs.append({"text": text, "card": card_name})
 	while _logs.size() > MAX_LOG_LINES:
@@ -766,10 +764,10 @@ func _append_log(text: String, card_name := "") -> void:
 
 
 func _render_logs() -> void:
-	var lines := PoolStringArray()
+	var lines := PackedStringArray()
 	for index in range(_logs.size()):
 		lines.append(_line_bbcode(index))
-	_log_label.bbcode_text = lines.join("\n")
+	_log_label.text = "\n".join(lines)
 
 
 # The card name becomes a link keyed by its line index, so the value never
@@ -779,7 +777,7 @@ func _line_bbcode(index: int) -> String:
 	var entry: Dictionary = _logs[index]
 	var text := str(entry["text"])
 	var card_name := str(entry.get("card", ""))
-	if card_name.empty():
+	if card_name.is_empty():
 		return _escape_bbcode(text)
 	var position := text.find(card_name)
 	if position < 0:
@@ -810,46 +808,49 @@ func _build_console() -> void:
 	_console_panel.name = "CommandConsole"
 	_console_panel.anchor_right = 0.0
 	_console_panel.anchor_bottom = 0.0
-	_console_panel.margin_left = 8.0
-	_console_panel.margin_top = 132.0
-	_console_panel.margin_right = 508.0
-	_console_panel.margin_bottom = 288.0
+	_console_panel.offset_left = 8.0
+	_console_panel.offset_top = 132.0
+	_console_panel.offset_right = 508.0
+	_console_panel.offset_bottom = 288.0
 	_console_panel.visible = false
 	# A Control has no z_index in this engine; the panel is added last, so the
 	# sibling order already draws it over the rest of the HUD.
 	var box := VBoxContainer.new()
 	_console_panel.add_child(box)
 	_console_output = RichTextLabel.new()
-	_console_output.rect_min_size = Vector2(480, 110)
+	_console_output.custom_minimum_size = Vector2(480, 110)
 	_console_output.bbcode_enabled = true
 	_console_output.scroll_active = true
 	_console_output.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(_console_output)
 	_console_input = LineEdit.new()
-	_console_input.rect_min_size = Vector2(480, 30)
+	_console_input.custom_minimum_size = Vector2(480, 30)
 	_console_input.placeholder_text = CONSOLE_PLACEHOLDER
-	_console_input.connect("text_entered", self, "_on_console_entered")
+	_console_input.text_submitted.connect(_on_console_entered)
 	box.add_child(_console_input)
 	add_child(_console_panel)
 
 
-func _unhandled_key_input(event : InputEventKey) -> void:
+func _unhandled_key_input(input_event : InputEvent) -> void:
+	var event := input_event as InputEventKey
+	if event == null:
+		return
 	if not event.pressed or event.echo:
 		return
-	if event.scancode == KEY_F8:
+	if event.keycode == KEY_F8:
 		_toggle_console()
-		get_tree().set_input_as_handled()
+		get_viewport().set_input_as_handled()
 		return
 	# While the console is open the LineEdit owns the keyboard, so a shortcut
 	# cannot type over a command or steal its keys.
 	if _console_panel.visible:
-		if event.scancode == KEY_ESCAPE:
+		if event.keycode == KEY_ESCAPE:
 			_toggle_console()
-			get_tree().set_input_as_handled()
+			get_viewport().set_input_as_handled()
 		return
 	var keyboard = table_keyboard()
 	if keyboard != null and keyboard.handle_event(event):
-		get_tree().set_input_as_handled()
+		get_viewport().set_input_as_handled()
 
 
 func _toggle_console() -> void:
@@ -858,7 +859,7 @@ func _toggle_console() -> void:
 	_console_panel.visible = not _console_panel.visible
 	if _console_panel.visible:
 		_console_input.grab_focus()
-		if _console_output.text.empty():
+		if _console_output.text.is_empty():
 			_console_echo(CONSOLE_HELP)
 	else:
 		_console_input.release_focus()
@@ -866,7 +867,7 @@ func _toggle_console() -> void:
 
 func _on_console_entered(text : String) -> void:
 	var command := text.strip_edges()
-	if command.empty():
+	if command.is_empty():
 		return
 	_console_input.clear()
 	_console_input.grab_focus()
@@ -887,12 +888,14 @@ func _on_console_entered(text : String) -> void:
 	if command in ["teclas", "atalhos"]:
 		_console_echo(TableKeyboardScript.KEY_HELP)
 		return
-	var parsed := JSON.parse(command)
-	if parsed.error != OK:
-		_console_echo("JSON inválido (linha " + str(parsed.error_line) + "): "
-				+ str(parsed.error_string))
+	var test_json_conv = JSON.new()
+	var parse_error := test_json_conv.parse(command)
+	var parsed = test_json_conv.get_data()
+	if parse_error != OK:
+		_console_echo("JSON inválido (linha " + str(test_json_conv.get_error_line()) + "): "
+				+ str(test_json_conv.get_error_message()))
 		return
-	var data = parsed.result
+	var data = parsed
 	if data is Dictionary:
 		_run_console_script(data)
 	elif data is Array:
@@ -915,7 +918,7 @@ func _run_console_script(script) -> void:
 			expectations += 1
 			continue
 		var text := str(step.get("text", ""))
-		if text.empty():
+		if text.is_empty():
 			continue
 		lines.append(text)
 		# The intent log is the same one the buttons fill, so a scripted action
@@ -923,8 +926,8 @@ func _run_console_script(script) -> void:
 		_append_log(text)
 	if bool(result.get("ok", false)):
 		var summary := "ok"
-		if not lines.empty():
-			summary += ": " + PoolStringArray(lines).join(" · ")
+		if not lines.is_empty():
+			summary += ": " + " · ".join(PackedStringArray(lines))
 		if expectations > 0:
 			summary += " · " + str(expectations) + " conferência(s)"
 		_console_echo(summary)
@@ -933,7 +936,7 @@ func _run_console_script(script) -> void:
 	if int(result.get("failed", -1)) >= 0:
 		prefix += " no passo " + str(int(result["failed"]) + 1)
 	var message := str(result.get("message", ""))
-	if message.empty():
+	if message.is_empty():
 		message = str(result.get("error", ""))
 	_console_echo(prefix + ": " + message)
 
@@ -960,7 +963,7 @@ func table_keyboard():
 func _console_echo(text : String) -> void:
 	if not is_instance_valid(_console_output):
 		return
-	_console_output.bbcode_text = _escape_bbcode(text)
+	_console_output.text = _escape_bbcode(text)
 	_console_output.scroll_to_line(max(_console_output.get_line_count() - 1, 0))
 
 
@@ -991,7 +994,7 @@ func _show_card_preview(card_name: String) -> void:
 	if card_name == _preview_name:
 		return
 	_release_preview()
-	if card_name.empty():
+	if card_name.is_empty():
 		return
 	_preview_name = card_name
 	var card := _find_preview_card(card_name)
@@ -1040,7 +1043,7 @@ func _instance_preview_card(card_name: String) -> Card:
 	if _preview_owned.has(card_name) and is_instance_valid(_preview_owned[card_name]):
 		return _preview_owned[card_name]
 	var key := _definition_key_for_display(card_name)
-	if key.empty():
+	if key.is_empty():
 		return null
 	if not cfc.NMAP.has("board") or not cfc.NMAP.board:
 		return null

@@ -33,7 +33,7 @@
 # press applies at once and whoever drives the keyboard is responsible for the
 # command it sends. The console and the scripts follow the same rule.
 class_name TableKeyboard
-extends Reference
+extends RefCounted
 
 const _Table = preload("res://src/core/table/TableState.gd")
 
@@ -73,36 +73,36 @@ func handle_event(event : InputEventKey) -> bool:
 		return false
 	if _text_input_focused():
 		return false
-	return handle_key(int(event.scancode), event.shift, event.control)
+	return handle_key(int(event.keycode), event.shift, event.control)
 
 
 # Test and script entry. Returns true when the key was consumed.
-func handle_key(scancode : int, shift := false, ctrl := false) -> bool:
+func handle_key(keycode : int, shift := false, ctrl := false) -> bool:
 	if not is_instance_valid(actions):
 		return false
 	actions.sync()
 	# The table can change outside the keyboard (a click, a draw, a script), so
 	# a shortcut never acts on a card that is no longer there.
-	if selected_id.empty() or not actions.state.cards.has(selected_id):
+	if selected_id.is_empty() or not actions.state.cards.has(selected_id):
 		select_next(1, false)
-	if scancode == KEY_TAB or scancode == KEY_COMMA \
-			or scancode == KEY_PERIOD:
+	if keycode == KEY_TAB or keycode == KEY_COMMA \
+			or keycode == KEY_PERIOD:
 		var forward := true
-		if scancode == KEY_COMMA or (scancode == KEY_TAB and shift):
+		if keycode == KEY_COMMA or (keycode == KEY_TAB and shift):
 			forward = false
 		return select_next(1 if forward else -1)
-	if scancode == KEY_ESCAPE:
+	if keycode == KEY_ESCAPE:
 		attach_source = ""
 		_say("Seleção cancelada.")
 		return true
-	if ctrl and scancode == KEY_Z:
+	if ctrl and keycode == KEY_Z:
 		attach_source = ""
 		return _apply({"op": "desfazer"})
-	var op := _op_for(scancode)
-	if op.empty():
+	var op := _op_for(keycode)
+	if op.is_empty():
 		return false
 	var intent := _intent_for(op, shift)
-	if intent.empty():
+	if intent.is_empty():
 		return true
 	return _apply(intent)
 
@@ -145,14 +145,14 @@ func selectable_ids() -> Array:
 
 
 func selected_address() -> String:
-	if selected_id.empty():
+	if selected_id.is_empty():
 		return ""
 	return actions.state.address_of(selected_id)
 
 
 func select_next(step : int, announce := true) -> bool:
 	var ids := selectable_ids()
-	if ids.empty():
+	if ids.is_empty():
 		selected_id = ""
 		if announce:
 			_say("Nenhuma carta na mesa.")
@@ -177,8 +177,8 @@ func _name_of(id : String) -> String:
 # Keys to intents
 # -----------------------------------------------------------------------------
 
-func _op_for(scancode : int) -> String:
-	match scancode:
+func _op_for(keycode : int) -> String:
+	match keycode:
 		KEY_C:
 			return "comprar"
 		KEY_M:
@@ -229,7 +229,7 @@ func _intent_for(op : String, shift : bool) -> Dictionary:
 		return intent
 	if op == "anexar":
 		return _attach_intent()
-	if selected_id.empty() or not actions.state.cards.has(selected_id):
+	if selected_id.is_empty() or not actions.state.cards.has(selected_id):
 		_say("Selecione uma carta com , e . e tente de novo.")
 		return {}
 	var intent := {"op": op, "card": selected_id}
@@ -238,7 +238,7 @@ func _intent_for(op : String, shift : bool) -> Dictionary:
 			intent["amount"] = -1 if shift else 1
 		"mover":
 			var to := _other_row_address(selected_id)
-			if to.empty():
+			if to.is_empty():
 				_say("Mover: a carta precisa estar no campo.")
 				return {}
 			intent["to"] = to
@@ -250,14 +250,14 @@ func _intent_for(op : String, shift : bool) -> Dictionary:
 # Attaching needs two cards, so the first press remembers the source and the
 # second names the host. The selection itself is what Tab moves.
 func _attach_intent() -> Dictionary:
-	if attach_source.empty():
-		if selected_id.empty() or not actions.state.cards.has(selected_id):
+	if attach_source.is_empty():
+		if selected_id.is_empty() or not actions.state.cards.has(selected_id):
 			_say("Anexar: selecione a carta que vai virar anexo.")
 			return {}
 		attach_source = selected_id
 		_say("Anexar: escolha o hospedeiro e pressione A de novo.")
 		return {}
-	if selected_id.empty() or not actions.state.cards.has(selected_id):
+	if selected_id.is_empty() or not actions.state.cards.has(selected_id):
 		_say("Anexar: selecione o hospedeiro com , e .")
 		return {}
 	var intent := {"op": "anexar", "card": attach_source, "host": selected_id}
@@ -286,7 +286,7 @@ func _reorder_intent(op : String) -> Dictionary:
 # occupied destination is refused by the rules with the usual message.
 func _other_row_address(id : String) -> String:
 	var entry: Dictionary = actions.state.cards.get(id, {})
-	if entry.empty() or str(entry.get("zone", "")) != "field":
+	if entry.is_empty() or str(entry.get("zone", "")) != "field":
 		return ""
 	var parsed := _Table.parse_address(str(entry.get("address", "")))
 	var row := "trás" if str(parsed.get("row", "")) == "frente" else "frente"
@@ -314,7 +314,7 @@ func _apply(intent : Dictionary) -> bool:
 # remaining one so a sequence of keys never lands on nothing.
 func _after_action() -> void:
 	actions.sync()
-	if selected_id.empty() or actions.state.cards.has(selected_id):
+	if selected_id.is_empty() or actions.state.cards.has(selected_id):
 		return
 	select_next(1, false)
 
@@ -334,5 +334,5 @@ func _text_input_focused() -> bool:
 	var board = actions.board
 	if not is_instance_valid(board) or not board.is_inside_tree():
 		return false
-	var focus = board.get_focus_owner()
+	var focus = board.get_viewport().gui_get_focus_owner()
 	return focus is LineEdit or focus is TextEdit

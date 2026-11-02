@@ -96,9 +96,10 @@ reeditada a cada reinício nem de registro no Blob.
 - O host é autoritativo para início, dados, fases e estado público; o relay não
   valida jogadas. Essa limitação está descrita em [MULTIPLAYER.md](./MULTIPLAYER.md)
   e continua valendo no modo online.
-- Já existe um preset HTML5 em [export_presets.cfg](./export_presets.cfg), agora
-  com saída em `online/site/game/index.html`. O build local foi gerado com os
-  templates do Godot 3.4.4 instalados (`online/site/game/` fica fora do Git).
+- O preset HTML5 em [export_presets.cfg](./export_presets.cfg) ainda é o do
+  Godot 3.4.4, com saída em `online/site/game/index.html`. Com a migração para o
+  Godot 4.7.2 ele precisa ser recriado como preset **Web** e o build regerado
+  com os templates 4.7.2 (`online/site/game/` fica fora do Git).
 - A integração do cliente web está implementada: `Rede.join_room` por código,
   leitura de `?room=CODIGO` e `?relay=HOST` no menu, endereço padrão `wss://`
   (com exceção para relay local em desenvolvimento), campo de relay oculto no
@@ -225,7 +226,7 @@ responde `503` com `relay.online = false`. O `wss://` é o endereço usado pelo
 No `netlify dev` o store de blobs é uma cópia local isolada (não lê nem escreve
 produção), então localmente o endereço vem sempre do `RELAY_URL`.
 
-Depois do export no editor (`Projeto → Exportar → HTML5`), o jogo fica em
+Depois do export no editor (`Projeto → Exportar → Web`), o jogo fica em
 `online/site/game/` e responde em `http://localhost:8888/game/`.
 
 ## Decisões de produto recomendadas
@@ -288,12 +289,12 @@ testar o build local.
 
 ### Fase 1 — Build web funcional (1–2 dias)
 
-- Verificar os templates de exportação do Godot 3.4.4 e gerar o build HTML5 em
-  `online/site/game/`. (feito localmente)
+- Verificar os templates de exportação do Godot 4.7.2 e gerar o build web em
+  `online/site/game/`. (o build original foi feito no Godot 3.4.4; será regerado)
 - Servir `online/site` em um servidor estático local antes do deploy. (feito com
   `netlify dev` e com um servidor estático de desenvolvimento)
 - Ajustes de web necessários no código (feitos):
-  - `WebSocketServer` não existe no HTML5. `LocalRelay.ensure_for_address()`
+  - `WebSocketServer` não existe no build web. `LocalRelay.ensure_for_address()`
     retorna sem fazer nada com `OS.has_feature("web")`, então o relay embutido
     nunca sobe no navegador.
   - Endereço padrão de web (`Rede.WEB_DEFAULT_ADDRESS`, placeholder
@@ -357,7 +358,7 @@ testar o build local.
     Cache-Control = "no-cache"
 ```
 
-O cache **não é** `immutable`: o shell do Godot 3.4 pede `index.pck` e
+O cache **não é** `immutable`: o shell web do Godot pede `index.pck` e
 `index.wasm` sem query de versão e toda exportação reescreve esses nomes, então
 quem já jogou ficaria preso ao pacote antigo. Com `must-revalidate` o navegador
 confere o ETag (`304` quando nada mudou) e pega o build novo na hora.
@@ -367,7 +368,7 @@ confere o ETag (`304` quando nada mudou) e pega o build novo na hora.
   bloquear as imagens remotas do BSDB sem cabeçalhos CORP.
 - Automação: para uso individual, exportar localmente e rodar
   `cd online && netlify deploy --prod --dir site --functions netlify/functions --no-build`.
-  Para CI, criar um GitHub Action que baixa Godot 3.4.4 + templates, executa o
+  Para CI, criar um GitHub Action que baixa Godot 4.7.2 + templates, executa o
   export e publica; cachear os templates porque são grandes. O build em
   `online/site/game/` não é versionado.
 

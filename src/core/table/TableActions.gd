@@ -14,7 +14,7 @@
 # `card` and `host` accept a card id (the one in `TableSnapshot`) or a Card
 # node; the node is resolved here so a script can use either.
 class_name TableActions
-extends Reference
+extends RefCounted
 
 const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 const _Rules = preload("res://src/core/table/TableRules.gd")
@@ -174,7 +174,7 @@ func last_undo_target() -> Dictionary:
 
 func can_undo() -> bool:
 	var entry := last_undo_target()
-	return not entry.empty() and bool(entry.get("undoable", false))
+	return not entry.is_empty() and bool(entry.get("undoable", false))
 
 
 # Undoes the last action once and marks it as undone. A second call walks back
@@ -195,7 +195,7 @@ func describe_log(limit := 0) -> String:
 		if bool(entry.get("undone", false)):
 			line = "[desfeito] " + line
 		lines.append(line)
-	return PoolStringArray(lines).join("\n")
+	return "\n".join(PackedStringArray(lines))
 
 
 # -----------------------------------------------------------------------------
@@ -204,7 +204,7 @@ func describe_log(limit := 0) -> String:
 
 func _undo(normalized : Dictionary) -> Dictionary:
 	var target = normalized.get("entry", {})
-	if not (target is Dictionary) or target.empty():
+	if not (target is Dictionary) or target.is_empty():
 		return _failure({"error": "nada_para_desfazer",
 				"message": "Não há ação para desfazer."})
 	var outcome := _restore(target.get("undo", {}))
@@ -226,7 +226,7 @@ func _undo(normalized : Dictionary) -> Dictionary:
 
 func _restore(undo : Dictionary) -> Dictionary:
 	var records: Array = undo.get("cards", [])
-	if records.empty():
+	if records.is_empty():
 		return _ok_result()
 	# Hosts first: an attachment address is only valid after the host is back.
 	# Piles are restored from the bottom up so the recorded top card ends on
@@ -322,7 +322,7 @@ func _restore_hand_order(records : Array) -> void:
 		var parsed := _Table.parse_address(str(record.get("address", "")))
 		if str(parsed.get("kind", "")) == "hand":
 			slots[str(record["card"])] = int(parsed["slot"])
-	if slots.empty():
+	if slots.is_empty():
 		return
 	var cards: Array = hand.get_all_cards()
 	var entries := []
@@ -431,7 +431,7 @@ func _do_play(intent : Dictionary) -> Dictionary:
 	# A new scenario replaces the active one, which goes to the discard pile,
 	# exactly as the card template already does when a scenario is dropped.
 	var replaces := str(intent.get("replaces", ""))
-	if not replaces.empty():
+	if not replaces.is_empty():
 		var previous = _node(replaces)
 		var resources = _resources_pile()
 		if is_instance_valid(previous) and is_instance_valid(resources):
@@ -487,7 +487,7 @@ func _do_prizes(intent : Dictionary) -> Dictionary:
 	var node = _node(str(intent["card"]))
 	if not is_instance_valid(node):
 		return _fail("carta_ausente", "A carta não está na mesa.")
-	if not node.attachments.empty() and not is_instance_valid(_resources_pile()):
+	if not node.attachments.is_empty() and not is_instance_valid(_resources_pile()):
 		return _fail("recursos_indisponiveis",
 				"Os recursos não estão na mesa para receber os anexos.")
 	var sink = prize_sink if is_instance_valid(prize_sink) else board
@@ -577,7 +577,7 @@ func _do_reorder(intent : Dictionary) -> Dictionary:
 			or to_index < 0 or to_index >= ids.size():
 		return _fail("slot_invalido", "Slot inválido para reordenar a mão.")
 	var moved: String = ids[from_index]
-	ids.remove(from_index)
+	ids.remove_at(from_index)
 	ids.insert(to_index, moved)
 	_set_hand_order(ids)
 	return _ok_result()
@@ -728,7 +728,7 @@ func _attach_at(node : Card, host : Card, index : int) -> Dictionary:
 	if int(index) > 0:
 		var position: int = host.attachments.find(node)
 		if position >= 0:
-			host.attachments.remove(position)
+			host.attachments.remove_at(position)
 			var target := int(clamp(int(index) - 1, 0,
 					host.attachments.size()))
 			host.attachments.insert(target, node)
@@ -881,7 +881,7 @@ func _undo_changes(before : Dictionary) -> Array:
 
 
 func _zone_from_address(address : String) -> String:
-	if address.empty():
+	if address.is_empty():
 		return ""
 	return str(_Table.parse_address(address).get("kind", ""))
 
@@ -907,9 +907,9 @@ func _build_entry(intent : Dictionary, before : Dictionary, card_id : String,
 		reason = str(IRREVERSIBLE_REASONS.get(op, "Essa ação não pode ser desfeita."))
 	elif op == "jogar" and intent.has("replaces"):
 		reason = "A troca de cenário não pode ser desfeita."
-	elif not removed.empty():
+	elif not removed.is_empty():
 		reason = "Uma carta saiu da mesa."
-	elif changes.empty():
+	elif changes.is_empty():
 		reason = "Nada mudou."
 	else:
 		undoable = true
@@ -948,9 +948,9 @@ func _describe_entry(intent : Dictionary, entry : Dictionary,
 	var text := ""
 	match str(entry["op"]):
 		"comprar":
-			var names := PoolStringArray(outcome.get("names", []))
+			var names := PackedStringArray(outcome.get("names", []))
 			text = who + " comprou " + str(names.size()) + " carta(s): " \
-					+ names.join(", ")
+					+ ", ".join(names)
 		"mandar_topo_para_recursos":
 			text = who + " mandou " + name + " do topo para os recursos"
 		"jogar":

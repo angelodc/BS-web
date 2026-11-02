@@ -1,24 +1,24 @@
 [gd_scene load_steps=6 format=2]
 
-[ext_resource path="res://themes/darktheme/darktheme.theme" type="Theme" id=1]
-[ext_resource path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" type="DynamicFontData" id=2]
+[ext_resource path="res://themes/darktheme/darktheme.tres" type="Theme" id=1]
+[ext_resource path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" type="FontFile" id=2]
 [ext_resource path="res://src/custom/MainMenu.gd" type="Script" id=3]
 [ext_resource path="res://src/custom/CheckpointList.tscn" type="PackedScene" id=4]
 
-[sub_resource type="DynamicFont" id=1]
+[sub_resource type="FontFile" id=1]
 size = 107
 font_data = ExtResource( 2 )
 
 [node name="Menu" type="Panel"]
-margin_right = 1280.0
-margin_bottom = 720.0
+offset_right = 1280.0
+offset_bottom = 720.0
 theme = ExtResource( 1 )
 script = ExtResource( 3 )
 
 [node name="CheckpointList" parent="." instance=ExtResource( 4 )]
 
 [node name="ActionError" type="AcceptDialog" parent="."]
-window_title = "Aviso"
+title = "Aviso"
 dialog_text = "Mensagem"
 
 [node name="ServerProbe" type="HTTPRequest" parent="."]
@@ -26,129 +26,129 @@ dialog_text = "Mensagem"
 [node name="MainMenu" type="MarginContainer" parent="."]
 anchor_right = 1.19
 anchor_bottom = 1.181
-margin_right = -242.2
-margin_bottom = -127.32
+offset_right = -242.2
+offset_bottom = -127.32
 
 [node name="Backdrop" type="TextureRect" parent="MainMenu"]
-margin_right = 1281.0
-margin_bottom = 723.0
+offset_right = 1281.0
+offset_bottom = 723.0
 mouse_filter = 2
 expand = true
 stretch_mode = 6
 
 [node name="ColorRect" type="ColorRect" parent="MainMenu"]
-margin_right = 1281.0
-margin_bottom = 723.0
+offset_right = 1281.0
+offset_bottom = 723.0
 mouse_filter = 2
 color = Color( 0.043, 0.043, 0.051, 0.62 )
 
 [node name="VBox" type="VBoxContainer" parent="MainMenu"]
-margin_right = 1281.0
-margin_bottom = 723.0
+offset_right = 1281.0
+offset_bottom = 723.0
 
 [node name="Margin" type="MarginContainer" parent="MainMenu/VBox"]
-margin_right = 1281.0
-margin_bottom = 360.0
+offset_right = 1281.0
+offset_bottom = 360.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
-custom_constants/margin_top = 90
+theme_override_constants/margin_top = 90
 
 [node name="Label" type="Label" parent="MainMenu/VBox/Margin"]
-margin_top = 167.0
-margin_right = 1281.0
-margin_bottom = 282.0
-custom_fonts/font = SubResource( 1 )
+offset_top = 167.0
+offset_right = 1281.0
+offset_bottom = 282.0
+theme_override_fonts/font = SubResource( 1 )
 text = "BS WEB"
 align = 1
 
 [node name="Center" type="CenterContainer" parent="MainMenu/VBox"]
-margin_top = 363.0
-margin_right = 1281.0
-margin_bottom = 723.0
+offset_top = 363.0
+offset_right = 1281.0
+offset_bottom = 723.0
 size_flags_vertical = 3
 
 [node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
-margin_left = 500.0
-margin_top = 35.0
-margin_right = 780.0
-margin_bottom = 324.0
-rect_min_size = Vector2( 280, 0 )
-custom_constants/separation = 3
+offset_left = 500.0
+offset_top = 35.0
+offset_right = 780.0
+offset_bottom = 324.0
+custom_minimum_size = Vector2( 280, 0 )
+theme_override_constants/separation = 3
 
 [node name="PlayerName" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
-margin_right = 280.0
-margin_bottom = 27.0
+offset_right = 280.0
+offset_bottom = 27.0
 max_length = 24
 placeholder_text = "Seu username"
 
 [node name="RelayAddress" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 30.0
-margin_right = 280.0
-margin_bottom = 57.0
+offset_top = 30.0
+offset_right = 280.0
+offset_bottom = 57.0
 text = "127.0.0.1:9080"
 max_length = 256
 placeholder_text = "IP do relay na rede local"
 
 [node name="ServerStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 60.0
-margin_right = 280.0
-margin_bottom = 83.0
+offset_top = 60.0
+offset_right = 280.0
+offset_bottom = 83.0
 text = "Servidor: verificando..."
 align = 2
-autowrap = true
+autowrap_mode = 3
 
 [node name="JoinRow" type="HBoxContainer" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 86.0
-margin_right = 280.0
-margin_bottom = 113.0
-custom_constants/separation = 4
+offset_top = 86.0
+offset_right = 280.0
+offset_bottom = 113.0
+theme_override_constants/separation = 4
 
 [node name="RoomCode" type="LineEdit" parent="MainMenu/VBox/Center/VButtons/JoinRow"]
-margin_right = 223.0
-margin_bottom = 27.0
+offset_right = 223.0
+offset_bottom = 27.0
 size_flags_horizontal = 3
 max_length = 12
 placeholder_text = "Codigo da sala (ex: ABC123)"
 
 [node name="JoinRoom" type="Button" parent="MainMenu/VBox/Center/VButtons/JoinRow"]
-margin_left = 227.0
-margin_right = 280.0
-margin_bottom = 27.0
+offset_left = 227.0
+offset_right = 280.0
+offset_bottom = 27.0
 text = "Entrar"
 
 [node name="MatchStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 116.0
-margin_right = 280.0
-margin_bottom = 139.0
+offset_top = 116.0
+offset_right = 280.0
+offset_bottom = 139.0
 text = "Desconectado"
-autowrap = true
+autowrap_mode = 3
 
 [node name="SoloMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 142.0
-margin_right = 280.0
-margin_bottom = 169.0
+offset_top = 142.0
+offset_right = 280.0
+offset_bottom = 169.0
 text = "Partida Solo (P1 vs P2)"
 
 [node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 172.0
-margin_right = 280.0
-margin_bottom = 199.0
+offset_top = 172.0
+offset_right = 280.0
+offset_bottom = 199.0
 text = "Criar Sala"
 
 [node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 202.0
-margin_right = 280.0
-margin_bottom = 229.0
+offset_top = 202.0
+offset_right = 280.0
+offset_bottom = 229.0
 text = "Procurar Partida"
 
 [node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 232.0
-margin_right = 280.0
-margin_bottom = 259.0
+offset_top = 232.0
+offset_right = 280.0
+offset_bottom = 259.0
 text = "Iniciar jogo salvo"
 
 [node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-margin_top = 262.0
-margin_right = 280.0
-margin_bottom = 289.0
+offset_top = 262.0
+offset_right = 280.0
+offset_bottom = 289.0
 text = "Exit"

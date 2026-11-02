@@ -152,16 +152,16 @@ func _free_all_cards() -> void:
 # out, because the mirror geometry reads its rect and the UT board has none.
 func _start_solo_match(deck: Dictionary = {}, extra_definitions: Dictionary = {},
 		opponent_band := false) -> void:
-	if deck.empty():
+	if deck.is_empty():
 		deck = _sixty_test_deck()
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
-	var grid = load("res://src/custom/CGFPlacementGridDemo.tscn").instance()
+		setup = await setup.completed
+	var grid = load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate()
 	grid.name = "PlacementGridDemo"
 	board.add_child(grid)
 	autofree(grid)
-	yield(yield_for(0.2), YIELD)
+	await yield_for(0.2).YIELD
 	if opponent_band:
 		# The band is laid out like the shipped scene: the opponent visual ends
 		# on the middle line and the local grid starts there, so the mirror has
@@ -170,7 +170,7 @@ func _start_solo_match(deck: Dictionary = {}, extra_definitions: Dictionary = {}
 		visual.name = "OpponentFieldVisual"
 		board.add_child(visual)
 		autofree(visual)
-		visual.rect_size = Vector2(1280, 366.2)
+		visual.size = Vector2(1280, 366.2)
 		var scene := Control.new()
 		scene.name = "OpponentScene"
 		visual.add_child(scene)
@@ -179,16 +179,16 @@ func _start_solo_match(deck: Dictionary = {}, extra_definitions: Dictionary = {}
 		var resources := ColorRect.new()
 		resources.name = "OpponentResourcesBackground"
 		visual.add_child(resources)
-		resources.rect_position = Vector2(1124, 144.2)
-		resources.rect_size = Vector2(156, 216)
-		yield(yield_for(0.1), YIELD)
-		grid.rect_position = Vector2(156, 366.2)
-		yield(yield_for(0.1), YIELD)
-		scene.rect_size = grid.rect_size
-		scene.rect_global_position = Vector2(grid.rect_global_position.x, 80)
-		yield(yield_for(0.1), YIELD)
+		resources.position = Vector2(1124, 144.2)
+		resources.size = Vector2(156, 216)
+		await yield_for(0.1).YIELD
+		grid.position = Vector2(156, 366.2)
+		await yield_for(0.1).YIELD
+		scene.size = grid.size
+		scene.global_position = Vector2(grid.global_position.x, 80)
+		await yield_for(0.1).YIELD
 	_free_all_cards()
-	yield(yield_for(0.2), YIELD)
+	await yield_for(0.2).YIELD
 
 	Multiplayer.begin_solo("Doug")
 	# A match started from the menu builds its board inside the session, and the
@@ -199,7 +199,7 @@ func _start_solo_match(deck: Dictionary = {}, extra_definitions: Dictionary = {}
 	board.add_child(sync)
 	autofree(sync)
 	Multiplayer.register_board(board, null, sync)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 	# Setting the board up reloads the set definitions, so a card invented by
 	# the test is only registered from here on.
 	for card_key in extra_definitions:
@@ -210,7 +210,7 @@ func _start_solo_match(deck: Dictionary = {}, extra_definitions: Dictionary = {}
 	assert_true(Multiplayer.request_start(), "Two full decks start the solo match")
 	assert_true(Multiplayer.is_playing(), "The solo match is running")
 	# The hand is only laid out after the deferred pass the match schedules.
-	yield(yield_for(0.3), YIELD)
+	await yield_for(0.3).YIELD
 
 
 func _scene_grid() -> BoardPlacementGrid:
@@ -250,7 +250,7 @@ func _place_scene_card(slot_index: int) -> Card:
 	board.add_child(card)
 	card.set_is_faceup(true, true)
 	card.set_state(Card.CardState.ON_PLAY_BOARD)
-	card.global_position = slot.rect_global_position
+	card.global_position = slot.global_position
 	card._placement_slot = slot
 	slot.occupying_card = card
 	return card
@@ -301,7 +301,7 @@ func _mirrored_field_cards() -> Array:
 # Nodes freed by a rebuild only leave the tree at the end of the frame, so the
 # counts are taken one frame after the table changed.
 func _settle() -> void:
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1).YIELD
 
 
 func _assert_fields(label: String, local_count: int, mirrored_count: int) -> void:
@@ -315,7 +315,7 @@ func _assert_fields(label: String, local_count: int, mirrored_count: int) -> voi
 # seen from the opposite side: the mirror lands on the mirrored slot and reads
 # upside down.
 func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 
 	_place_scene_card(1)
 	var free := _take_hand_card()
@@ -324,9 +324,9 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 	board.add_child(free)
 	free.set_is_faceup(true, true)
 	free.set_state(Card.CardState.ON_PLAY_BOARD)
-	free.global_position = _scene_grid().rect_global_position \
-			+ _scene_grid().rect_size * 0.35
-	yield(_settle(), "completed")
+	free.global_position = _scene_grid().global_position \
+			+ _scene_grid().size * 0.35
+	await _settle().completed
 	var placed: Card = _local_field_cards()[0]
 	var placed_slot: int = Multiplayer._sync._slot_index(placed._placement_slot)
 	var placed_rect := Rect2(placed.global_position,
@@ -335,11 +335,11 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 			CFConst.CARD_SIZE * Multiplayer._sync.BOARD_SCALE)
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap shows the other seat")
-	yield(yield_for(0.7), YIELD)
+	await yield_for(0.7).YIELD
 	var mirrors := _mirrored_field_cards()
 	assert_eq(mirrors.size(), 2, "The other field shows both mirrors")
 	for mirror in mirrors:
-		assert_almost_eq(float(mirror.get_node("Control").rect_rotation), 180.0,
+		assert_almost_eq(float(mirror.get_node("Control").rotation), 180.0,
 				0.5, "The mirror is drawn upside down")
 	var slotted: Card = null
 	var loose: Card = null
@@ -372,7 +372,7 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 				Vector2(2, 2), "The loose mirror is the local box reflected")
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swapping back returns the seat")
-	yield(_settle(), "completed")
+	await _settle().completed
 	var own := _local_field_cards()
 	assert_eq(own.size(), 2, "The field comes back with both cards")
 	for card in own:
@@ -380,7 +380,7 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 			continue
 		assert_eq(Multiplayer._sync._slot_index(card._placement_slot),
 				placed_slot, "The card returns to the slot it was placed on")
-		assert_eq(int(card.get_node("Control").rect_rotation), 0,
+		assert_eq(int(card.get_node("Control").rotation), 0,
 				"The card returns upright")
 
 
@@ -388,7 +388,7 @@ func test_mirror_of_a_scene_card_keeps_the_other_side_geometry():
 # of the table has to see it peeking above: the stack mirrors with the field
 # instead of covering its own host.
 func test_mirror_stacks_the_attachment_on_the_opposite_edge():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 
 	var host := _place_scene_card(0)
 	assert_not_null(host, "A character reaches the slot")
@@ -421,10 +421,10 @@ func test_mirror_stacks_the_attachment_on_the_opposite_edge():
 		if index > 0:
 			assert_true(local_gaps[index] > local_gaps[index - 1],
 					"Each attachment peeks further below the previous one")
-	yield(_settle(), "completed")
+	await _settle().completed
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap shows the other seat")
-	yield(yield_for(0.7), YIELD)
+	await yield_for(0.7).YIELD
 	var mirrored_host: Card = null
 	var mirrored_stack := []
 	for _i in range(stack_ids.size()):
@@ -458,7 +458,7 @@ func test_mirror_stacks_the_attachment_on_the_opposite_edge():
 					"The mirrored stack keeps the owner's strip order")
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap returns to the owner")
-	yield(yield_for(0.7), YIELD)
+	await yield_for(0.7).YIELD
 	var restored_host: Card = null
 	var restored_stack := []
 	for _i in range(stack_ids.size()):
@@ -492,7 +492,7 @@ func test_mirror_stacks_the_attachment_on_the_opposite_edge():
 # cards group, not the drop order). The plain organize only pulls cards that
 # sit above the host, so rebuilding the pile has to work from either side.
 func test_arrange_attachment_stack_recovers_a_pile_listed_before_its_host():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 
 	var host := _place_scene_card(0)
 	assert_not_null(host, "A character reaches the slot")
@@ -535,7 +535,7 @@ func test_arrange_attachment_stack_recovers_a_pile_listed_before_its_host():
 # each miniature turns with its cell: what reads upright on the owner's side has
 # to read upside down on the other side, like a card held across the table.
 func test_mirror_of_a_resource_card_turns_with_the_grid():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 	discard.position = Vector2(0, 372.2)
 	discard._layout_panel()
 	var card := _take_hand_card()
@@ -544,10 +544,10 @@ func test_mirror_of_a_resource_card_turns_with_the_grid():
 	cfc.NMAP.hand.remove_child(card)
 	discard.add_child(card)
 	card.state = Card.CardState.IN_PILE
-	yield(_settle(), "completed")
+	await _settle().completed
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap shows the other seat")
-	yield(yield_for(0.7), YIELD)
+	await yield_for(0.7).YIELD
 	var mirror: Card = null
 	for candidate in get_tree().get_nodes_in_group("remote_cards"):
 		if candidate is Card and is_instance_valid(candidate) \
@@ -555,7 +555,7 @@ func test_mirror_of_a_resource_card_turns_with_the_grid():
 			mirror = candidate
 	assert_not_null(mirror, "The other side shows the resource mirror")
 	if mirror:
-		assert_almost_eq(float(mirror.get_node("Control").rect_rotation), 180.0,
+		assert_almost_eq(float(mirror.get_node("Control").rotation), 180.0,
 				0.5, "The resource mirror is drawn upside down")
 		var sync = Multiplayer._sync
 		var index: int = sync._resources_in_pile_order().find(card_id)
@@ -574,16 +574,16 @@ func test_mirror_of_a_resource_card_turns_with_the_grid():
 # no dead spot over the artwork and no preview over the empty part of the box.
 # The cells come from the local pile, so both sides share one layout.
 func test_mirror_resource_hover_follows_the_drawn_mini():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 	cfc.NMAP.board._discard_position = Vector2(0, 372.2)
 	discard.position = Vector2(0, 372.2)
 	discard._layout_panel()
 	var moved := _fill_discard(4)
-	yield(_settle(), "completed")
+	await _settle().completed
 	assert_true(moved.size() >= 2, "The pile holds cards to mirror")
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap mirrors the pile")
-	yield(yield_for(0.7), YIELD)
+	await yield_for(0.7).YIELD
 
 	var sync = Multiplayer._sync
 	var order: Array = sync._resources_in_pile_order()
@@ -612,7 +612,7 @@ func test_mirror_resource_hover_follows_the_drawn_mini():
 	# opened the preview far above the cards.
 	var empty_top := Vector2(box.position.x + box.size.x * 0.5,
 			box.position.y + 10)
-	assert_false(sync._resources_in_pile_order().empty(),
+	assert_false(sync._resources_in_pile_order().is_empty(),
 			"The mirrored grid is laid out")
 	for index in range(visible):
 		var cell: Rect2 = sync._resource_cell_rect(index)
@@ -626,16 +626,16 @@ func test_mirror_resource_hover_follows_the_drawn_mini():
 # CanvasItem reports under a stretched window: the mirrored box sits far from
 # the origin, where the two spaces disagree by almost a hundred pixels.
 func test_mirror_resource_hover_reads_the_gui_pointer():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 	cfc.NMAP.board._discard_position = Vector2(0, 372.2)
 	discard.position = Vector2(0, 372.2)
 	discard._layout_panel()
 	var moved := _fill_discard(3)
-	yield(_settle(), "completed")
+	await _settle().completed
 	assert_true(moved.size() >= 1, "The pile holds a card to mirror")
 
 	assert_true(Multiplayer.swap_solo_seat(), "The swap mirrors the pile")
-	yield(yield_for(0.7), YIELD)
+	await yield_for(0.7).YIELD
 	var sync = Multiplayer._sync
 	var order: Array = sync._resources_in_pile_order()
 	assert_true(order.size() >= 1, "There is a mirrored mini")
@@ -654,54 +654,54 @@ func test_mirror_resource_hover_reads_the_gui_pointer():
 
 
 func test_three_solo_swaps_keep_both_fields_populated():
-	yield(_start_solo_match(), "completed")
+	await _start_solo_match().completed
 
 	_place_scene_card(0)
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("P1 opening", 1, 0)
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap one changes the seat")
 	assert_eq(Multiplayer.my_slot, 2, "Swap one moves to P2")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After swap one", 0, 1)
 
 	_place_scene_card(1)
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After P2 plays", 1, 1)
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap two changes the seat")
 	assert_eq(Multiplayer.my_slot, 1, "Swap two returns to P1")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After swap two", 1, 1)
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap three changes the seat")
 	assert_eq(Multiplayer.my_slot, 2, "Swap three moves to P2 again")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After swap three", 1, 1)
 
 
 # cfc.ut is what keeps the sync layer from running the production reconciliation
 # under GUT, so the swap loop clears it to reach the same code the game runs.
 func test_solo_swaps_with_a_scenario_keep_both_fields():
-	yield(_start_solo_match(), "completed")
+	await _start_solo_match().completed
 
 	_place_scene_card(0)
 	var scenario := _place_scenario_card()
 	assert_not_null(scenario, "A scenario reaches the field")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("P1 with a scenario", 2, 0)
 
 	cfc.ut = false
 	assert_true(Multiplayer.swap_solo_seat(), "Swap one changes the seat")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After swap one", 0, 2)
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap two changes the seat")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After swap two", 2, 0)
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap three changes the seat")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_fields("After swap three", 0, 2)
 	cfc.ut = true
 
@@ -710,21 +710,21 @@ func test_solo_swaps_with_a_scenario_keep_both_fields():
 # locally: the play on the current turn takes the arena and the opponent's
 # mirror has to leave it, exactly like the relay does for a real client.
 func test_solo_scenario_pushes_the_opponent_mirror_to_its_discard():
-	yield(_start_solo_match({}, {}, true), "completed")
+	await _start_solo_match({}, {}, true).completed
 
 	var first := _place_scenario_card()
 	assert_not_null(first, "Seat one plays a scenario")
 	_announce_scenario(first)
 	var first_id := str(Multiplayer.ensure_card_id(first))
-	yield(_settle(), "completed")
+	await _settle().completed
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap one changes the seat")
-	yield(_settle(), "completed")
+	await _settle().completed
 
 	var second := _place_scenario_card()
 	assert_not_null(second, "Seat two answers with a scenario")
 	_announce_scenario(second)
-	yield(_settle(), "completed")
+	await _settle().completed
 
 	var sync = Multiplayer._sync
 	var older: Dictionary = sync._remote_meta.get(first_id, {})
@@ -732,7 +732,7 @@ func test_solo_scenario_pushes_the_opponent_mirror_to_its_discard():
 			"The older scenario leaves the other field")
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap two returns to P1")
-	yield(_settle(), "completed")
+	await _settle().completed
 	assert_true(_is_in_discard(first_id),
 			"The older scenario reaches its owner's discard")
 	assert_eq(_mirrored_field_cards().size(), 1,
@@ -764,17 +764,17 @@ func test_solo_swap_restores_cards_imported_under_another_key():
 			{IMPORTED_KEY: _imported_name_definition()}), "completed")
 
 	_place_scene_card(0)
-	yield(_settle(), "completed")
+	await _settle().completed
 	assert_gt(_live_hidden_count("hand"), 0, "The opening hand holds cards")
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap one changes the seat")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_payloads_are_restorable("After swap one")
 	assert_gt(_live_hidden_count("hand") + _live_hidden_count("deck"), 50,
 			"Swap one restores the other seat with its cards")
 
 	assert_true(Multiplayer.swap_solo_seat(), "Swap two returns to P1")
-	yield(_settle(), "completed")
+	await _settle().completed
 	_assert_payloads_are_restorable("After swap two")
 	assert_gt(_live_hidden_count("hand") + _live_hidden_count("deck"), 50,
 			"Swap two restores the first seat with its cards")

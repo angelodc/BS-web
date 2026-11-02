@@ -34,6 +34,7 @@ const PRIZE_ENERGY_WIN := 15
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
+	super._ready()
 	counters = $Counters
 	_capture_authored_layout()
 	# The sample credit/research counters are not part of the BS match and were
@@ -46,8 +47,8 @@ func _ready() -> void:
 	# instead of defining them on the scene.
 	# This way any they will work with any size of viewport in a game.
 	# Discard pile goes bottom right
-	$FancyMovementToggle.pressed = cfc.game_settings.fancy_movement
-	$OvalHandToggle.pressed = cfc.game_settings.hand_use_oval_shape
+	$FancyMovementToggle.button_pressed = cfc.game_settings.fancy_movement
+	$OvalHandToggle.button_pressed = cfc.game_settings.hand_use_oval_shape
 	# A SCALED focus style stored by an older build turns off the hover preview
 	# on hand, field and pile cards, leaving only the previews the pile grids
 	# draw themselves. The option is hidden on this board, so it is normalized
@@ -55,11 +56,10 @@ func _ready() -> void:
 	if not cfc.game_settings.focus_style:
 		cfc.game_settings.focus_style = CFInt.FocusStyle.BOTH
 	$ScalingFocusOptions.selected = cfc.game_settings.focus_style
-	$Debug.pressed = cfc._debug
+	$Debug.button_pressed = cfc._debug
 	apply_playmat(PlaymatCatalog.selected_id())
 	call_deferred("_apply_battle_scenes_layout")
-	get_viewport().connect(
-			"size_changed", self, "_on_board_viewport_size_changed")
+	get_viewport().size_changed.connect(_on_board_viewport_size_changed)
 	var multiplayer_session := Multiplayer.is_session_active()
 	if not cfc.ut:
 		cfc.game_rng_seed = CFUtils.generate_random_seed()
@@ -68,13 +68,12 @@ func _ready() -> void:
 	if not get_tree().get_root().has_node('Gut') and not multiplayer_session:
 		load_test_cards(false)
 	# warning-ignore:return_value_discarded
-	$DeckBuilderPopup.connect('popup_hide', self, '_on_DeckBuilder_hide')
+	$DeckBuilderPopup.popup_hide.connect(_on_DeckBuilder_hide)
 	# warning-ignore:return_value_discarded
-	cfc.NMAP.discard.connect(
-			"popup_closed", self, "_on_resource_popup_closed")
+	cfc.NMAP.discard.popup_closed.connect(_on_resource_popup_closed)
 	_update_prize_energy()
 	if not cfc.ut:
-		var hud := preload("res://src/custom/MatchHUD.tscn").instance()
+		var hud := preload("res://src/custom/MatchHUD.tscn").instantiate()
 		hud.name = "MatchHUD"
 		add_child(hud)
 		if multiplayer_session:
@@ -97,7 +96,7 @@ func apply_playmat(playmat_id: String) -> void:
 	var playmat: TextureRect = get_node_or_null("Playmat")
 	if not playmat:
 		return
-	var texture: Texture = PlaymatCatalog.texture_for_id(playmat_id)
+	var texture: Texture2D = PlaymatCatalog.texture_for_id(playmat_id)
 	playmat.texture = texture
 	playmat.visible = texture != null
 	_fit_playmat(playmat)
@@ -108,8 +107,8 @@ func _fit_playmat(playmat: TextureRect) -> void:
 	var size: Vector2 = area * PLAYMAT_FILL
 	playmat.anchor_right = 0.0
 	playmat.anchor_bottom = 0.0
-	playmat.rect_size = size
-	playmat.rect_position = (area - size) * 0.5
+	playmat.size = size
+	playmat.position = (area - size) * 0.5
 
 
 # Solo keeps the deck builder and the way back to the menu, but the dev toggles
@@ -119,8 +118,8 @@ func _setup_solo() -> void:
 			$FancyMovementToggle, $OvalHandToggle, $ScalingFocusOptions,
 			$EnableAttach, $Debug, $SeedLabel]:
 		control.visible = false
-	$DeckBuilder.rect_position = Vector2(8, 132)
-	$BackToMain.rect_position = Vector2(148, 132)
+	$DeckBuilder.position = Vector2(8, 132)
+	$BackToMain.position = Vector2(148, 132)
 
 
 func _setup_multiplayer(hud: Control) -> void:
@@ -149,12 +148,12 @@ func _apply_battle_scenes_layout() -> void:
 	# The strip height and the column widths are authored in CGFBoard.tscn. The
 	# opponent deck box is the mirrored copy of the local left column.
 	var strip_bottom: float = opponent_visual.get_node(
-			"OpponentFieldBackground").rect_position.y
+			"OpponentFieldBackground").position.y
 	var left_column_width: float = opponent_visual.get_node(
-			"OpponentDeck").rect_size.x
+			"OpponentDeck").size.x
 
 	scene_grid.configure_width(_prizes_position.x - left_column_width)
-	var scene_size: Vector2 = scene_grid.rect_size
+	var scene_size: Vector2 = scene_grid.size
 	var player_field_y: float = strip_bottom + scene_size.y
 
 	# The deck lies turned 270 degrees in the bottom-left corner; its slot and
@@ -164,33 +163,33 @@ func _apply_battle_scenes_layout() -> void:
 	discard.position = _discard_position
 	prizes.position = _prizes_position
 	deck.call_deferred("keep_children_upright")
-	scene_grid.rect_position = Vector2(
+	scene_grid.position = Vector2(
 			(viewport_size.x - scene_size.x) * 0.5, player_field_y)
 	# The mirror reads this rect for every slot and floating card, so the
 	# opponent scene has to keep matching the real grid.
 	if $Debug.pressed:
 		_warn_if_opponent_scene_drifted(
-				Vector2(scene_grid.rect_position.x, strip_bottom), scene_size)
+				Vector2(scene_grid.position.x, strip_bottom), scene_size)
 	var opponent_scene: Control = opponent_visual.get_node("OpponentScene")
-	opponent_scene.rect_position = Vector2(
-			scene_grid.rect_position.x, strip_bottom)
-	opponent_scene.rect_size = scene_size
+	opponent_scene.position = Vector2(
+			scene_grid.position.x, strip_bottom)
+	opponent_scene.size = scene_size
 
 	# The scenario slot is centred in the right column, the same width as the
 	# mirrored deck slot, so it lines up with the prize box below it.
 	var scenario_grid: BoardPlacementGrid = get_node("ModifiedLabelGrid")
-	scenario_grid.rect_position = Vector2(
+	scenario_grid.position = Vector2(
 			_prizes_position.x \
-					+ (left_column_width - scenario_grid.rect_size.x) * 0.5,
+					+ (left_column_width - scenario_grid.size.x) * 0.5,
 			player_field_y + 2)
 	var scene_caption: Label = scenario_grid.get_node("Control/Label")
-	scene_caption.rect_size = Vector2(left_column_width, 20)
+	scene_caption.size = Vector2(left_column_width, 20)
 	# Above the card this caption lands on the opponent resources row, so it
 	# sits under the scenario card instead.
-	scene_caption.rect_global_position = Vector2(
+	scene_caption.global_position = Vector2(
 			_prizes_position.x,
-			scenario_grid.rect_global_position.y + scenario_grid.rect_size.y + 2)
-	scene_caption.align = Label.ALIGN_CENTER
+			scenario_grid.global_position.y + scenario_grid.size.y + 2)
+	scene_caption.align = HORIZONTAL_ALIGNMENT_CENTER
 
 	# The hand cards are drawn above the hand node origin (the oval fan); the
 	# margin authored in CGFHand.tscn keeps the fan on the bottom edge.
@@ -210,10 +209,10 @@ func _capture_authored_layout() -> void:
 	_prizes_position = prizes.position
 	var resources: Control = get_node(
 			"OpponentFieldVisual/OpponentResourcesBackground")
-	_resources_base_width = resources.rect_size.x
+	_resources_base_width = resources.size.x
 	var opponent_scene: Control = get_node("OpponentFieldVisual/OpponentScene")
 	_authored_opponent_scene_rect = Rect2(
-			opponent_scene.rect_position, opponent_scene.rect_size)
+			opponent_scene.position, opponent_scene.size)
 
 
 # The mirror scales the floating cards by scene/grid, so a stale authored rect
@@ -245,7 +244,7 @@ func _on_board_viewport_size_changed() -> void:
 
 
 func _process(delta: float) -> void:
-	._process(delta)
+	super._process(delta)
 	_update_prize_energy()
 	_refresh_hand_label()
 	_hold_pile_layout()
@@ -289,8 +288,8 @@ func _hold_pile_layout() -> void:
 	if prizes.position != _prizes_position:
 		prizes.position = _prizes_position
 	var deck_control: Control = deck.get_node("Control")
-	if deck_control.rect_size != _deck_control_size:
-		_deck_control_size = deck_control.rect_size
+	if deck_control.size != _deck_control_size:
+		_deck_control_size = deck_control.size
 		deck.call_deferred("keep_children_upright")
 
 
@@ -335,45 +334,45 @@ func report_prize_energy(slot: int, total: int) -> void:
 
 func prize_owner_name(slot: int) -> String:
 	var display := Multiplayer.get_slot_username(slot)
-	if display.empty():
+	if display.is_empty():
 		display = "P" + str(slot)
 	return display
 
 
 func _build_victory_overlay(slot: int) -> void:
-	var area := rect_size
+	var area := size
 	if area.x <= 0.0 or area.y <= 0.0:
 		area = get_viewport().get_visible_rect().size
 	var overlay := Control.new()
 	overlay.name = "VictoryOverlay"
-	overlay.rect_size = area
+	overlay.size = area
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0, 0, 0, 0.72)
-	backdrop.rect_size = area
+	backdrop.size = area
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(backdrop)
 	var title := Label.new()
 	title.text = prize_owner_name(slot) + " venceu!"
-	title.align = Label.ALIGN_CENTER
-	title.valign = Label.VALIGN_CENTER
-	title.rect_position = Vector2(0, area.y * 0.32)
-	title.rect_size = Vector2(area.x, 40)
+	title.align = HORIZONTAL_ALIGNMENT_CENTER
+	title.valign = VERTICAL_ALIGNMENT_CENTER
+	title.position = Vector2(0, area.y * 0.32)
+	title.size = Vector2(area.x, 40)
 	overlay.add_child(title)
 	var detail := Label.new()
 	detail.text = str(PRIZE_ENERGY_WIN) + " de energia nos Prêmios"
-	detail.align = Label.ALIGN_CENTER
-	detail.rect_position = Vector2(0, area.y * 0.32 + 42)
-	detail.rect_size = Vector2(area.x, 24)
+	detail.align = HORIZONTAL_ALIGNMENT_CENTER
+	detail.position = Vector2(0, area.y * 0.32 + 42)
+	detail.size = Vector2(area.x, 24)
 	overlay.add_child(detail)
 	var close := Button.new()
 	close.text = "Fechar"
-	close.rect_min_size = Vector2(120, 34)
-	close.rect_position = Vector2((area.x - 120.0) * 0.5, area.y * 0.32 + 92)
+	close.custom_minimum_size = Vector2(120, 34)
+	close.position = Vector2((area.x - 120.0) * 0.5, area.y * 0.32 + 92)
 	overlay.add_child(close)
 	# warning-ignore:return_value_discarded
-	close.connect("pressed", overlay, "queue_free")
+	close.pressed.connect(overlay.queue_free)
 
 
 # The shared runner for everything the mouse triggers: the manipulation
@@ -416,7 +415,7 @@ func damage_character(card: Card, amount := 1) -> int:
 			or not card.is_battle_scenes_character() or amount <= 0:
 		return CFConst.ReturnCode.FAILED
 	var removed := 0
-	while removed < amount and not card.attachments.empty():
+	while removed < amount and not card.attachments.is_empty():
 		var attachment: Card = card.attachments.back()
 		card.attachments.erase(attachment)
 		attachment.current_host_card = null
@@ -426,7 +425,7 @@ func damage_character(card: Card, amount := 1) -> int:
 	if removed > 0:
 		GameEvents.record_local("damaged", "board", card.canonical_name,
 				"board", true, "", removed)
-	if card.attachments.empty():
+	if card.attachments.is_empty():
 		knockout_character(card)
 	return CFConst.ReturnCode.CHANGED
 
@@ -676,14 +675,20 @@ func _on_resource_popup_closed() -> void:
 # to a node which might not be there in another game
 # You can remove this function and the FancyMovementToggle button
 # without issues
-func _on_FancyMovementToggle_toggled(_button_pressed) -> void:
-#	cfc.game_settings.fancy_movement = $FancyMovementToggle.pressed
-	cfc.set_setting('fancy_movement', $FancyMovementToggle.pressed)
+func _on_FancyMovementToggle_toggled(button_pressed: bool) -> void:
+	# No Godot 4 a propriedade bool do Button é `button_pressed`; `pressed` é o
+	# signal. Usar o argumento do `toggled` evita salvar o Signal como string.
+	cfc.set_setting('fancy_movement', button_pressed)
 
 
-func _on_OvalHandToggle_toggled(_button_pressed: bool) -> void:
-	cfc.set_setting("hand_use_oval_shape", $OvalHandToggle.pressed)
-	for c in cfc.NMAP.hand.get_all_cards():
+func _on_OvalHandToggle_toggled(button_pressed: bool) -> void:
+	cfc.set_setting("hand_use_oval_shape", button_pressed)
+	# Durante o _ready o sinal `toggled` dispara antes de o nó "hand" estar
+	# mapeado no NMAP; sem a chave, o acesso dava erro no Godot 4.
+	var hand = cfc.NMAP.get("hand")
+	if hand == null:
+		return
+	for c in hand.get_all_cards():
 		c.reorganize_self()
 
 
@@ -731,7 +736,7 @@ func load_test_cards(gut := true) -> void:
 	if gut:
 		for card in gut_cards:
 			test_card_array.append(cfc.instance_card(card))
-	elif not cfc.current_deck.empty():
+	elif not cfc.current_deck.is_empty():
 		for card_name in cfc.current_deck.cards:
 			for _i in range(cfc.current_deck.cards[card_name]):
 				test_card_array.append(cfc.instance_card(card_name))
@@ -749,7 +754,7 @@ func load_test_cards(gut := true) -> void:
 
 func _on_DeckBuilder_pressed() -> void:
 	cfc.game_paused = true
-	$DeckBuilderPopup.popup_centered_minsize()
+	$DeckBuilderPopup.popup_centered_clamped()
 
 func _on_DeckBuilder_hide() -> void:
 	cfc.game_paused = false
@@ -759,4 +764,4 @@ func _on_BackToMain_pressed() -> void:
 	if Multiplayer.is_session_active():
 		Multiplayer.leave_session("Partida encerrada pelo jogador.")
 	cfc.quit_game()
-	get_tree().change_scene("res://src/custom/MainMenu.tscn")
+	get_tree().change_scene_to_file("res://src/custom/MainMenu.tscn")

@@ -1,4 +1,4 @@
-extends Reference
+extends RefCounted
 
 # The playmat is the artwork behind the whole board. It is a local preference:
 # each player sees their own choice, so it never travels through the relay.
@@ -83,60 +83,56 @@ static func display_name(id: String) -> String:
 
 static func selected_id() -> String:
 	var saved := str(cfc.game_settings.get(PLAYMAT_SETTING, ""))
-	if saved.empty():
+	if saved.is_empty():
 		return DEFAULT_ID
 	return saved
 
 
 static func remember_id(id: String) -> void:
-	if id.empty() or selected_id() == id:
+	if id.is_empty() or selected_id() == id:
 		return
 	cfc.set_setting(PLAYMAT_SETTING, id)
 
 
-static func texture_for_id(id: String) -> Texture:
+static func texture_for_id(id: String) -> Texture2D:
 	return texture_for_path(str(entry(id).get("path", "")))
 
 
 # Loaded instead of preloaded so a missing artwork leaves the plain board
 # working rather than breaking every script that references this catalog.
-static func texture_for_path(path: String) -> Texture:
-	if path.empty():
+static func texture_for_path(path: String) -> Texture2D:
+	if path.is_empty():
 		return null
 	# The exported web build keeps the imported texture but not the source file,
 	# so the remap has to be asked first. It is also the silent path for a
 	# missing artwork: both checks fail without logging.
 	if ResourceLoader.exists(path):
 		var resource = load(path)
-		if resource is Texture:
+		if resource is Texture2D:
 			return resource
 	if not file_exists(path):
 		return null
 	# The editor only imports new art when its window gets focus, and a playmat
 	# the player uploaded has no importer at all; decoding the file directly
 	# keeps both working.
-	var image := Image.new()
-	if image.load(path) != OK:
+	var image := Image.load_from_file(path)
+	if image == null:
 		return null
 	return texture_from_image(image)
 
 
-static func texture_from_image(image: Image,
-		flags := Texture.FLAGS_DEFAULT) -> Texture:
+static func texture_from_image(image: Image) -> Texture2D:
 	if image == null or image.is_empty():
 		return null
-	var texture := ImageTexture.new()
-	# The artwork is smaller than the board and the menu, so the default flags
-	# matter: without the filter it would be stretched with hard pixels.
-	texture.create_from_image(image, flags)
-	return texture
+	# The artwork is smaller than the board and the menu, so it is drawn with the
+	# default linear filter; create_from_image keeps that behaviour.
+	return ImageTexture.create_from_image(image)
 
 
 static func file_exists(path: String) -> bool:
-	if path.empty():
+	if path.is_empty():
 		return false
-	var probe := File.new()
-	return probe.file_exists(path)
+	return FileAccess.file_exists(path)
 
 
 # Keeps the uploaded artwork for this machine only. The image is trimmed to the
@@ -196,8 +192,7 @@ static func _within_cap(image: Image) -> void:
 
 
 static func _ensure_custom_dir(path: String) -> bool:
-	var directory := Directory.new()
 	var folder := path.get_base_dir()
-	if folder.empty() or directory.dir_exists(folder):
+	if folder.is_empty():
 		return true
-	return directory.make_dir_recursive(folder) == OK
+	return DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(folder)) == OK

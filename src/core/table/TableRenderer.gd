@@ -15,7 +15,7 @@
 # and cards still tweening keep their animation; only the slot reference is
 # settled.
 class_name TableRenderer
-extends Reference
+extends RefCounted
 
 const _Table = preload("res://src/core/table/TableState.gd")
 const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
@@ -120,7 +120,7 @@ static func _reconcile_field(board, state, seat : int, nodes : Dictionary) -> Ar
 		var ids: Array = state.field[seat][row]
 		for index in range(ids.size()):
 			var id := str(ids[index])
-			if id.empty():
+			if id.is_empty():
 				continue
 			var slot_index : int = row_index * columns + index
 			while grid.get_slot_count() <= slot_index:
@@ -159,7 +159,7 @@ static func _reconcile_scenario(board, state, nodes : Dictionary) -> Array:
 			or grid.get_slot_count() == 0:
 		return []
 	var id := str(state.scenario)
-	if id.empty():
+	if id.is_empty():
 		return []
 	var card = nodes.get(id, null)
 	if not is_instance_valid(card) or card.get_parent() != board:
@@ -191,11 +191,11 @@ static func _settle(card, slot) -> void:
 		previous.occupying_card = null
 	slot.occupying_card = card
 	card._placement_slot = slot
-	card._target_position = slot.rect_global_position
+	card._target_position = slot.global_position
 	if card.state == Card.CardState.ON_PLAY_BOARD \
 			and card != cfc.card_drag_ongoing \
 			and not card._tween.is_active():
-		card.global_position = slot.rect_global_position
+		card.global_position = slot.global_position
 
 
 # -----------------------------------------------------------------------------
@@ -212,7 +212,7 @@ static func _nodes_by_id(board) -> Dictionary:
 		if not is_instance_valid(card):
 			continue
 		var id := _Snapshot.id_of(card)
-		if not id.empty():
+		if not id.is_empty():
 			nodes[id] = card
 	return nodes
 

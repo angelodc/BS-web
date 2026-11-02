@@ -35,7 +35,10 @@ var match_participants := []
 var reconnectable := false
 var reconnect_grace_seconds := 0
 var last_address := DEFAULT_ADDRESS
-var _client: WebSocketClient
+var _client: WebSocketPeer
+# WebSocketPeer has no signals; we poll get_ready_state() and react to
+# transitions to reproduce the old connection_established/closed/error events.
+var _prev_state := WebSocketPeer.STATE_CLOSED
 var _last_status := "Desconectado"
 var _pending_action := {}
 var _incoming_chunks := {}
@@ -47,8 +50,24 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _client:
-		_client.poll()
+	if _client == null:
+		return
+	_client.poll()
+	var state := _client.get_ready_state()
+	if state != _prev_state:
+		match state:
+			WebSocketPeer.STATE_OPEN:
+				if _prev_state == WebSocketPeer.STATE_CONNECTING:
+					_on_client_connected()
+			WebSocketPeer.STATE_CLOSED:
+				if _prev_state == WebSocketPeer.STATE_CONNECTING:
+					_on_client_error()
+				elif _prev_state != WebSocketPeer.STATE_CLOSED:
+					_on_client_closed()
+		_prev_state = state
+	if state == WebSocketPeer.STATE_OPEN:
+		while _client.get_available_packet_count() > 0:
+			_handle_packet(_client.get_packet())
 
 
 func create_room(address: String, username: String) -> bool:
@@ -102,7 +121,7 @@ func join_resume_room(
 
 
 func reconnect_room(address: String, username: String) -> bool:
-	if room_id.empty():
+	if room_id.is_empty():
 		_set_status("Nao ha sala para reconectar.")
 		return false
 	return _connect_for_action(
@@ -118,7 +137,7 @@ func reconnect_room(address: String, username: String) -> bool:
 
 func join_room(address: String, username: String, room_code: String) -> bool:
 	var code := room_code.strip_edges().to_upper()
-	if code.empty():
+	if code.is_empty():
 		_set_status("Informe o codigo da sala.")
 		return false
 	return _connect_for_action(
@@ -137,7 +156,7 @@ func join_room(address: String, username: String, room_code: String) -> bool:
 # is no client, so the session code keeps walking the same paths as a real match.
 func start_solo(username: String) -> bool:
 	var cleaned := username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		_set_status("Digite um username para jogar sozinho.")
 		return false
 	disconnect_game()
@@ -147,7 +166,7 @@ func start_solo(username: String) -> bool:
 	opponent_username = cleaned
 	room_id = "SOLO"
 	match_mode = "match"
-	game_id = "SOLO-" + str(OS.get_ticks_usec())
+	game_id = "SOLO-" + str(Time.get_ticks_usec())
 	match_participants = [cleaned, cleaned]
 	_set_status("Partida solo: voce controla os dois assentos.")
 	emit_signal("match_found", opponent_username)
@@ -168,7 +187,7 @@ func cancel_search() -> void:
 func disconnect_game() -> void:
 	var was_connected := is_connected
 	if _client:
-		if is_connected or not room_id.empty():
+		if is_connected or not room_id.is_empty():
 			_send_packet({"t": "leave_room"})
 		_close_socket()
 	is_connected = false
@@ -184,18 +203,17 @@ func leave_room() -> void:
 
 
 func send_message(data: Dictionary) -> void:
-	if not is_connected or not _client \
-			or _client.get_connection_status() \
-			!= NetworkedMultiplayerPeer.CONNECTION_CONNECTED:
+	if not is_connected or _client == null \
+			or _client.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return
 	data["from"] = peer_tag
 	data["username"] = player_username
-	var text := JSON.print(data)
+	var text := JSON.stringify(data)
 	if text.length() <= MAX_MESSAGE_CHARS:
 		_send_packet(data)
 		return
 	_chunk_counter += 1
-	var chunk_id := str(OS.get_ticks_usec()) + "-" + str(_chunk_counter)
+	var chunk_id := str(Time.get_ticks_usec()) + "-" + str(_chunk_counter)
 	var count := int(ceil(float(text.length()) / MAX_MESSAGE_CHARS))
 	for index in range(count):
 		_send_packet({
@@ -218,7 +236,7 @@ func get_status() -> String:
 
 
 func is_in_room() -> bool:
-	return not room_id.empty()
+	return not room_id.is_empty()
 
 
 func is_host() -> bool:
@@ -231,7 +249,7 @@ func _connect_for_action(
 		action: Dictionary,
 		status: String) -> bool:
 	var cleaned := username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		_set_status("Digite seu username antes de continuar.")
 		return false
 	LocalRelay.ensure_for_address(address)
@@ -241,17 +259,10 @@ func _connect_for_action(
 	player_username = cleaned
 	_pending_action = action
 	is_searching = true
-	_client = WebSocketClient.new()
-	# warning-ignore:return_value_discarded
-	_client.connect("connection_established", self, "_on_client_connected")
-	# warning-ignore:return_value_discarded
-	_client.connect("connection_closed", self, "_on_client_closed")
-	# warning-ignore:return_value_discarded
-	_client.connect("connection_error", self, "_on_client_error")
-	# warning-ignore:return_value_discarded
-	_client.connect("data_received", self, "_on_client_data")
+	_client = WebSocketPeer.new()
+	_prev_state = WebSocketPeer.STATE_CLOSED
 	var url := _normalize_url(address)
-	var connect_error := _client.connect_to_url(url, PoolStringArray(), false)
+	var connect_error := _client.connect_to_url(url)
 	if connect_error != OK:
 		_client = null
 		is_searching = false
@@ -268,7 +279,7 @@ func _normalize_url(address: String) -> String:
 
 func _normalize_url_for_platform(address: String, web: bool) -> String:
 	var trimmed := address.strip_edges()
-	if trimmed.empty():
+	if trimmed.is_empty():
 		trimmed = WEB_DEFAULT_ADDRESS if web else DEFAULT_ADDRESS
 	if trimmed.begins_with("ws://") or trimmed.begins_with("wss://"):
 		return trimmed
@@ -317,22 +328,19 @@ func _has_explicit_port(address: String) -> bool:
 
 
 func _send_packet(data: Dictionary) -> void:
-	if not _client or _client.get_connection_status() \
-			!= NetworkedMultiplayerPeer.CONNECTION_CONNECTED:
+	if _client == null or _client.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return
-	var peer: WebSocketPeer = _client.get_peer(1)
-	if not peer:
-		return
-	peer.set_write_mode(WebSocketPeer.WRITE_MODE_TEXT)
-	var packet_error := peer.put_packet(JSON.print(data).to_utf8())
+	_client.set_write_mode(WebSocketPeer.WRITE_MODE_TEXT)
+	var packet_error := _client.put_packet(JSON.stringify(data).to_utf8_buffer())
 	if packet_error != OK:
 		_set_status("Falha ao enviar mensagem ao relay.")
 
 
 func _close_socket() -> void:
 	if _client:
-		_client.disconnect_from_host()
+		_client.close()
 		_client = null
+	_prev_state = WebSocketPeer.STATE_CLOSED
 
 
 func _reset_match() -> void:
@@ -349,15 +357,15 @@ func _reset_match() -> void:
 	_incoming_chunks = {}
 
 
-func _on_client_connected(_protocol: String) -> void:
-	if not _pending_action.empty():
+func _on_client_connected() -> void:
+	if not _pending_action.is_empty():
 		_send_packet(_pending_action)
 		_pending_action = {}
 
 
-func _on_client_closed(_was_clean: bool) -> void:
+func _on_client_closed() -> void:
 	var was_connected := is_connected
-	var was_in_room := not room_id.empty()
+	var was_in_room := not room_id.is_empty()
 	is_connected = false
 	is_searching = false
 	_set_status("Conexao com o relay encerrada.")
@@ -370,7 +378,7 @@ func _on_client_closed(_was_clean: bool) -> void:
 
 func _on_client_error() -> void:
 	var was_connected := is_connected
-	var was_in_room := not room_id.empty()
+	var was_in_room := not room_id.is_empty()
 	is_connected = false
 	is_searching = false
 	_set_status("Erro ao conectar ao relay. Confira o endereco e se ele esta ativo.")
@@ -381,16 +389,14 @@ func _on_client_error() -> void:
 		emit_signal("connection_lost")
 
 
-func _on_client_data() -> void:
-	if _client and _client.get_peer(1):
-		_handle_packet(_client.get_peer(1).get_packet())
-
-
-func _handle_packet(packet: PoolByteArray) -> void:
-	var parsed := JSON.parse(packet.get_string_from_utf8())
-	if parsed.error != OK or typeof(parsed.result) != TYPE_DICTIONARY:
+func _handle_packet(packet: PackedByteArray) -> void:
+	var json := JSON.new()
+	if json.parse(packet.get_string_from_utf8()) != OK:
 		return
-	var data: Dictionary = parsed.result
+	var parsed = json.get_data()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	var data: Dictionary = parsed
 	if str(data.get("t", "")) == "mp_chunk":
 		_handle_chunk(data)
 		return
@@ -400,7 +406,7 @@ func _handle_packet(packet: PoolByteArray) -> void:
 			if data.has("room_id"):
 				room_id = str(data["room_id"])
 				# Only the room creator receives a room_id while waiting.
-				if peer_tag.empty():
+				if peer_tag.is_empty():
 					peer_tag = "H"
 			if data.has("mode"):
 				match_mode = str(data["mode"])
@@ -473,7 +479,7 @@ func _handle_chunk(data: Dictionary) -> void:
 	var index := int(data.get("i", -1))
 	var count := int(data.get("n", 0))
 	var part := str(data.get("p", ""))
-	if chunk_id.empty() or index < 0 or count <= 0 or count > 64 \
+	if chunk_id.is_empty() or index < 0 or count <= 0 or count > 64 \
 			or index >= count:
 		return
 	if not _incoming_chunks.has(chunk_id):
@@ -497,11 +503,14 @@ func _handle_chunk(data: Dictionary) -> void:
 	for part_index in range(count):
 		text += str(entry["parts"].get(part_index, ""))
 	_incoming_chunks.erase(chunk_id)
-	var parsed := JSON.parse(text)
-	if parsed.error != OK or typeof(parsed.result) != TYPE_DICTIONARY:
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return
+	var parsed = json.get_data()
+	if typeof(parsed) != TYPE_DICTIONARY:
 		return
 	if is_connected:
-		emit_signal("message_received", parsed.result)
+		emit_signal("message_received", parsed)
 
 
 func _apply_match_found(data: Dictionary) -> void:

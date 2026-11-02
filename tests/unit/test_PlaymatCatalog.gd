@@ -12,7 +12,7 @@ func after_each():
 	var probe := File.new()
 	if not probe.file_exists(TEST_PATH):
 		return
-	var directory := Directory.new()
+	var directory := DirAccess.new()
 	if directory.remove(TEST_PATH) != OK:
 		gut.p("Could not remove " + TEST_PATH)
 

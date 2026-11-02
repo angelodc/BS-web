@@ -21,18 +21,18 @@ func _add_opponent_band() -> Control:
 	visual.name = "OpponentFieldVisual"
 	board.add_child(visual)
 	autofree(visual)
-	visual.rect_position = Vector2.ZERO
-	visual.rect_size = Vector2(BOARD_WIDTH, SPLIT_Y)
+	visual.position = Vector2.ZERO
+	visual.size = Vector2(BOARD_WIDTH, SPLIT_Y)
 	return visual
 
 
 func _add_scene_grid() -> BoardPlacementGrid:
-	var grid = load("res://src/custom/CGFPlacementGridDemo.tscn").instance()
+	var grid = load("res://src/custom/CGFPlacementGridDemo.tscn").instantiate()
 	grid.name = "PlacementGridDemo"
 	board.add_child(grid)
 	autofree(grid)
-	grid.rect_position = Vector2(156, SPLIT_Y)
-	yield(yield_for(0.2), YIELD)
+	grid.position = Vector2(156, SPLIT_Y)
+	await yield_for(0.2).YIELD
 	return grid
 
 
@@ -49,7 +49,7 @@ func _add_sync():
 func test_mirror_rect_turns_a_box_around_the_middle_line():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
+		setup = await setup.completed
 	_add_opponent_band()
 	var sync = _add_sync()
 
@@ -71,22 +71,22 @@ func test_mirror_rect_turns_a_box_around_the_middle_line():
 func test_scene_slots_are_the_reflection_of_the_local_slots():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
+		setup = await setup.completed
 	_add_opponent_band()
-	var grid: BoardPlacementGrid = yield(_add_scene_grid(), "completed")
+	var grid: BoardPlacementGrid = await _add_scene_grid().completed
 	var sync = _add_sync()
 	assert_true(grid.get_slot_count() > 0, "The scene grid has slots")
 
 	for index in range(grid.get_slot_count()):
 		var slot: Control = grid.get_slot(index)
 		var expected := Rect2(
-				BOARD_WIDTH - slot.rect_global_position.x - slot.rect_size.x,
-				SPLIT_Y * 2.0 - slot.rect_global_position.y - slot.rect_size.y,
-				slot.rect_size.x, slot.rect_size.y)
+				BOARD_WIDTH - slot.global_position.x - slot.size.x,
+				SPLIT_Y * 2.0 - slot.global_position.y - slot.size.y,
+				slot.size.x, slot.size.y)
 		var mirrored: Rect2 = sync._mirrored_slot_rect(index)
 		assert_almost_eq(mirrored.position, expected.position, Vector2(1, 1),
 				"Slot " + str(index) + " lands on the mirrored slot")
-		assert_almost_eq(mirrored.size, slot.rect_size, Vector2(1, 1),
+		assert_almost_eq(mirrored.size, slot.size, Vector2(1, 1),
 				"Slot " + str(index) + " keeps its size")
 
 
@@ -96,7 +96,7 @@ func test_scene_slots_are_the_reflection_of_the_local_slots():
 func test_resource_cells_reflect_the_local_grid():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
+		setup = await setup.completed
 	# The UT discard sits on the right column; the shipped board puts it on the
 	# left, under the deck, which is the box the mirror is authored for.
 	discard.position = Vector2(0, 372.2)
@@ -105,19 +105,19 @@ func test_resource_cells_reflect_the_local_grid():
 	var resources := ColorRect.new()
 	resources.name = "OpponentResourcesBackground"
 	visual.add_child(resources)
-	resources.rect_position = Vector2(1124, 144.2)
-	resources.rect_size = Vector2(156, 216)
+	resources.position = Vector2(1124, 144.2)
+	resources.size = Vector2(156, 216)
 	var sync = _add_sync()
 
 	var layout: Dictionary = discard.grid_layout()
-	assert_false(layout.empty(), "The local grid reports its layout")
+	assert_false(layout.is_empty(), "The local grid reports its layout")
 	var panel: Control = discard.get_node("Control")
 	var origin: Vector2 = layout["origin"]
 	var step: Vector2 = layout["step"]
 	var cell_size: Vector2 = CFConst.CARD_SIZE * float(layout["scale"])
 
 	for index in range(6):
-		var local := Rect2(panel.rect_global_position + origin + Vector2(
+		var local := Rect2(panel.global_position + origin + Vector2(
 				index % 3, int(index / 3)) * step, cell_size)
 		var expected := Rect2(
 				BOARD_WIDTH - local.position.x - local.size.x,
@@ -128,7 +128,7 @@ func test_resource_cells_reflect_the_local_grid():
 				"Resource cell " + str(index) + " is the reflected cell")
 		assert_almost_eq(mirrored.size, cell_size, Vector2(1, 1),
 				"Resource cell " + str(index) + " keeps the local cell size")
-		var box := Rect2(resources.rect_global_position, resources.rect_size)
+		var box := Rect2(resources.global_position, resources.size)
 		assert_true(box.encloses(mirrored),
 				"Resource cell " + str(index) + " stays inside the opponent box")
 
@@ -144,15 +144,15 @@ func test_resource_cells_reflect_the_local_grid():
 func test_resource_cells_stay_below_the_opponent_label():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		setup = yield(setup, "completed")
+		setup = await setup.completed
 	discard.position = Vector2(0, 372.2)
 	discard._layout_panel()
 	var visual := _add_opponent_band()
 	var resources := ColorRect.new()
 	resources.name = "OpponentResourcesBackground"
 	visual.add_child(resources)
-	resources.rect_position = Vector2(1124, 144.2)
-	resources.rect_size = Vector2(156, 216)
+	resources.position = Vector2(1124, 144.2)
+	resources.size = Vector2(156, 216)
 	var sync = _add_sync()
 
 	var label_band := Rect2(Vector2(1124, 144.2), Vector2(156, 22))

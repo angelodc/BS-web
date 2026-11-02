@@ -4,11 +4,11 @@ class_name Token
 extends HBoxContainer
 
 
-export var count := 0 setget set_count, get_count
+@export var count := 0: get = get_count, set = set_count
 
 var token_drawer
 
-onready var count_label = $CenterContainer/Count
+@onready var count_label = $CenterContainer/Count
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
@@ -33,11 +33,9 @@ func setup(token_name: String, _token_drawer = null) -> void:
 	name = token_name
 	token_drawer = _token_drawer
 	var textrect : TextureRect = $CenterContainer/TokenIcon
-	var new_texture = ImageTexture.new();
 	var tex = load(CFConst.PATH_TOKENS + CFConst.TOKENS_MAP[token_name])
-	var image = tex.get_data()
-	new_texture.create_from_image(image)
-	textrect.texture = new_texture
+	var image = tex.get_image()
+	textrect.texture = ImageTexture.create_from_image(image)
 	$Name.text = token_name.capitalize()
 
 
@@ -73,13 +71,17 @@ func get_count_and_alterants() -> Dictionary:
 	# We do this check because in UT the token might not be
 	# assigned to a token_drawer
 	if token_drawer:
-		alteration = CFScriptUtils.get_altered_value(
+		var sync_alteration = CFScriptUtils.get_altered_value_no_wait(
 			token_drawer.owner_card,
 			"get_token",
 			{SP.KEY_TOKEN_NAME: name,},
 			count)
-		if alteration is GDScriptFunctionState:
-			alteration = yield(alteration, "completed")
+		if sync_alteration.is_empty():
+			push_warning("Alterant scripts on the table need the async " +
+					"get_altered_value(); get_count() skipped them for " +
+					"token: " + name)
+		else:
+			alteration = sync_alteration
 	var return_dict := {
 		"count": count + alteration.value_alteration,
 		"alteration": alteration

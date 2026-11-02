@@ -1,4 +1,4 @@
-extends WindowDialog
+extends Window
 
 signal resume_requested(game_id, participants, as_host)
 
@@ -12,11 +12,11 @@ const PHASE_LABELS := {
 	"ATK": "Ataque",
 }
 
-onready var _games: ItemList = $VBox/Games
-onready var _status: Label = $VBox/Status
-onready var _host_button: Button = $VBox/Buttons/Host
-onready var _join_button: Button = $VBox/Buttons/Join
-onready var _refresh_button: Button = $VBox/Buttons/Refresh
+@onready var _games: ItemList = $VBox/Games
+@onready var _status: Label = $VBox/Status
+@onready var _host_button: Button = $VBox/Buttons/Host
+@onready var _join_button: Button = $VBox/Buttons/Join
+@onready var _refresh_button: Button = $VBox/Buttons/Refresh
 
 var _entries := []
 var _username := ""
@@ -24,12 +24,12 @@ var _selected := -1
 
 
 func _ready() -> void:
-	_games.connect("item_selected", self, "_on_game_selected")
-	_games.connect("nothing_selected", self, "_on_nothing_selected")
-	_host_button.connect("pressed", self, "_on_host_pressed")
-	_join_button.connect("pressed", self, "_on_join_pressed")
-	_refresh_button.connect("pressed", self, "_reload")
-	connect("about_to_show", self, "_reload")
+	_games.item_selected.connect(_on_game_selected)
+	_games.empty_clicked.connect(_on_nothing_selected)
+	_host_button.pressed.connect(_on_host_pressed)
+	_join_button.pressed.connect(_on_join_pressed)
+	_refresh_button.pressed.connect(_reload)
+	about_to_popup.connect(_reload)
 	_update_buttons()
 
 
@@ -56,7 +56,7 @@ func _reload() -> void:
 		var join_only := bool(game.get("join_only", false))
 		if not join_only \
 				and (participants.size() != 2 \
-				or (not _username.empty() and not _username in participants)):
+				or (not _username.is_empty() and not _username in participants)):
 			continue
 		_entries.append(game)
 		var index := _entries.size() - 1
@@ -103,7 +103,7 @@ func _format_game(game: Dictionary, intact: bool) -> String:
 func _format_time(unix_time: int) -> String:
 	if unix_time <= 0:
 		return "data desconhecida"
-	var date := OS.get_datetime_from_unix_time(unix_time)
+	var date := Time.get_datetime_dict_from_unix_time(unix_time)
 	return "%02d/%02d/%04d %02d:%02d" % [
 		int(date["day"]), int(date["month"]), int(date["year"]),
 		int(date["hour"]), int(date["minute"]),
@@ -115,7 +115,7 @@ func _on_game_selected(index: int) -> void:
 	_update_buttons()
 
 
-func _on_nothing_selected() -> void:
+func _on_nothing_selected(_at_position: Vector2, _mouse_button_index: int) -> void:
 	_selected = -1
 	_update_buttons()
 

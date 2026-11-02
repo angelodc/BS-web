@@ -16,7 +16,7 @@
 #   p1:deck:1 … N            (1 = topo)
 #   anexo:p1:<endereço do hospedeiro>:1 … n
 class_name TableState
-extends Reference
+extends RefCounted
 
 const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 
@@ -167,7 +167,7 @@ func _attach_loaded(id : String, host_address : String, index : int) -> void:
 	var entry: Dictionary = cards[id]
 	entry["host"] = host_id
 	entry["kind"] = _kind_of(entry)
-	if host_id.empty() or not cards.has(host_id):
+	if host_id.is_empty() or not cards.has(host_id):
 		# Without a host the attachment has no place in the state; it keeps its
 		# card entry so the totals still add up and compare_with reports it.
 		entry["zone"] = "attachment"
@@ -214,7 +214,7 @@ func zone_counts(seat := 1) -> Dictionary:
 	return {
 		"hand": _seat_zone_count(seat, "hand"),
 		"field": _seat_zone_count(seat, "field"),
-		"scenario": 0 if scenario.empty() else 1,
+		"scenario": 0 if scenario.is_empty() else 1,
 		"resources": _seat_zone_count(seat, "resources"),
 		"prizes": _seat_zone_count(seat, "prizes"),
 		"deck": _seat_zone_count(seat, "deck"),
@@ -277,7 +277,7 @@ func next_prize_slot(seat : int) -> int:
 func find_field_slot(seat : int, prefer_back := false, grow := true) -> String:
 	var rows := ROWS.duplicate()
 	if prefer_back and _front_has_character(seat):
-		rows.invert()
+		rows.reverse()
 	var order := _center_out(columns)
 	for row in rows:
 		for column in order:
@@ -322,7 +322,7 @@ func place(id : String, address : String) -> bool:
 		return false
 	var parsed := parse_address(address)
 	var kind := str(parsed.get("kind", ""))
-	if kind.empty():
+	if kind.is_empty():
 		return false
 	if not _destination_is_free(id, kind, parsed):
 		return false
@@ -359,7 +359,7 @@ func place(id : String, address : String) -> bool:
 			_set_zone(id, "scenario", 0, SCENARIO_ADDRESS)
 		"attachment":
 			var host_id := _id_at_address(str(parsed["host_address"]))
-			if host_id.empty():
+			if host_id.is_empty():
 				return false
 			var host: Dictionary = cards[host_id]
 			var index := int(parsed["index"]) - 1
@@ -400,7 +400,7 @@ func reorder_hand(seat : int, from_slot : int, to_slot : int) -> bool:
 			or to_index < 0 or to_index >= ids.size():
 		return false
 	var id := str(ids[from_index])
-	ids.remove(from_index)
+	ids.remove_at(from_index)
 	ids.insert(to_index, id)
 	_refresh_hand_addresses(seat)
 	return true
@@ -539,7 +539,7 @@ static func deck_address(seat : int, slot : int) -> String:
 
 
 static func _seat_from_prefix(prefix : String) -> int:
-	if prefix.begins_with("p") and prefix.substr(1).is_valid_integer():
+	if prefix.begins_with("p") and prefix.substr(1).is_valid_int():
 		return int(prefix.substr(1))
 	return 0
 
@@ -562,7 +562,7 @@ static func parse_address(address : String) -> Dictionary:
 		return {
 			"kind": "attachment",
 			"seat": _seat_from_prefix(parts[1]),
-			"host_address": PoolStringArray(host_parts).join(":"),
+			"host_address": ":".join(PackedStringArray(host_parts)),
 			"index": index,
 		}
 	var seat := _seat_from_prefix(parts[0])
@@ -633,10 +633,10 @@ func _destination_is_free(id : String, kind : String, parsed : Dictionary) \
 				return true
 			return str(slots[index]) == id or str(slots[index]) == ""
 		"scenario":
-			return scenario.empty() or scenario == id
+			return scenario.is_empty() or scenario == id
 		"attachment":
 			var host_id := _id_at_address(str(parsed.get("host_address", "")))
-			return not host_id.empty()
+			return not host_id.is_empty()
 	return true
 
 
@@ -751,7 +751,7 @@ func _kind_of(entry : Dictionary) -> String:
 
 
 func _id_at_address(address : String) -> String:
-	if address.empty():
+	if address.is_empty():
 		return ""
 	for id in cards:
 		if str(cards[id]["address"]) == address:

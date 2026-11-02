@@ -2,12 +2,21 @@
 
 ## Engine
 
-O projeto roda em **Godot 3.4.4 / GDScript 3.x**. Use apenas API e sintaxe dessa
-versao: nada de `await`, `super._ready()`, `Callable`, `instantiate()`,
-`add_theme_*`/`get_theme_*` ou `RichTextLabel.get_paragraph_count()`. Em Godot 3,
-`_ready`/`_enter_tree` sao chamados em todos os niveis da heranca; nunca chame
-`._ready()` dentro de um `_ready` derivado, pois isso duplica as conexoes de
-sinal do script base.
+O projeto roda em **Godot 4.7.2 / GDScript 4.x** (`project.godot` com
+`config/features=PackedStringArray("4.7")`). Use apenas API e sintaxe dessa
+versao. Diferencas que ja causaram erro na migracao:
+
+- `_ready`/`_enter_tree` nao sao chamados automaticamente nos scripts base:
+  chame `super._ready()` no inicio do `_ready` derivado, uma unica vez.
+- Nunca sobrescreva metodos nativos como `add_child`, `remove_child` ou
+  `move_child`: o Godot 4 nao chama a versao em GDScript. Reaja pelos sinais de
+  arvore (`child_entered_tree`, `child_exiting_tree`, `child_order_changed`).
+- Nomes de irmaos duplicados sao renomeados automaticamente (`@Control@12`);
+  nao dependa de um nome repetido para localizar um no.
+- `PopupPanel`/`PopupMenu` sao `Window`: tamanho e posicao sao `Vector2i`.
+- Em `Label`/`RichTextLabel` use `autowrap_mode`, nao a propriedade `autowrap`.
+- Use `await`, `Callable`, `instantiate()`, `get_node_or_null()` e os metodos
+  `add_theme_*`/`get_theme_*` do Godot 4. Nao existe `has_node_or_null`.
 
 ## Testes locais no Godot
 

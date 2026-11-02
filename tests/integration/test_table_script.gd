@@ -19,10 +19,10 @@ var actions
 func before_each():
 	var setup = setup_board()
 	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+		await setup.completed
 	# The test board has no scenario slot; adding it the same way the production
 	# scene does keeps the zone counts equivalent.
-	var scenario_grid = SCENARIO_GRID_SCENE.instance()
+	var scenario_grid = SCENARIO_GRID_SCENE.instantiate()
 	scenario_grid.name = "ModifiedLabelGrid"
 	board.add_child(scenario_grid)
 	scenario_grid.add_slot()
@@ -113,7 +113,9 @@ func test_the_console_text_format_runs_as_typed():
 	var text := "{\"seed\": \"f4-console\", \"steps\": [" \
 			+ "{\"op\": \"comprar\"}," \
 			+ "{\"expect\": {\"zones\": {\"hand\": 1}}}]}"
-	var parsed := JSON.parse(text)
+	var test_json_conv = JSON.new()
+	test_json_conv.parse(text)
+	var parsed := test_json_conv.get_data()
 
 	assert_eq(parsed.error, OK, str(parsed.error_string))
 	var result := Runner.run(actions, parsed.result, 1)

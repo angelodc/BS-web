@@ -29,9 +29,8 @@ var entries := []
 
 
 func _ready() -> void:
-	cfc.signal_propagator.connect(
-			"signal_received", self, "_on_signal_received")
-	Multiplayer.connect("phase_changed", self, "_on_phase_changed")
+	cfc.signal_propagator.signal_received.connect(_on_signal_received)
+	Multiplayer.phase_changed.connect(_on_phase_changed)
 
 
 func set_enabled(value: bool) -> void:
@@ -96,7 +95,7 @@ func _on_phase_changed() -> void:
 	if not enabled or suppressed or not Multiplayer.is_playing():
 		return
 	var actor := Multiplayer.get_actor_username()
-	if actor.empty():
+	if actor.is_empty():
 		actor = "P" + str(Multiplayer.get_actor_slot())
 	record_system("Rodada " + str(Multiplayer.round_number) + " · " \
 			+ Multiplayer.get_phase_label() + " · vez de " + actor)
@@ -153,7 +152,7 @@ func _push(slot: int, action: String, zone: String, card_name: String,
 		"public": revealed,
 		"text": text_override,
 	}
-	if entry["text"].empty():
+	if entry["text"].is_empty():
 		entry["text"] = _sentence(entry)
 	entries.append(entry)
 	while entries.size() > MAX_ENTRIES:
@@ -166,7 +165,7 @@ func _push(slot: int, action: String, zone: String, card_name: String,
 # continuam anónimos, e os prêmios permanecem virados para baixo.
 func _reveals(card_name: String, zone: String, source_zone: String,
 		faceup: bool) -> bool:
-	if card_name.empty():
+	if card_name.is_empty():
 		return false
 	if source_zone in PUBLIC_ZONES:
 		return true
@@ -174,10 +173,10 @@ func _reveals(card_name: String, zone: String, source_zone: String,
 
 
 func _sentence(entry: Dictionary) -> String:
-	var prefix := str(entry["actor"]) + " " if not str(entry["actor"]).empty() \
+	var prefix := str(entry["actor"]) + " " if not str(entry["actor"]).is_empty() \
 			else ""
 	var card := str(entry["card"])
-	var subject := card if not card.empty() else "uma carta"
+	var subject := card if not card.is_empty() else "uma carta"
 	var host := str(entry["host"])
 	match str(entry["action"]):
 		"played_scenario":
@@ -201,10 +200,10 @@ func _sentence(entry: Dictionary) -> String:
 			return prefix + "pegou " + subject + " para a mão"
 		"attached":
 			return prefix + "anexou " + subject \
-					+ (" sob " + host if not host.empty() else "")
+					+ (" sob " + host if not host.is_empty() else "")
 		"detached":
 			return prefix + "removeu " + subject \
-					+ (" de " + host if not host.empty() else "")
+					+ (" de " + host if not host.is_empty() else "")
 		"shuffled":
 			return prefix + "embaralhou o " + zone_label(str(entry["zone"]))
 		"sent_to_prizes":
@@ -226,7 +225,7 @@ func actor_name(slot: int) -> String:
 	if slot <= 0:
 		return ""
 	var display := Multiplayer.get_slot_username(slot)
-	if display.empty():
+	if display.is_empty():
 		display = "P" + str(slot)
 	return display
 
@@ -273,7 +272,7 @@ func zone_for_card(card: Card) -> String:
 
 
 func _zone_from_container(container_name: String, card) -> String:
-	if container_name.empty():
+	if container_name.is_empty():
 		return ""
 	var lowered := container_name.to_lower()
 	if "prêm" in lowered or "prem" in lowered:

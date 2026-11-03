@@ -3,6 +3,7 @@
 [ext_resource path="res://src/custom/CheckpointList.gd" type="Script" id=1]
 
 [node name="CheckpointList" type="Window"]
+visible = false
 offset_right = 660.0
 offset_bottom = 470.0
 custom_minimum_size = Vector2( 660, 470 )

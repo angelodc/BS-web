@@ -105,6 +105,9 @@ func _ready() -> void:
 	_leave_button.pressed.connect(_on_leave_pressed)
 	_link_dialog = LinkDeckScene.instantiate()
 	add_child(_link_dialog)
+	# A Window shows itself as soon as it enters the tree; this one belongs to
+	# the preparation panel and must wait for the LinkDeck button.
+	_link_dialog.hide()
 	_link_dialog.deck_loaded.connect(_on_link_deck_loaded)
 	Multiplayer.session_changed.connect(_refresh)
 	Multiplayer.prep_changed.connect(_on_prep_changed)
@@ -603,6 +606,10 @@ func _refresh() -> void:
 	_top_bar.visible = active and not Multiplayer.is_preparing() \
 			and not Multiplayer.is_starting()
 	_prepare_panel.visible = Multiplayer.is_preparing()
+	# The deck link window belongs to the preparation panel; a match that starts
+	# while it is open must not keep it over the table.
+	if not _prepare_panel.visible and is_instance_valid(_link_dialog):
+		_link_dialog.hide()
 	_overlay.visible = Multiplayer.is_frozen()
 	_advance_button.visible = Multiplayer.is_playing() \
 			and Multiplayer.is_my_phase()

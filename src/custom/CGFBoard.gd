@@ -2,6 +2,7 @@
 extends Board
 
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
+const MatchRecorderScript = preload("res://src/custom/MatchRecorder.gd")
 const TableActionsScript = preload("res://src/core/table/TableActions.gd")
 const TableRendererScript = preload("res://src/core/table/TableRenderer.gd")
 const TableSnapshotScript = preload("res://src/core/table/TableSnapshot.gd")
@@ -26,6 +27,7 @@ var pending_resource_count := 0
 var pending_resource_swap_active := false
 var _resource_selection_completed := false
 var _table_actions = null
+var _match_recorder = null
 
 # The match is won by the first player whose prize area reaches this much
 # printed energy.
@@ -85,6 +87,8 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	GameEvents.set_enabled(false)
+	if is_instance_valid(_match_recorder):
+		_match_recorder.stop("saiu_da_mesa")
 
 
 # The playmat is the local player's own artwork behind the whole board, so the
@@ -330,7 +334,68 @@ func _build_victory_overlay(slot: int) -> void:
 func table_actions():
 	if not is_instance_valid(_table_actions):
 		_table_actions = TableActionsScript.new(self)
+		_table_actions.recorder = match_recorder()
 	return _table_actions
+
+
+# Created lazily so a match that never records carries no file handle. Starting
+# and stopping are driven by the match menu; the runner keeps the reference so
+# every intent passes through it.
+func match_recorder():
+	if not is_instance_valid(_match_recorder):
+		_match_recorder = MatchRecorderScript.new()
+		if is_instance_valid(_table_actions):
+			_table_actions.recorder = _match_recorder
+	return _match_recorder
+
+
+# A drop that took the legacy path (host targeting, popup piles, a table drop
+# without a slot) still moves a card. The line is written once the move lands,
+# because the address only exists after the card is in place; drops the table
+# refused leave the address unchanged and produce no line.
+func note_drop(card: Card, destination: Node) -> void:
+	if not is_instance_valid(_match_recorder) or not _match_recorder.is_recording():
+		return
+	if not is_instance_valid(card) or not is_instance_valid(destination):
+		return
+	var id := TableSnapshotScript.id_of(card)
+	if id.is_empty():
+		return
+	var from_address := _address_of(id)
+	var host_id := ""
+	if is_instance_valid(card.potential_host):
+		host_id = TableSnapshotScript.id_of(card.potential_host)
+	# Autoplacement waits 0.1 s before picking a slot, so one frame is not
+	# enough to read the destination.
+	await get_tree().create_timer(0.35).timeout
+	if not is_instance_valid(self) or not is_instance_valid(card):
+		return
+	if not is_instance_valid(_match_recorder) or not _match_recorder.is_recording():
+		return
+	var to_address := _address_of(id)
+	if to_address.is_empty() or to_address == from_address:
+		return
+	var actions = table_actions()
+	var entry := {
+		"op": "arrastar",
+		"card": id,
+		"name": str(card.canonical_name),
+		"from": from_address,
+		"to": to_address,
+		"seat": int(actions.get_seat()),
+		"external": true,
+		"undoable": false,
+		"undone": false,
+	}
+	if not host_id.is_empty():
+		entry["host"] = host_id
+	actions.record_external(entry)
+
+
+func _address_of(id: String) -> String:
+	var actions = table_actions()
+	actions.sync()
+	return actions.state.address_of(id)
 
 
 # Runs one validated intent on behalf of the UI. A refused intent changes

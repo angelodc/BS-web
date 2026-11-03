@@ -52,6 +52,9 @@ var last_error := ""
 # The network half of the prize send. The board is the default; a test points
 # this at an object that records the send without a relay.
 var prize_sink = null
+# Optional MatchRecorder. Kept duck-typed so the core table does not depend on
+# the custom folder, and null keeps every intent cheap when nothing is recorded.
+var recorder = null
 
 var _snapshot := {}
 var _nodes := {}
@@ -123,10 +126,14 @@ func apply(raw_intent : Dictionary) -> Dictionary:
 	var intent := _resolve(raw_intent)
 	var decision = rules.validate(state, intent, _context())
 	if not decision.get("ok", false):
-		return _failure(decision)
+		var failure := _failure(decision)
+		_record(intent, failure)
+		return failure
 	var normalized: Dictionary = decision["intent"]
 	if str(normalized["op"]) == "desfazer":
-		return _undo(normalized)
+		var undone := _undo(normalized)
+		_record(normalized, undone)
+		return undone
 	var card_id := str(normalized.get("card", ""))
 	var card_name := str(state.cards.get(card_id, {}).get("name", ""))
 	var host_name := ""
@@ -136,6 +143,7 @@ func apply(raw_intent : Dictionary) -> Dictionary:
 	var before := _cards_snapshot()
 	var outcome := _dispatch(normalized)
 	if not outcome.get("ok", false):
+		_record(normalized, outcome)
 		return outcome
 	sync()
 	_render()
@@ -143,13 +151,15 @@ func apply(raw_intent : Dictionary) -> Dictionary:
 			host_name, outcome)
 	history.append(entry)
 	last_error = ""
-	return {
+	var result := {
 		"ok": true,
 		"error": "",
 		"message": "",
 		"entry": entry,
 		"state": state,
 	}
+	_record(normalized, result)
+	return result
 
 
 # Validates without changing anything, for buttons that want to grey out and
@@ -1011,3 +1021,26 @@ func _fail(code : String, message : String) -> Dictionary:
 func _failure(decision : Dictionary) -> Dictionary:
 	return _fail(str(decision.get("error", "falhou")),
 			str(decision.get("message", "A ação não foi permitida.")))
+
+
+# Hands the outcome to the optional recorder after `state` is up to date, so the
+# snapshot on the line matches the table the action produced.
+func _record(intent : Dictionary, result : Dictionary) -> void:
+	if not is_instance_valid(recorder) or not recorder.is_recording():
+		return
+	recorder.record_intent(intent, result, state, _seat)
+
+
+# A drag that took the legacy path moved a card without being validated here.
+# The line is flagged as external so a reader knows it is evidence of what
+# happened, not a replayable intent.
+func record_external(entry : Dictionary) -> void:
+	if not is_instance_valid(recorder) or not recorder.is_recording():
+		return
+	sync()
+	var intent := {"op": str(entry.get("op", "arrastar")), "seat": _seat}
+	for field in ["card", "host", "to"]:
+		if not str(entry.get(field, "")).is_empty():
+			intent[field] = entry[field]
+	recorder.record_intent(intent,
+			{"ok": true, "external": true, "entry": entry}, state, _seat)

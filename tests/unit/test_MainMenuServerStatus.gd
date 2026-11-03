@@ -10,7 +10,7 @@ var menu
 
 
 func before_each():
-	menu = autoqfree(MENU_SCENE.instance())
+	menu = autoqfree(MENU_SCENE.instantiate())
 
 
 func test_bare_address_gets_the_default_relay_port():

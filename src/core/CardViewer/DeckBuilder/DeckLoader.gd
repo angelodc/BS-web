@@ -11,25 +11,31 @@ var _load_decks_list := []
 
 func _ready() -> void:
 	# warning-ignore:return_value_discarded
-	get_popup().connect("index_pressed", self, "_on_deck_load")
+	get_popup().index_pressed.connect(_on_deck_load)
 	# warning-ignore:return_value_discarded
-	connect("about_to_show", self, "_on_about_to_show")
+	about_to_popup.connect(_on_about_to_show)
 
 
 # Returns an Array of Dictionaries, where each dictionary is the details
 # of a deck loaded from disk.
 static func load_all_decks() -> Array:
 	var available_decks = CFUtils.list_files_in_directory(CFConst.DECKS_PATH)
-	var file = File.new()
 	var loaded_decks_list := []
 	for deck in available_decks:
-		file.open(CFConst.DECKS_PATH + deck, File.READ)
-		var data = JSON.parse(file.get_as_text())
+		var file := FileAccess.open(CFConst.DECKS_PATH + deck, FileAccess.READ)
+		if file == null:
+			push_error("Could not open deck file: " + deck)
+			continue
+		var test_json_conv = JSON.new()
+		var parse_error := test_json_conv.parse(file.get_as_text())
+		var data = test_json_conv.get_data()
 		file.close()
-		# We expect decks in JSON Dictionary format
-		# In the future we might support plaintext as well.
-		if typeof(data.result) == TYPE_DICTIONARY:
-			loaded_decks_list.append(data.result)
+		# We expect decks in JSON Dictionary format. Only decks saved by the
+		# deck builder carry the precomputed total; other JSON files in the
+		# folder (BSDB deck links) are not loadable decks.
+		if parse_error == OK and typeof(data) == TYPE_DICTIONARY \
+				and data.has("total"):
+			loaded_decks_list.append(data)
 	return(loaded_decks_list)
 
 

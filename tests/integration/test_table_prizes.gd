@@ -12,7 +12,7 @@ const Actions = preload("res://src/core/table/TableActions.gd")
 const Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 
 class FakePrizeSink:
-	extends Reference
+	extends RefCounted
 
 	var accepted := true
 	var received := []
@@ -27,9 +27,7 @@ var _saved := {}
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+	await setup_board()
 	actions = Actions.new(board, 1)
 	sink = FakePrizeSink.new()
 	actions.prize_sink = sink
@@ -157,14 +155,14 @@ func test_the_resource_count_reads_the_stack_the_snapshot_reads():
 
 	assert_eq(board.get_available_resource_count(), 2)
 	assert_eq(snapshot["zones"]["resources"]["count"], 2)
-	assert_true(snapshot["issues"].empty(), str(snapshot["issues"]))
+	assert_true(snapshot["issues"].is_empty(), str(snapshot["issues"]))
 
 
 func test_the_resource_count_survives_the_view_popup():
 	assert_true(_ok(actions.apply({"op": "mandar_topo_para_recursos"})))
 	assert_true(_ok(actions.apply({"op": "mandar_topo_para_recursos"})))
 	discard._on_View_Button_pressed()
-	yield(yield_for(1), YIELD)
+	await yield_for(1)
 
 	var snapshot = Snapshot.capture(board, 1)
 
@@ -172,4 +170,4 @@ func test_the_resource_count_survives_the_view_popup():
 	assert_eq(board.get_available_resource_count(), 2,
 			"Cards parked in the popup still count as resources")
 	assert_eq(snapshot["zones"]["resources"]["count"], 2)
-	assert_true(snapshot["issues"].empty(), str(snapshot["issues"]))
+	assert_true(snapshot["issues"].is_empty(), str(snapshot["issues"]))

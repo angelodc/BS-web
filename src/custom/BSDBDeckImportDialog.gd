@@ -1,4 +1,4 @@
-extends WindowDialog
+extends Window
 
 signal deck_loaded(deck)
 
@@ -19,9 +19,9 @@ enum RequestStage {
 	CARD_DATA,
 }
 
-onready var _deck_url: LineEdit = $VBox/DeckURL
-onready var _status: Label = $VBox/Status
-onready var _import_button: Button = $VBox/Buttons/Import
+@onready var _deck_url: LineEdit = $VBox/DeckURL
+@onready var _status: Label = $VBox/Status
+@onready var _import_button: Button = $VBox/Buttons/Import
 
 var _request: HTTPRequest
 var _request_stage: int = RequestStage.DECK
@@ -29,7 +29,7 @@ var _deck_id := ""
 var _deck_record := {}
 var _deck_cards := []
 var _card_definitions := {}
-var _validation_dialog: WindowDialog
+var _validation_dialog: Window
 var _validation_queue := []
 var _pending_deck := {}
 
@@ -38,15 +38,15 @@ func _ready() -> void:
 	_request = HTTPRequest.new()
 	add_child(_request)
 	# warning-ignore:return_value_discarded
-	_request.connect("request_completed", self, "_on_request_completed")
+	_request.request_completed.connect(_on_request_completed)
 	# warning-ignore:return_value_discarded
-	_import_button.connect("pressed", self, "_on_import_pressed")
-	_validation_dialog = ValidationDialogScene.instance()
+	_import_button.pressed.connect(_on_import_pressed)
+	_validation_dialog = ValidationDialogScene.instantiate()
 	add_child(_validation_dialog)
 	# warning-ignore:return_value_discarded
-	_validation_dialog.connect("card_confirmed", self, "_on_validation_confirmed")
+	_validation_dialog.card_confirmed.connect(_on_validation_confirmed)
 	# warning-ignore:return_value_discarded
-	_validation_dialog.connect("cancelled", self, "_on_validation_cancelled")
+	_validation_dialog.canceled.connect(_on_validation_cancelled)
 
 
 static func get_deck_id_from_url(url: String) -> String:
@@ -70,7 +70,7 @@ func _on_import_pressed() -> void:
 		return
 	_deck_id = deck_id
 	var cached_deck = _load_cached_deck(deck_id)
-	if not cached_deck.empty():
+	if not cached_deck.is_empty():
 		_begin_validation(cached_deck)
 		return
 	_deck_record = {}
@@ -85,7 +85,7 @@ func _on_import_pressed() -> void:
 
 
 func _request_get(url: String) -> void:
-	var headers := PoolStringArray([
+	var headers := PackedStringArray([
 		"apikey: " + SUPABASE_PUBLIC_KEY,
 		"Accept: application/json",
 	])
@@ -97,28 +97,30 @@ func _request_get(url: String) -> void:
 
 
 func _on_request_completed(
-		result: int, response_code: int, _headers: PoolStringArray,
-		body: PoolByteArray) -> void:
+		result: int, response_code: int, _headers: PackedStringArray,
+		body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		_fail_import(
 				"Falha ao baixar dados do BSDB (HTTP "
 				+ str(response_code) + ", código "
 				+ str(result) + "). Verifique a conexão e tente novamente.")
 		return
-	var parsed := JSON.parse(body.get_string_from_utf8())
-	if parsed.error != OK:
+	var test_json_conv = JSON.new()
+	var parse_error := test_json_conv.parse(body.get_string_from_utf8())
+	var parsed = test_json_conv.get_data()
+	if parse_error != OK:
 		_fail_import("O BSDB retornou dados em formato inválido.")
 		return
-	if typeof(parsed.result) != TYPE_ARRAY:
+	if typeof(parsed) != TYPE_ARRAY:
 		_fail_import("A resposta do BSDB não contém uma lista válida.")
 		return
 	match _request_stage:
 		RequestStage.DECK:
-			_handle_deck_response(parsed.result)
+			_handle_deck_response(parsed)
 		RequestStage.DECK_CARDS:
-			_handle_deck_cards_response(parsed.result)
+			_handle_deck_cards_response(parsed)
 		RequestStage.CARD_DATA:
-			_handle_card_data_response(parsed.result)
+			_handle_card_data_response(parsed)
 
 
 func _handle_deck_response(records: Array) -> void:
@@ -134,7 +136,7 @@ func _handle_deck_response(records: Array) -> void:
 
 
 func _handle_deck_cards_response(records: Array) -> void:
-	if records.empty():
+	if records.is_empty():
 		_fail_import("O deck encontrado não possui cartas.")
 		return
 	var card_ids := []
@@ -157,7 +159,7 @@ func _handle_deck_cards_response(records: Array) -> void:
 	if total_cards != int(_deck_record.get("cards_count", total_cards)):
 		_fail_import("A quantidade de cartas do deck não confere com o BSDB.")
 		return
-	var ids_filter := PoolStringArray(card_ids).join(",")
+	var ids_filter := ",".join(PackedStringArray(card_ids))
 	_request_stage = RequestStage.CARD_DATA
 	_set_status("Baixando dados de " + str(card_ids.size()) + " cartas...")
 	_request_get(
@@ -173,7 +175,7 @@ func _handle_card_data_response(records: Array) -> void:
 			return
 		var card_id := str(record.get("id_card", ""))
 		var card_properties := make_card_properties(record)
-		if not card_id or card_properties.empty():
+		if not card_id or card_properties.is_empty():
 			_fail_import("Não foi possível interpretar uma carta do deck.")
 			return
 		_card_definitions[card_id] = card_properties
@@ -207,13 +209,13 @@ func _begin_validation(deck: Dictionary) -> void:
 		if typeof(definition) != TYPE_DICTIONARY:
 			continue
 		var missing := _missing_essential_fields(definition)
-		if not missing.empty():
+		if not missing.is_empty():
 			_validation_queue.append({
 				"key": keys[index],
 				"card_index": index,
 				"missing": missing,
 			})
-	if _validation_queue.empty():
+	if _validation_queue.is_empty():
 		_finish_import()
 		return
 	_set_status(
@@ -223,7 +225,7 @@ func _begin_validation(deck: Dictionary) -> void:
 
 
 func _show_next_validation() -> void:
-	if _validation_queue.empty():
+	if _validation_queue.is_empty():
 		_finish_import()
 		return
 	if not _validation_dialog:
@@ -240,7 +242,7 @@ func _show_next_validation() -> void:
 
 func _on_validation_confirmed(
 		card_name: String, category: String, energy: String) -> void:
-	if _validation_queue.empty():
+	if _validation_queue.is_empty():
 		return
 	var entry: Dictionary = _validation_queue.pop_front()
 	var definition = _card_definitions.get(entry["key"], {})
@@ -251,7 +253,7 @@ func _on_validation_confirmed(
 	definition["Type"] = _template_for_category(category)
 	if category in ENERGY_CARD_TYPES:
 		definition["ENERGIA"] = energy
-	elif str(definition.get("ENERGIA", "")).strip_edges().empty():
+	elif str(definition.get("ENERGIA", "")).strip_edges().is_empty():
 		definition["ENERGIA"] = "0"
 	_card_definitions[entry["key"]] = definition
 	_show_next_validation()
@@ -275,14 +277,14 @@ func _finish_import() -> void:
 
 static func _missing_essential_fields(definition: Dictionary) -> Array:
 	var missing := []
-	if str(definition.get("Name", "")).strip_edges().empty():
+	if str(definition.get("Name", "")).strip_edges().is_empty():
 		missing.append("Nome")
 	var category := str(definition.get("_tipo", "")).strip_edges()
 	if not category in VALID_CARD_TYPES:
 		missing.append("Tipo")
 	elif category in ENERGY_CARD_TYPES:
 		var energy := str(definition.get("ENERGIA", "")).strip_edges()
-		if energy.empty():
+		if energy.is_empty():
 			missing.append("ENERGIA")
 	return missing
 
@@ -306,7 +308,7 @@ static func make_card_properties(record: Dictionary) -> Dictionary:
 		return {}
 	var category := str(record.get("tipo", data.get("TIPO", ""))).strip_edges()
 	var template_type := _template_for_category(category)
-	if template_type.empty():
+	if template_type.is_empty():
 		push_warning("BSDB card without a valid type: " + category)
 	var energy_default: String = "" if category in ENERGY_CARD_TYPES else "0"
 	var ability_text := _string_or_default(data, "TEXTO", "")
@@ -355,46 +357,45 @@ static func _string_or_default(data: Dictionary, key: String, default: String) -
 	if value == null:
 		return default
 	var text := str(value)
-	if text.empty():
+	if text.is_empty():
 		return default
 	return text
 
 
 func _save_cached_deck(deck: Dictionary) -> bool:
-	var directory := Directory.new()
-	var directory_error := directory.make_dir_recursive(DECK_CACHE_PATH)
+	var directory_error := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(DECK_CACHE_PATH))
 	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
 		_fail_import("Não foi possível criar a pasta local dos decks.")
 		return false
-	var file := File.new()
-	var file_error := file.open(_get_cache_file_path(_deck_id), File.WRITE)
-	if file_error != OK:
+	var file := FileAccess.open(_get_cache_file_path(_deck_id), FileAccess.WRITE)
+	if file == null:
 		_fail_import("Não foi possível salvar o deck no armazenamento local.")
 		return false
-	file.store_string(JSON.print(deck, "\t"))
+	file.store_string(JSON.stringify(deck, "\t"))
 	file.close()
 	return true
 
 
 func _load_cached_deck(deck_id: String) -> Dictionary:
-	var file := File.new()
 	var cache_path := _get_cache_file_path(deck_id)
-	if not file.file_exists(cache_path):
+	if not FileAccess.file_exists(cache_path):
 		return {}
-	var file_error := file.open(cache_path, File.READ)
-	if file_error != OK:
+	var file := FileAccess.open(cache_path, FileAccess.READ)
+	if file == null:
 		_fail_import("Não foi possível ler o deck salvo localmente.")
 		return {}
-	var parsed := JSON.parse(file.get_as_text())
+	var test_json_conv = JSON.new()
+	var parse_error := test_json_conv.parse(file.get_as_text())
+	var parsed = test_json_conv.get_data()
 	file.close()
-	if parsed.error != OK or typeof(parsed.result) != TYPE_DICTIONARY:
+	if parse_error != OK or typeof(parsed) != TYPE_DICTIONARY:
 		_fail_import("O arquivo local do deck está corrompido.")
 		return {}
-	var deck: Dictionary = parsed.result
+	var deck: Dictionary = parsed
 	if deck.get("id", "") != deck_id \
 			or typeof(deck.get("cards", null)) != TYPE_DICTIONARY \
 			or typeof(deck.get("definitions", null)) != TYPE_DICTIONARY \
-			or deck.cards.empty():
+			or deck.cards.is_empty():
 		_fail_import("O arquivo local do deck está incompleto.")
 		return {}
 	return deck
@@ -408,7 +409,7 @@ func _start_game_with_deck(deck: Dictionary) -> void:
 	_import_button.disabled = false
 	cfc.current_deck = deck
 	DeckCatalog.apply_definitions(deck)
-	if not _deck_id.empty():
+	if not _deck_id.is_empty():
 		DeckCatalog.remember_deck(_get_cache_file_path(_deck_id))
 	_set_status("Deck pronto. Abrindo a partida...")
 	hide()

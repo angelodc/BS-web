@@ -1,7 +1,7 @@
 # The popup with an instance of a card instide. 
 # Typically in larger version for easy viewing.
 class_name CVPreviewPopup
-extends Popup
+extends Control
 
 signal placement_initialized
 # The card currently being shown in a popup.
@@ -10,14 +10,18 @@ var _tween_wait := 0
 var _placement_initialized := false
 var _visible = true
 # The popup panel which contains the card.
-onready var focus_info := $FocusInfo
-onready var _tween := $Tween
+@onready var focus_info := $FocusInfo
+@onready var _tween := LegacyTween.new(self)
 
 func _ready() -> void:
+	# The preview is placed in viewport coordinates so it follows the cursor
+	# instead of inheriting the grid cell that owns it. Inside a Window (the
+	# card selection dialog) those coordinates are the window's own.
+	top_level = true
 	# warning-ignore:return_value_discarded
-	get_viewport().connect("size_changed", self, '_on_viewport_resized')
+	get_viewport().size_changed.connect(_on_viewport_resized)
 	# warning-ignore:return_value_discarded
-	connect("placement_initialized",self, "_on_placement_initialized")
+	placement_initialized.connect(_on_placement_initialized)
 
 func _process(_delta: float) -> void:
 	if _placement_initialized and visible and is_instance_valid(preview_card):
@@ -31,9 +35,9 @@ func _set_placement() -> void:
 	# such as when the info panels would exceed the width of the monitor, and therefore
 	# we need to move them to the other side of the mouse cursor.
 	if not _placement_initialized:
-		yield(get_tree().create_timer(0.1), "timeout")
-		rect_position = get_preview_placement()
-	elif new_position.distance_to(rect_position) > 200:
+		await get_tree().create_timer(0.1).timeout
+		position = get_preview_placement()
+	elif new_position.distance_to(position) > 200:
 		_tween_wait += 1
 		# This is needed because the focus_info is wiped of all panels every time it's refreshed
 		# so there's a small period of time where it's width is always 0
@@ -42,15 +46,15 @@ func _set_placement() -> void:
 		# To avoid that, we put a small delay, to ensure the info panels have neen repopulated
 		if _tween_wait > 10:
 			_tween_wait = 0
-			_tween.interpolate_property(self, "rect_position", rect_position, new_position, 0.2, Tween.TRANS_EXPO, Tween.EASE_IN)
+			_tween.interpolate_property(self, "position", position, new_position, 0.2, Tween.TRANS_EXPO, Tween.EASE_IN)
 			_tween.start()
 #			print_debug([preview_card, get_preview_placement()])
 	else:
-		rect_position = new_position
-	focus_info.rect_min_size.x = 0.0
-	focus_info.rect_size.x = 0.0
-	focus_info.rect_position.y = 0
-	focus_info.rect_position.x = preview_card.canonical_size.x * preview_card.preview_scale * cfc.curr_scale
+		position = new_position
+	focus_info.custom_minimum_size.x = 0.0
+	focus_info.size.x = 0.0
+	focus_info.position.y = 0
+	focus_info.position.x = preview_card.canonical_size.x * preview_card.preview_scale * cfc.curr_scale
 	if not _placement_initialized:
 		_placement_initialized = true
 		emit_signal("placement_initialized")
@@ -62,20 +66,23 @@ func get_preview_placement() -> Vector2:
 	var ret : Vector2
 	var focus_panel_offset = 0
 	var card_size : Vector2 = preview_card.canonical_size * preview_card.preview_scale * cfc.curr_scale
+	# A Viewport has no get_global_mouse_position(); the CanvasItem helper keeps
+	# working both in the game viewport and in the selection dialog's window.
+	var mouse := get_global_mouse_position()
 	# If the card width is to small, we will place the info panels instead to the left of the card preview
 	if focus_info.visible:
-		focus_panel_offset = focus_info.rect_size.x
-	if get_global_mouse_position().x\
+		focus_panel_offset = focus_info.size.x
+	if mouse.x\
 			+ card_size.x\
 			+ 20\
 			+ focus_panel_offset\
 			> get_viewport().get_visible_rect().size.x:
-		ret.x = get_global_mouse_position().x - card_size.x - 20 - focus_panel_offset
+		ret.x = mouse.x - card_size.x - 20 - focus_panel_offset
 	else:
-		ret.x = get_global_mouse_position().x + 20
-	var card_offscreen_y = get_global_mouse_position().y\
+		ret.x = mouse.x + 20
+	var card_offscreen_y = mouse.y\
 			+ card_size.y
-	var focus_offscreen_y = get_global_mouse_position().y + focus_info.rect_size.y
+	var focus_offscreen_y = mouse.y + focus_info.size.y
 	if card_offscreen_y > focus_offscreen_y\
 			and is_instance_valid(preview_card)\
 			and card_offscreen_y > get_viewport().get_visible_rect().size.y:
@@ -85,9 +92,9 @@ func get_preview_placement() -> Vector2:
 	elif card_offscreen_y < focus_offscreen_y\
 			and focus_offscreen_y > get_viewport().get_visible_rect().size.y:
 		ret.y = get_viewport().get_visible_rect().size.y\
-				- focus_info.rect_size.y + 30
+				- focus_info.size.y + 30
 	else:
-		ret.y = get_global_mouse_position().y + 30
+		ret.y = mouse.y + 30
 #	print_debug(ret)
 	return(ret)
 

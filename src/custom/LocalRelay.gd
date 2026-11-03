@@ -16,7 +16,7 @@ const CONTROL_MESSAGES := {
 	"leave_room": true,
 }
 
-var _server: WebSocketServer
+var _server: WebSocketMultiplayerPeer
 var _listening := false
 var _port := 0
 var _clients := {}
@@ -35,7 +35,7 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	if _server:
-		_server.stop()
+		_server.close()
 		_server = null
 	_listening = false
 
@@ -44,6 +44,12 @@ func _process(delta: float) -> void:
 	if not _server:
 		return
 	_server.poll()
+	# WebSocketMultiplayerPeer has no data_received signal; drain the incoming
+	# packet queue after every poll and attribute each packet to its sender.
+	while _server.get_available_packet_count() > 0:
+		var packet := _server.get_packet()
+		var id := _server.get_packet_peer()
+		_on_packet(id, packet)
 	_reaper_elapsed += delta
 	if _reaper_elapsed >= REAPER_INTERVAL_SECONDS:
 		_reaper_elapsed = 0.0
@@ -56,14 +62,14 @@ func ensure_for_address(address: String) -> void:
 	if OS.has_feature("web"):
 		return
 	var parsed := _parse_local_address(address)
-	if parsed.empty():
+	if parsed.is_empty():
 		return
 	var port := int(parsed["port"])
 	if _listening:
 		if _port == port:
 			return
-		if _clients.empty() and _rooms.empty():
-			_server.stop()
+		if _clients.is_empty() and _rooms.is_empty():
+			_server.close()
 			_server = null
 			_listening = false
 		else:
@@ -73,7 +79,7 @@ func ensure_for_address(address: String) -> void:
 
 func _parse_local_address(address: String) -> Dictionary:
 	var trimmed := address.strip_edges()
-	if trimmed.empty():
+	if trimmed.is_empty():
 		trimmed = "ws://127.0.0.1:" + str(DEFAULT_PORT)
 	if trimmed.begins_with("wss://"):
 		return {}
@@ -92,14 +98,14 @@ func _parse_local_address(address: String) -> Dictionary:
 		if trimmed.length() > close + 1 \
 				and trimmed.substr(close + 1, 1) == ":":
 			var port_text := trimmed.substr(close + 2)
-			if port_text.is_valid_integer():
+			if port_text.is_valid_int():
 				port = int(port_text)
 	else:
 		var colon := trimmed.rfind(":")
 		if colon >= 0:
 			host = trimmed.substr(0, colon)
 			var port_text := trimmed.substr(colon + 1)
-			if port_text.is_valid_integer():
+			if port_text.is_valid_int():
 				port = int(port_text)
 		else:
 			host = trimmed
@@ -112,7 +118,7 @@ func _parse_local_address(address: String) -> Dictionary:
 
 func _is_local_host(host: String) -> bool:
 	var cleaned := host.strip_edges().to_lower()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		return false
 	if cleaned == "localhost" or cleaned == "127.0.0.1" \
 			or cleaned == "0.0.0.0" or cleaned == "::1":
@@ -122,10 +128,10 @@ func _is_local_host(host: String) -> bool:
 		if str(local_address).to_lower() == cleaned:
 			return true
 	var computer_name := OS.get_environment("COMPUTERNAME").to_lower()
-	if not computer_name.empty() and cleaned == computer_name:
+	if not computer_name.is_empty() and cleaned == computer_name:
 		return true
-	var resolved := IP.resolve_hostname(host, IP.TYPE_INET)
-	if resolved.empty():
+	var resolved := IP.resolve_hostname(host, IP.TYPE_IPV4)
+	if resolved.is_empty():
 		return false
 	if resolved == "127.0.0.1":
 		return true
@@ -136,12 +142,10 @@ func _is_local_host(host: String) -> bool:
 
 
 func _start(port: int) -> void:
-	_server = WebSocketServer.new()
-	_server.connect("client_connected", self, "_on_client_connected")
-	_server.connect("client_disconnected", self, "_on_client_disconnected")
-	_server.connect("data_received", self, "_on_data_received")
-	_server.set_bind_ip("0.0.0.0")
-	var error := _server.listen(port, PoolStringArray(), false)
+	_server = WebSocketMultiplayerPeer.new()
+	_server.peer_connected.connect(_on_client_connected)
+	_server.peer_disconnected.connect(_on_client_disconnected)
+	var error := _server.create_server(port, "*")
 	if error != OK:
 		_server = null
 		# A second local game is expected to reuse the relay already listening.
@@ -158,25 +162,24 @@ func _start(port: int) -> void:
 # WebSocket server
 #-----------------------------------------------------------------------------
 
-func _on_client_connected(id: int, _protocol: String) -> void:
+func _on_client_connected(id: int) -> void:
 	_clients[id] = _new_client_state()
 
 
-func _on_client_disconnected(id: int, _was_clean: bool) -> void:
+func _on_client_disconnected(id: int) -> void:
 	_disconnect_client(id)
 
 
-func _on_data_received(id: int) -> void:
+func _on_packet(id: int, packet: PackedByteArray) -> void:
 	if not _server or not _server.has_peer(id):
 		return
-	var peer: WebSocketPeer = _server.get_peer(id)
-	while peer.get_available_packet_count() > 0:
-		var packet := peer.get_packet()
-		var parsed := JSON.parse(packet.get_string_from_utf8())
-		if parsed.error != OK or typeof(parsed.result) != TYPE_DICTIONARY:
-			continue
-		var data: Dictionary = parsed.result
-		_route(id, data)
+	var json := JSON.new()
+	if json.parse(packet.get_string_from_utf8()) != OK:
+		return
+	var parsed = json.get_data()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	_route(id, parsed)
 
 
 func _send(id: int, data: Dictionary) -> void:
@@ -186,7 +189,7 @@ func _send(id: int, data: Dictionary) -> void:
 	if not peer:
 		return
 	peer.set_write_mode(WebSocketPeer.WRITE_MODE_TEXT)
-	if peer.put_packet(JSON.print(data).to_utf8()) != OK:
+	if peer.put_packet(JSON.stringify(data).to_utf8_buffer()) != OK:
 		_disconnect_client(id)
 
 
@@ -201,11 +204,11 @@ func _send_waiting(
 		mode := "",
 		game_id := "") -> void:
 	var payload := {"t": "waiting", "msg": message}
-	if not room_id.empty():
+	if not room_id.is_empty():
 		payload["room_id"] = room_id
-	if not mode.empty():
+	if not mode.is_empty():
 		payload["mode"] = mode
-	if not game_id.empty():
+	if not game_id.is_empty():
 		payload["game_id"] = game_id
 	_send(id, payload)
 
@@ -288,7 +291,7 @@ func _route(id: int, data: Dictionary) -> void:
 
 func _forward(id: int, data: Dictionary) -> void:
 	var state = _clients.get(id)
-	if not state or str(state["room"]).empty():
+	if not state or str(state["room"]).is_empty():
 		return
 	var opponent := int(state["opponent"])
 	var opponent_state = _clients.get(opponent)
@@ -308,13 +311,13 @@ func _forward(id: int, data: Dictionary) -> void:
 
 func _create_room(id: int, raw_username) -> void:
 	var username := _clean_username(raw_username)
-	if username.empty():
+	if username.is_empty():
 		_send_error(id, "Informe um username valido.")
 		return
 	var state = _clients.get(id)
 	if not state:
 		return
-	if not str(state["room"]).empty():
+	if not str(state["room"]).is_empty():
 		_send_error(id, "Voce ja esta em uma partida.")
 		return
 	if bool(state["queued"]):
@@ -343,11 +346,11 @@ func _create_room(id: int, raw_username) -> void:
 	_rooms[room_id] = room
 	_open_rooms.append(room_id)
 	var guest := 0
-	while not _waiting.empty():
+	while not _waiting.is_empty():
 		var candidate := int(_waiting.pop_front())
 		var candidate_state = _clients.get(candidate)
 		if candidate_state and bool(candidate_state["queued"]) \
-				and str(candidate_state["room"]).empty():
+				and str(candidate_state["room"]).is_empty():
 			guest = candidate
 			break
 	if guest != 0:
@@ -370,13 +373,13 @@ func _create_room(id: int, raw_username) -> void:
 
 func _request_match(id: int, raw_username) -> void:
 	var username := _clean_username(raw_username)
-	if username.empty():
+	if username.is_empty():
 		_send_error(id, "Informe um username valido.")
 		return
 	var state = _clients.get(id)
 	if not state:
 		return
-	if not str(state["room"]).empty():
+	if not str(state["room"]).is_empty():
 		_send_error(id, "Voce ja esta em uma partida.")
 		return
 	if bool(state["queued"]):
@@ -421,7 +424,7 @@ func _pair_room(room: Dictionary, guest: int) -> bool:
 		return false
 	var host_name := str(host_state["username"])
 	var guest_name := str(guest_state["username"])
-	if host_name.empty() or guest_name.empty():
+	if host_name.is_empty() or guest_name.is_empty():
 		return false
 	if host_name.to_lower() == guest_name.to_lower():
 		return false
@@ -469,7 +472,7 @@ func _cancel_match(id: int) -> void:
 	if not state or not bool(state["queued"]):
 		return
 	var room_id := str(state["room"])
-	var room = _rooms.get(room_id) if not room_id.empty() else null
+	var room = _rooms.get(room_id) if not room_id.is_empty() else null
 	if room and not bool(room["active"]):
 		_rooms.erase(room_id)
 		_open_rooms.erase(room_id)
@@ -483,7 +486,7 @@ func _cancel_match(id: int) -> void:
 
 func _leave_room(id: int) -> void:
 	var state = _clients.get(id)
-	if not state or str(state["room"]).empty():
+	if not state or str(state["room"]).is_empty():
 		return
 	var room_id := str(state["room"])
 	var opponent := int(state["opponent"])
@@ -510,7 +513,7 @@ func _disconnect_client(id: int) -> void:
 		if int(_resume_waiting[game_id]) == id:
 			_resume_waiting.erase(game_id)
 	var room_id := str(state["room"])
-	if room_id.empty():
+	if room_id.is_empty():
 		return
 	var room = _rooms.get(room_id)
 	if not room:
@@ -544,13 +547,13 @@ func _disconnect_client(id: int) -> void:
 func _rejoin_room(id: int, raw_room_id, raw_username) -> void:
 	var room_id := str(raw_room_id)
 	var username := _clean_username(raw_username)
-	if room_id.empty() or username.empty():
+	if room_id.is_empty() or username.is_empty():
 		_send_error(id, "Nao foi possivel reconectar: dados da sala ausentes.")
 		return
 	var state = _clients.get(id)
 	if not state:
 		return
-	if not str(state["room"]).empty():
+	if not str(state["room"]).is_empty():
 		_send_error(id, "Voce ja esta em uma partida.")
 		return
 	var room = _rooms.get(room_id)
@@ -563,12 +566,12 @@ func _rejoin_room(id: int, raw_room_id, raw_username) -> void:
 	var role := ""
 	for candidate in ["H", "C"]:
 		var expected := str(room["usernames"].get(candidate, ""))
-		if not expected.empty() \
+		if not expected.is_empty() \
 				and expected.to_lower() == username.to_lower() \
 				and int(room["slots"].get(candidate, 0)) == 0:
 			role = candidate
 			break
-	if role.empty():
+	if role.is_empty():
 		_send(id, {
 			"t": "rejoin_failed",
 			"msg": "Nao ha vaga para este username nesta sala.",
@@ -624,10 +627,10 @@ func _create_resume_room(
 	var game_id := _clean_game_id(raw_game_id)
 	var username := _clean_username(raw_username)
 	var participants := _clean_participants(raw_participants)
-	if game_id.empty():
+	if game_id.is_empty():
 		_send_error(id, "O jogo salvo nao tem um identificador valido.")
 		return
-	if username.empty():
+	if username.is_empty():
 		_send_error(id, "Informe um username valido.")
 		return
 	if participants.size() != 2:
@@ -639,7 +642,7 @@ func _create_resume_room(
 	var state = _clients.get(id)
 	if not state:
 		return
-	if not str(state["room"]).empty():
+	if not str(state["room"]).is_empty():
 		_send_error(id, "Voce ja esta em uma partida.")
 		return
 	var room_id := "resume_" + game_id
@@ -671,7 +674,7 @@ func _create_resume_room(
 	if waiting_guest != 0:
 		var guest_state = _clients.get(waiting_guest)
 		if guest_state and bool(guest_state["queued"]) \
-				and str(guest_state["room"]).empty():
+				and str(guest_state["room"]).is_empty():
 			if not str(guest_state["username"]) in participants:
 				guest_state["queued"] = false
 				_resume_waiting.erase(game_id)
@@ -698,16 +701,16 @@ func _join_resume_room(
 	var game_id := _clean_game_id(raw_game_id)
 	var username := _clean_username(raw_username)
 	var participants := _clean_participants(raw_participants)
-	if game_id.empty():
+	if game_id.is_empty():
 		_send_error(id, "Informe o identificador da partida salva.")
 		return
-	if username.empty():
+	if username.is_empty():
 		_send_error(id, "Informe um username valido.")
 		return
 	var state = _clients.get(id)
 	if not state:
 		return
-	if not str(state["room"]).empty():
+	if not str(state["room"]).is_empty():
 		_send_error(id, "Voce ja esta em uma partida.")
 		return
 	if bool(state["queued"]):
@@ -721,7 +724,7 @@ func _join_resume_room(
 	var room = _rooms.get("resume_" + game_id)
 	if room and int(room["slots"]["H"]) != 0 \
 			and int(room["slots"]["C"]) == 0:
-		if not participants.empty() \
+		if not participants.is_empty() \
 				and not _same_participants(participants, room["participants"]):
 			state["queued"] = false
 			_send_error(
@@ -767,7 +770,7 @@ func _expire_vacant_rooms() -> void:
 		_rooms.erase(room_id)
 		_open_rooms.erase(room_id)
 		var game_id := str(room["game_id"])
-		if not game_id.empty():
+		if not game_id.is_empty():
 			_resume_waiting.erase(game_id)
 
 
@@ -798,7 +801,7 @@ func _clean_participants(value) -> Array:
 	var cleaned := []
 	for participant in value:
 		var name := _clean_username(participant)
-		if not name.empty() and not name in cleaned:
+		if not name.is_empty() and not name in cleaned:
 			cleaned.append(name)
 	return cleaned
 
@@ -822,4 +825,4 @@ func _random_hex(length: int) -> String:
 
 
 func _now() -> float:
-	return float(OS.get_ticks_msec()) / 1000.0
+	return float(Time.get_ticks_msec()) / 1000.0

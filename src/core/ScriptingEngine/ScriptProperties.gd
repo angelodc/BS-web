@@ -3,7 +3,7 @@
 #
 # It also provides a few static functions for comparing filters
 class_name ScriptProperties
-extends Reference
+extends RefCounted
 
 
 #---------------------------------------------------------------------
@@ -1703,7 +1703,7 @@ static func check_validity(card, card_scripts, type := "trigger") -> bool:
 						and not card.is_in_group(state_filters[filter]):
 					card_matches = false
 				elif filter == FILTER_CLASS\
-						and card.get_class() != state_filters[filter]:
+						and card.get_card_class() != state_filters[filter]:
 					card_matches = false
 			# If at least one of our "or" array elements matches,
 			# We do not need to check the others.

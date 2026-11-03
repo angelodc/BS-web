@@ -10,7 +10,7 @@
 # network id is generated. It is meant to be called from tests and from the
 # future TableState comparison.
 class_name TableSnapshot
-extends Reference
+extends RefCounted
 
 const SCENARIO_ADDRESS := "mesa:cenário"
 const TRANSIT_ADDRESS := "em_transito"
@@ -118,7 +118,7 @@ static func capture(board : Node = null, seat := -1) -> Dictionary:
 # Returns a compact text dump of a snapshot, for test failures and the future
 # text console.
 static func describe(snapshot := {}) -> String:
-	if not (snapshot is Dictionary) or snapshot.empty():
+	if not (snapshot is Dictionary) or snapshot.is_empty():
 		return "(snapshot vazio)"
 	var cards: Dictionary = snapshot.get("cards", {})
 	var zones: Dictionary = snapshot.get("zones", {})
@@ -126,7 +126,7 @@ static func describe(snapshot := {}) -> String:
 	lines.append("Mesa — visão P" + str(snapshot.get("viewer_seat", "?")))
 	for zone in ZONE_ORDER:
 		var ids := _sorted_ids_in_zone(cards, zone)
-		if ids.empty() and zone != "scenario":
+		if ids.is_empty() and zone != "scenario":
 			continue
 		var header: String = str(ZONE_LABELS.get(zone, zone)) \
 				+ " (" + str(ids.size()) + ")"
@@ -148,19 +148,19 @@ static func describe(snapshot := {}) -> String:
 				var deck_summary: Dictionary = zones.get("deck", {})
 				header += " · topo " + _describe_top(
 						cards, str(deck_summary.get("top", "")))
-		if ids.empty():
+		if ids.is_empty():
 			lines.append(header + ": —")
 			continue
-		var entries := PoolStringArray()
+		var entries := PackedStringArray()
 		for id in ids:
 			entries.append(_describe_card(cards[id]))
-		lines.append(header + ": " + entries.join(" | "))
+		lines.append(header + ": " + " | ".join(entries))
 	var issues: Array = snapshot.get("issues", [])
-	if not issues.empty():
+	if not issues.is_empty():
 		lines.append("avisos (" + str(issues.size()) + "):")
 		for issue in issues:
 			lines.append("  - " + _describe_issue(issue))
-	return PoolStringArray(lines).join("\n")
+	return "\n".join(PackedStringArray(lines))
 
 
 static func _describe_card(entry: Dictionary) -> String:
@@ -176,20 +176,20 @@ static func _describe_card(entry: Dictionary) -> String:
 		flags.append("escudo " + str(entry.get("shield")))
 	if bool(entry.get("in_transit", false)):
 		flags.append("arrastando")
-	if not flags.empty():
-		text += " (" + PoolStringArray(flags).join(", ") + ")"
+	if not flags.is_empty():
+		text += " (" + ", ".join(PackedStringArray(flags)) + ")"
 	return text
 
 
 static func _describe_issue(issue: Dictionary) -> String:
-	var parts := PoolStringArray()
+	var parts := PackedStringArray()
 	for key in issue:
 		parts.append(str(key) + "=" + str(issue[key]))
-	return parts.join(" ")
+	return " ".join(parts)
 
 
 static func _describe_top(cards : Dictionary, top_id : String) -> String:
-	if top_id.empty():
+	if top_id.is_empty():
 		return "—"
 	if not cards.has(top_id):
 		return top_id
@@ -210,13 +210,13 @@ static func _address_sort_key(address : String) -> String:
 
 
 static func _address_part_key(part : String) -> String:
-	if part.is_valid_integer():
+	if part.is_valid_int():
 		return part.pad_zeros(6)
 	if part == "frente":
 		return "r000000"
 	if part == "trás":
 		return "r000001"
-	if part.begins_with("linha") and part.substr(5).is_valid_integer():
+	if part.begins_with("linha") and part.substr(5).is_valid_int():
 		return "r" + str(int(part.substr(5)) - 1).pad_zeros(6)
 	return part
 
@@ -306,7 +306,7 @@ static func _scenario_grid(board : Node, field_grid: BoardPlacementGrid) \
 static func _placement_grids(board : Node) -> Array:
 	var grids := []
 	for grid in board.get_tree().get_nodes_in_group("placement_grid"):
-		if grid is BoardPlacementGrid and board.is_a_parent_of(grid):
+		if grid is BoardPlacementGrid and board.is_ancestor_of(grid):
 			grids.append(grid)
 	return grids
 
@@ -337,7 +337,7 @@ static func _ordered_cards(container : Node) -> Array:
 	if not is_instance_valid(container):
 		return cards
 	if container is Pile and container.is_popup_open \
-			and not container.pre_sorted_order.empty():
+			and not container.pre_sorted_order.is_empty():
 		for card in container.pre_sorted_order:
 			if is_instance_valid(card) and card is Card:
 				cards.append(card)
@@ -366,7 +366,7 @@ static func _read_field(grid, prefix : String, cards : Dictionary,
 		return
 	var slots := _grid_slots(grid)
 	var columns := _grid_columns(grid)
-	if slots.empty():
+	if slots.is_empty():
 		return
 	for index in range(slots.size()):
 		var slot = slots[index]
@@ -478,7 +478,7 @@ static func _read_attachments(prefix : String, cards : Dictionary,
 		if not is_instance_valid(host):
 			continue
 		var host_address: String = addresses.get(host_id, "")
-		if host_address.empty():
+		if host_address.is_empty():
 			continue
 		var seen := []
 		for index in range(host.attachments.size()):
@@ -612,7 +612,7 @@ static func _zone_summary(grid, cards : Dictionary) -> Dictionary:
 
 static func _scenario_summary(cards : Dictionary) -> Dictionary:
 	var id := _first_id_in_zone(cards, "scenario")
-	return {"count": 0 if id.empty() else 1, "id": id}
+	return {"count": 0 if id.is_empty() else 1, "id": id}
 
 
 static func _pile_summary(cards : Dictionary, zone : String,
@@ -707,7 +707,7 @@ static func _card_id(card: Card) -> String:
 	if not is_instance_valid(card):
 		return ""
 	var net_id := str(card.network_id)
-	if not net_id.empty():
+	if not net_id.is_empty():
 		return net_id
 	return "local:" + str(card.get_instance_id())
 

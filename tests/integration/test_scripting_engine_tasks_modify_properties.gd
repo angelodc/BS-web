@@ -4,8 +4,8 @@ class TestModifyProperties:
 	extends "res://tests/ScEng_common.gd"
 
 	func before_each():
-		.before_each()
-		yield(yield_for(0.12), YIELD)
+		super.before_each()
+		await yield_for(0.12)
 		card.modify_property("Cost", 5)
 		card.modify_property("Power", 2)
 
@@ -16,7 +16,7 @@ class TestModifyProperties:
 				"subject": "self",
 				"set_properties": {"Name": "GUT Test", "Type": "Orange"}}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.canonical_name,"GUT Test",
 				"Card name should be changed")
 		assert_eq(card.get_property("Type"),"Orange",
@@ -31,36 +31,39 @@ class TestModifyProperties:
 				"subject": "self",
 				"set_properties": {"Cost": "+5"}}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.get_property("Cost"),10,
 				"Card cost increased")
-		assert_eq(card.card_front.card_labels["Cost"].text,"10",
-				"Number property label adjusted properly")
+		# Battle Scenes keeps the framework Cost property on the card but does
+		# not draw it (CardConfig.PROPERTIES_NOT_DISPLAYED); the ENERGIA slot
+		# shows the entry cost instead.
+		assert_false(card.card_front.card_labels.has("Cost"),
+				"Cost has no label on the Battle Scenes card front")
 		card.scripts = {"manual": {"hand": [
 				{"name": "modify_properties",
 				"subject": "self",
 				"set_properties": {"Cost": "-4"}}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		card.execute_scripts()
-		yield(yield_for(0.5), YIELD)
+		await yield_for(0.5)
 		assert_eq(card.get_property("Cost"),2,
 				"Card cost decreased")
-		assert_eq(card.card_front.card_labels["Cost"].text,"2",
-				"Number property label adjusted properly")
+		assert_false(card.card_front.card_labels.has("Cost"),
+				"Cost has no label on the Battle Scenes card front")
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.get_property("Cost"),0,
 				"Card cost not below 0 ")
-		assert_eq(card.card_front.card_labels["Cost"].text,"0",
-				"Number property label adjusted properly")
+		assert_false(card.card_front.card_labels.has("Cost"),
+				"Cost has no label on the Battle Scenes card front")
 
 class TestModifyPropertiesPerProperty:
 	extends "res://tests/ScEng_common.gd"
 
 	func before_each():
-		.before_each()
-		yield(yield_for(0.12), YIELD)
+		super.before_each()
+		await yield_for(0.12)
 		card.modify_property("Cost", 5)
 		card.modify_property("Power", 2)
 
@@ -83,9 +86,9 @@ class TestModifyPropertiesPerProperty:
 		card.execute_scripts()
 		assert_eq(card.get_property("Cost"),7,
 				"Card cost increased by power amount")
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
-		assert_eq(card.card_front.card_labels["Cost"].text,"7",
-				"Number property label adjusted properly")
+		await wait_process_frames(1)
+		assert_false(card.card_front.card_labels.has("Cost"),
+				"Cost has no label on the Battle Scenes card front")
 		card.scripts = {"manual": {"hand": [
 				{"name": "modify_properties",
 				"subject": "self",
@@ -97,18 +100,18 @@ class TestModifyPropertiesPerProperty:
 				},
 				}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.get_property("Cost"),5,
 				"Card cost decreased by power amount")
-		assert_eq(card.card_front.card_labels["Cost"].text,"5",
-				"Number property label adjusted properly")
+		assert_false(card.card_front.card_labels.has("Cost"),
+				"Cost has no label on the Battle Scenes card front")
 
 class TestModifyTagProperty:
 	extends "res://tests/ScEng_common.gd"
 
 	func before_each():
-		.before_each()
-		yield(yield_for(0.12), YIELD)
+		super.before_each()
+		await yield_for(0.12)
 		card.modify_property("Cost", 5)
 		card.modify_property("Power", 2)
 
@@ -118,7 +121,7 @@ class TestModifyTagProperty:
 				"subject": "self",
 				"set_properties": {"Tags": ["GUT Test","CGF"]}}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.get_property("Tags"),["GUT Test","CGF"],
 				"Tag properties adjusted")
 		assert_eq(card.card_front.card_labels["Tags"].text, "GUT Test - CGF",
@@ -128,8 +131,8 @@ class TestModifyStringNumberProperty:
 	extends "res://tests/ScEng_common.gd"
 
 	func before_each():
-		.before_each()
-		yield(yield_for(0.12), YIELD)
+		super.before_each()
+		await yield_for(0.12)
 		card.modify_property("Cost", 5)
 		card.modify_property("Power", 2)
 
@@ -141,7 +144,7 @@ class TestModifyStringNumberProperty:
 				"subject": "self",
 				"set_properties": {"Cost": '2', "Power": "-1"}}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.properties.Cost, 2,
 				"Card cost should be changed to to specified value")
 		assert_eq(card.properties.Power, -1,
@@ -155,7 +158,7 @@ class TestModifyStringNumberProperty:
 				"subject": "self",
 				"set_properties": {"Cost": 'X', "Power": "X"}}]}}
 		card.execute_scripts()
-		yield(yield_to(get_tree(), "idle_frame", 0.1), YIELD)
+		await wait_process_frames(1)
 		assert_eq(card.properties.Cost, 'X',
 				"Card cost should be changed to to specified value")
 		assert_eq(card.properties.Power, 'X',

@@ -7,38 +7,39 @@ extends Node2D
 const _TOKEN_SCENE_FILE = CFConst.PATH_CORE + "Token.tscn"
 const _TOKEN_SCENE = preload(_TOKEN_SCENE_FILE)
 
-# A flag on whether the token drawer is currently open
-var is_drawer_open := false setget set_is_drawer_open
+# A flag on whether the token drawer is currently open.
+#
+# The animation below owns the state, so it writes the backing field directly;
+# writing the property itself would call this setter again and recurse.
+var _is_drawer_open := false
+var is_drawer_open: bool:
+	get:
+		return _is_drawer_open
+	set(value):
+		if _is_drawer_open != value:
+			token_drawer(value)
 
-onready var _tween : Tween = $Tween
+@onready var _tween := LegacyTween.new(self)
 # Stores a reference to the Card that is hosting this node
-onready var owner_card = get_parent().get_parent()
+@onready var owner_card = get_parent().get_parent()
 
 
 func _ready() -> void:
 	$Drawer/Area2D/CollisionShape2D.shape = \
 			$Drawer/Area2D/CollisionShape2D.shape.duplicate()
 	# warning-ignore:return_value_discarded
-	$Drawer/VBoxContainer.connect("sort_children", self,
-			"_on_VBoxContainer_sort_children")
+	$Drawer/VBoxContainer.sort_children.connect(_on_VBoxContainer_sort_children)
 
 
 func _process(_delta: float) -> void:
 	# Every process tick, it will ensure the collsion shape for the
 	# drawer is adjusted to its current size
 	if cfc.NMAP.has('board') and owner_card.get_parent() == cfc.NMAP.board:
-		$Drawer/Area2D.position = $Drawer.rect_size/2
+		$Drawer/Area2D.position = $Drawer.size/2
 		var shape: RectangleShape2D = $Drawer/Area2D/CollisionShape2D.shape
 		# We're extending the area of the drawer a bit, to try and avoid it
 		# glitching when moving from card to drawer and back
-		shape.extents = $Drawer.rect_size/2 + Vector2(10,0)
-
-# Setter for is_drawer_open
-# Simply calls token_drawer()
-func set_is_drawer_open(value: bool) -> void:
-	if is_drawer_open != value:
-		token_drawer(value)
-
+		shape.size = $Drawer.size + Vector2(20,0)
 
 # Reveals or Hides the token drawer
 #
@@ -59,15 +60,15 @@ func token_drawer(requested_state := true) -> void:
 			_tween.remove_all()
 			# warning-ignore:return_value_discarded
 			_tween.interpolate_property(
-					td,'rect_position', td.rect_position,
-					Vector2(owner_card.card_size.x,td.rect_position.y),
+					td,'position', td.position,
+					Vector2(owner_card.card_size.x,td.position.y),
 					0.3, Tween.TRANS_ELASTIC, Tween.EASE_OUT)
 			# We make all tokens display names
 			for token in $Drawer/VBoxContainer.get_children():
 				token.expand()
 			# Normally the drawer is invisible. We make it visible now
 			$Drawer.self_modulate.a = 1
-			is_drawer_open = true
+			_is_drawer_open = true
 			# warning-ignore:return_value_discarded
 			_tween.start()
 			# We need to make our tokens appear on top of other cards on the table
@@ -77,21 +78,21 @@ func token_drawer(requested_state := true) -> void:
 			_tween.remove_all()
 			# warning-ignore:return_value_discarded
 			_tween.interpolate_property(
-					td,'rect_position', td.rect_position,
+					td,'position', td.position,
 					Vector2(owner_card.card_size.x - 35,
-					td.rect_position.y),
+					td.position.y),
 					0.2, Tween.TRANS_ELASTIC, Tween.EASE_IN)
 			# warning-ignore:return_value_discarded
 			_tween.start()
 			# We want to consider the drawer closed
 			# only when the animation finished
 			# Otherwise it might start to open immediately again
-			yield(_tween, "tween_all_completed")
+			await _tween.tween_all_completed
 			# When it's closed, we hide token names
 			for token in $Drawer/VBoxContainer.get_children():
 				token.retract()
 			$Drawer.self_modulate.a = 0
-			is_drawer_open = false
+			_is_drawer_open = false
 			z_index = 0
 
 
@@ -117,7 +118,7 @@ func mod_token(
 		# If the token does not exist in the card, we add its node
 		# and set it to 1
 		if not token and mod > 0:
-			token = _TOKEN_SCENE.instance()
+			token = _TOKEN_SCENE.instantiate()
 			token.setup(token_name, self)
 			$Drawer/VBoxContainer.add_child(token)
 		# If the token node of this name has already been added to the card
@@ -202,19 +203,24 @@ func get_token_count(token_name: String) -> int:
 # This is used to retain focus on the card
 # while the player is manipulating tokens.
 func are_hovered() -> bool:
-	var is_hovered = false
-	if cfc.NMAP.board.mouse_pointer in $Drawer/Area2D.get_overlapping_areas():
-		is_hovered = true
-	return(is_hovered)
+	# The drawer's Area2D overlap list can go stale in Godot 4: it keeps
+	# reporting the MousePointer after the cursor has already left, which
+	# would lock the card focus and leave the drawer open. Test the drawer
+	# rectangle directly instead.
+	var area: Area2D = $Drawer/Area2D
+	var shape: RectangleShape2D = $Drawer/Area2D/CollisionShape2D.shape
+	var half_size: Vector2 = shape.size * area.global_scale / 2.0
+	var drawer_rect := Rect2(area.global_position - half_size, half_size * 2.0)
+	return drawer_rect.has_point(cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos())
 
 
 # Resizes Token Drawer to min size whenever a token is removed completely.
 #
 # Without this, the token drawer would stay at the highest size it reached.
 func _on_VBoxContainer_sort_children() -> void:
-	$Drawer/VBoxContainer.rect_size = \
-			$Drawer/VBoxContainer.rect_min_size
+	$Drawer/VBoxContainer.size = \
+			$Drawer/VBoxContainer.custom_minimum_size
 	# We need to resize it's parent too
-	$Drawer.rect_size = \
-			$Drawer.rect_min_size
+	$Drawer.size = \
+			$Drawer.custom_minimum_size
 

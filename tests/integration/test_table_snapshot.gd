@@ -15,9 +15,7 @@ const PREFIX := "p1"
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+	await setup_board()
 
 
 func test_fresh_table_describes_the_deck_without_changing_it():
@@ -40,7 +38,7 @@ func test_fresh_table_describes_the_deck_without_changing_it():
 			PREFIX + ":deck:" + str(deck_count))
 	assert_eq(str(top.network_id), network_id,
 			"The snapshot does not create a network id as a side effect")
-	assert_true(snapshot["issues"].empty(), Table.describe(snapshot))
+	assert_true(snapshot["issues"].is_empty(), Table.describe(snapshot))
 
 
 func test_drawn_cards_receive_hand_slots_in_order():
@@ -56,21 +54,21 @@ func test_drawn_cards_receive_hand_slots_in_order():
 		var entry: Dictionary = snapshot["cards"][Table.id_of(cards[index])]
 		assert_eq(str(entry["address"]), PREFIX + ":mão:" + str(index + 1))
 		assert_eq(str(entry["zone"]), "hand")
-	assert_true(snapshot["issues"].empty(), Table.describe(snapshot))
+	assert_true(snapshot["issues"].is_empty(), Table.describe(snapshot))
 
 
 func test_field_slot_sets_the_card_address():
 	var cards := draw_test_cards(2)
 	var grid: BoardPlacementGrid = board.get_node("BoardPlacementGrid")
 	cards[0].move_to(board, -1, grid.get_slot(0))
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1)
 
 	# The test grid starts with a single row; adding four slots creates the
 	# back row without changing the four columns.
 	for _i in range(4):
 		grid.add_slot()
 	cards[1].move_to(board, -1, grid.get_slot(4))
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1)
 
 	var snapshot = Table.capture(board, 1)
 
@@ -84,7 +82,7 @@ func test_field_slot_sets_the_card_address():
 	assert_eq(
 			str(snapshot["cards"][Table.id_of(cards[1])]["address"]),
 			PREFIX + ":campo:trás:1")
-	assert_true(snapshot["issues"].empty(), Table.describe(snapshot))
+	assert_true(snapshot["issues"].is_empty(), Table.describe(snapshot))
 
 
 func test_attachment_belongs_to_its_host_address():
@@ -93,7 +91,7 @@ func test_attachment_belongs_to_its_host_address():
 	var grid: BoardPlacementGrid = board.get_node("BoardPlacementGrid")
 	cards[0].move_to(board, -1, grid.get_slot(0))
 	cards[1].attach_to_host(cards[0])
-	yield(yield_for(0.2), YIELD)
+	await yield_for(0.2)
 
 	var snapshot = Table.capture(board, 1)
 	var host_id = Table.id_of(cards[0])
@@ -108,15 +106,13 @@ func test_attachment_belongs_to_its_host_address():
 	assert_eq(int(snapshot["zones"]["attachments"]), 1)
 	assert_eq(int(snapshot["zones"]["field"]["count"]), 1)
 	assert_eq(int(snapshot["total"]), initial_deck)
-	assert_true(snapshot["issues"].empty(), Table.describe(snapshot))
+	assert_true(snapshot["issues"].is_empty(), Table.describe(snapshot))
 
 
 func test_resources_are_numbered_from_the_top_of_the_discard():
 	var cards := draw_test_cards(3)
 	for card in cards:
-		var move = card.move_to(discard)
-		if move is GDScriptFunctionState:
-			yield(move, "completed")
+		await card.move_to(discard)
 
 	var snapshot = Table.capture(board, 1)
 
@@ -128,20 +124,18 @@ func test_resources_are_numbered_from_the_top_of_the_discard():
 	assert_eq(
 			str(snapshot["cards"][Table.id_of(cards[0])]["address"]),
 			PREFIX + ":recursos:3")
-	assert_true(snapshot["issues"].empty(), Table.describe(snapshot))
+	assert_true(snapshot["issues"].is_empty(), Table.describe(snapshot))
 
 
 func test_prizes_number_the_first_free_slot_from_the_top():
-	var prizes = load("res://src/core/Pile.tscn").instance()
+	var prizes = load("res://src/core/Pile.tscn").instantiate()
 	prizes.name = "Prêmios"
 	board.add_child(prizes)
 	autofree(prizes)
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1)
 	var cards := draw_test_cards(2)
 	for card in cards:
-		var move = card.move_to(prizes)
-		if move is GDScriptFunctionState:
-			yield(move, "completed")
+		await card.move_to(prizes)
 
 	var snapshot = Table.capture(board, 1)
 
@@ -152,7 +146,7 @@ func test_prizes_number_the_first_free_slot_from_the_top():
 	assert_eq(
 			str(snapshot["cards"][Table.id_of(cards[0])]["address"]),
 			PREFIX + ":prêmios:2")
-	assert_true(snapshot["issues"].empty(), Table.describe(snapshot))
+	assert_true(snapshot["issues"].is_empty(), Table.describe(snapshot))
 
 
 func test_a_loose_card_is_reported_as_a_problem():

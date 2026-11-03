@@ -2,7 +2,7 @@
 #
 # This is a library of static functions.
 class_name CFUtils
-extends Reference
+extends RefCounted
 
 # The path to the optional confirm scene. This has to be defined explicitly
 # here, in order to use it in its preload, otherwise the parser gives an error
@@ -75,10 +75,9 @@ static func array_join(arr: Array, separator = "") -> String:
 # use list_imported_in_directory() instead
 static func list_files_in_directory(path: String, prepend_needed := "", full_path := false) -> Array:
 	var files := []
-	var dir := Directory.new()
-	# warning-ignore:return_value_discarded
-	dir.open(path)
-	# warning-ignore:return_value_discarded
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return files
 	dir.list_dir_begin()
 	while true:
 		var file := dir.get_next()
@@ -88,6 +87,7 @@ static func list_files_in_directory(path: String, prepend_needed := "", full_pat
 				and file.begins_with(prepend_needed)\
 				and not file.ends_with(".remap")\
 				and not file.ends_with(".import")\
+				and not file.ends_with(".uid")\
 				and not file.ends_with(".md"):
 			if full_path:
 				files.append(path + file)
@@ -104,10 +104,9 @@ static func list_files_in_directory(path: String, prepend_needed := "", full_pat
 # filenames, and grab the filename from there.
 static func list_imported_in_directory(path: String, full_path := false) -> Array:
 	var files := []
-	var dir := Directory.new()
-	# warning-ignore:return_value_discarded
-	dir.open(path)
-	# warning-ignore:return_value_discarded
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return files
 	dir.list_dir_begin()
 	while true:
 		var file := dir.get_next()
@@ -133,10 +132,10 @@ static func confirm(
 	# We do not use SP.KEY_IS_OPTIONAL here to avoid causing cyclical
 	# references when calling CFUtils from SP
 	if script.get("is_optional_" + type):
-		var confirm = _OPTIONAL_CONFIRM_SCENE.instance()
+		var confirm = _OPTIONAL_CONFIRM_SCENE.instantiate()
 		confirm.prep(card_name,task_name)
 		# We have to wait until the player has finished selecting an option
-		yield(confirm,"selected")
+		await confirm.selected
 		# If the player selected "No", we don't execute anything
 		if not confirm.is_accepted:
 			is_accepted = false
@@ -155,6 +154,50 @@ static func sort_index_ascending(c1, c2) -> bool:
 	if c1.get_my_card_index() < c2.get_my_card_index():
 		return true
 	return(false)
+
+
+# The z a canvas item actually draws at, including the layers of its ancestors
+static func effective_z_index(item: CanvasItem) -> int:
+	var z: int = item.z_index
+	if not item.z_as_relative:
+		return z
+	var ancestor: Node = item.get_parent()
+	while ancestor is CanvasItem:
+		z += ancestor.z_index
+		if not ancestor.z_as_relative:
+			break
+		ancestor = ancestor.get_parent()
+	return z
+
+
+static func _tree_path(item: Node) -> Array[int]:
+	var path: Array[int] = []
+	var current: Node = item
+	while current.get_parent() != null:
+		path.push_front(current.get_index())
+		current = current.get_parent()
+	return path
+
+
+# Used with sort_custom to order items the same way they are drawn:
+# by effective z first, then by tree order (the later one draws on top).
+#
+# Hover picking needs this because an overlap list from the physics server does
+# not know which node is drawn above the other.
+static func sort_draw_order_ascending(c1, c2) -> bool:
+	if not (c1 is CanvasItem) or not (c2 is CanvasItem):
+		return false
+	var z1: int = effective_z_index(c1)
+	var z2: int = effective_z_index(c2)
+	if z1 != z2:
+		return z1 < z2
+	var path1: Array[int] = _tree_path(c1)
+	var path2: Array[int] = _tree_path(c2)
+	for i in range(min(path1.size(), path2.size())):
+		if path1[i] != path2[i]:
+			return path1[i] < path2[i]
+	# A descendant draws over its ancestor, so the longer path is on top.
+	return path1.size() < path2.size()
 
 
 # Used with sort_custom to find the highest child index among multiple cards
@@ -226,7 +269,7 @@ static func generate_random_seed() -> String:
 	randomize()
 	var rnd_seed : String = ""
 	for _iter in range(10):
-		rnd_seed +=  char(int(rand_range(40,127)))
+		rnd_seed +=  char(int(randf_range(40,127)))
 	return(rnd_seed)
 
 
@@ -300,16 +343,14 @@ static func get_unique_values(property: String) -> Array:
 # Converts a resource path to a texture, or a StreamTexture object
 # (which you get with `preload()`)
 # into an ImageTexture you can assign to a node's texture property.
-static func convert_texture_to_image(texture, is_lossless = false) -> ImageTexture:
-	var tex: StreamTexture
+static func convert_texture_to_image(texture, _is_lossless = false) -> ImageTexture:
+	var tex: CompressedTexture2D
 	if typeof(texture) == TYPE_STRING:
 		tex = load(texture)
 	else:
 #		print_debug(texture)
 		tex = texture
-	var new_texture = ImageTexture.new();
-	if is_lossless:
-		new_texture.storage = ImageTexture.STORAGE_COMPRESS_LOSSLESS
-	var image = tex.get_data()
-	new_texture.create_from_image(image)
+	# Godot 4 ImageTextures are always lossless in memory
+	var image = tex.get_image()
+	var new_texture = ImageTexture.create_from_image(image)
 	return(new_texture)

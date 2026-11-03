@@ -17,29 +17,29 @@ const _SLOT_SCENE_FILE = CFConst.PATH_CORE + "BoardPlacementSlot.tscn"
 const _SLOT_SCENE = preload(_SLOT_SCENE_FILE)
 
 # Set the highlight colour for all contained BoardPlacementSlot slots
-export(Color) var highlight = CFConst.TARGET_HOVER_COLOUR
+@export var highlight: Color = CFConst.TARGET_HOVER_COLOUR
 # If set to true, the grid will automatically add more slots
 # when find_available_slot() is used and there's no more available slots
 # (only useful when using the ScriptingEngine)
-export var auto_extend := false
+@export var auto_extend := false
 # Used to adjust the grid according to the card size that will be put into it.
 # This size should match the
-export var card_size := CFConst.CARD_SIZE
-export var card_play_scale := CFConst.PLAY_AREA_SCALE
+@export var card_size := CFConst.CARD_SIZE
+@export var card_play_scale := CFConst.PLAY_AREA_SCALE
 # When true, the grid fits the card area exactly, without the border padding
 # used by regular grids.
-export var exact_card_size := false
+@export var exact_card_size := false
 # When true, the grid recalculates its columns from the available width and
 # highlights the whole grid area while a card is dragged over it. The card is
 # placed on a slot chosen automatically, from the center outwards.
-export var auto_arrange := false
+@export var auto_arrange := false
 # The smallest amount of columns an auto-arranged grid accepts.
-export var minimum_columns := 2
+@export var minimum_columns := 2
 # Caps the column count. Zero means no cap; the grid uses all width available.
-export var maximum_columns := 0
+@export var maximum_columns := 0
 
 # Sets a custom label for this grid
-onready var name_label = $Control/Label
+@onready var name_label = $Control/Label
 
 var _full_highlight: Panel
 var _auto_slot: BoardPlacementSlot = null
@@ -50,8 +50,8 @@ func _ready() -> void:
 	# Than the radius of the mouse pointer collision area.
 	# This ensures that we don't highlight 2 slots at the same time.
 	var separation := MousePointer.MOUSE_RADIUS * 2 + 1
-	$GridContainer.set("custom_constants/vseparation", separation)
-	$GridContainer.set("custom_constants/hseparation",
+	$GridContainer.set("theme_override_constants/v_separation", separation)
+	$GridContainer.set("theme_override_constants/h_separation",
 			_horizontal_separation())
 	if auto_arrange:
 		_ensure_full_highlight()
@@ -78,25 +78,25 @@ func _process(_delta: float) -> void:
 
 func _apply_grid_size() -> void:
 	var separation: int = MousePointer.MOUSE_RADIUS * 2 + 1
-	var hseparation: int = _horizontal_separation()
+	var h_separation: int = _horizontal_separation()
 	var columns_count: int = max(1, int($GridContainer.columns))
 	var slot_count: int = max(1, get_slot_count())
 	var rows_count: int = int(ceil(float(slot_count) / columns_count))
 	var content := Vector2(
 			columns_count * card_size.x * card_play_scale \
-					+ (columns_count - 1) * hseparation,
+					+ (columns_count - 1) * h_separation,
 			rows_count * card_size.y * card_play_scale \
 					+ (rows_count - 1) * separation)
 	if exact_card_size:
-		rect_min_size = card_size * card_play_scale
-		rect_size = rect_min_size
+		custom_minimum_size = card_size * card_play_scale
+		size = custom_minimum_size
 	else:
-		rect_min_size = content + Vector2(4, 4)
-		rect_size = rect_min_size
-		$GridContainer.rect_min_size = content
+		custom_minimum_size = content + Vector2(4, 4)
+		size = custom_minimum_size
+		$GridContainer.custom_minimum_size = content
 	if _full_highlight:
-		_full_highlight.rect_position = Vector2(2, 2)
-		_full_highlight.rect_size = content
+		_full_highlight.position = Vector2(2, 2)
+		_full_highlight.size = content
 
 
 # Recalculates the column count from the horizontal space the grid may use.
@@ -132,7 +132,7 @@ func configure_columns(columns: int) -> void:
 			replacement.occupying_card = last_slot.occupying_card
 			last_slot.occupying_card._placement_slot = replacement
 			last_slot.occupying_card.global_position = \
-					replacement.rect_global_position
+					replacement.global_position
 			last_slot.occupying_card._target_position = \
 					last_slot.occupying_card.global_position
 			last_slot.occupying_card = null
@@ -175,7 +175,7 @@ func set_columns_keeping_cards(columns: int) -> void:
 		var slot: BoardPlacementSlot = get_slot(new_index)
 		slot.occupying_card = entry[2]
 		entry[2]._placement_slot = slot
-		entry[2]._target_position = slot.rect_global_position
+		entry[2]._target_position = slot.global_position
 
 
 # Returns the slot a card should occupy when placed automatically.
@@ -254,7 +254,7 @@ func get_slot(idx: int) -> BoardPlacementSlot:
 # Adds new placement slot to the grid.
 # Returns the slot object
 func add_slot() -> BoardPlacementSlot:
-	var new_slot : BoardPlacementSlot = _SLOT_SCENE.instance()
+	var new_slot : BoardPlacementSlot = _SLOT_SCENE.instantiate()
 	$GridContainer.add_child(new_slot)
 	return(new_slot)
 
@@ -264,7 +264,7 @@ func find_available_slot() -> BoardPlacementSlot:
 	var found_slot : BoardPlacementSlot
 	if auto_arrange:
 		found_slot = get_auto_placement_slot()
-	elif not get_available_slots().empty():
+	elif not get_available_slots().is_empty():
 		found_slot = get_available_slots().front()
 	if not found_slot and auto_extend:
 		found_slot = add_slot()
@@ -304,7 +304,7 @@ func _ensure_full_highlight() -> void:
 	_full_highlight.visible = false
 	add_child(_full_highlight)
 	_refresh_full_highlight_style()
-	_full_highlight.raise()
+	_full_highlight.move_to_front()
 
 
 func _refresh_full_highlight_style() -> void:
@@ -315,7 +315,7 @@ func _refresh_full_highlight_style() -> void:
 	style.border_color = Color(highlight.r, highlight.g, highlight.b, 0.9)
 	style.set_border_width_all(3)
 	style.set_corner_radius_all(12)
-	_full_highlight.add_stylebox_override("panel", style)
+	_full_highlight.add_theme_stylebox_override("panel", style)
 
 
 # A card rotated 90 degrees is as wide as the card is tall. Auto-arranged
@@ -368,8 +368,8 @@ func _nearest_free_slot(
 	for slot in get_all_slots():
 		if slot.occupying_card and slot.occupying_card != card:
 			continue
-		var center: Vector2 = slot.rect_global_position \
-				+ slot.rect_size * 0.5
+		var center: Vector2 = slot.global_position \
+				+ slot.size * 0.5
 		var distance := center.distance_squared_to(mouse_pos)
 		if distance < best_distance:
 			best_distance = distance
@@ -387,9 +387,9 @@ func _find_free_slot_except(excluded: BoardPlacementSlot) -> BoardPlacementSlot:
 
 
 func _contains_point(global_point: Vector2) -> bool:
-	var local_point := global_point - rect_global_position
+	var local_point := global_point - global_position
 	return local_point.x >= 0 and local_point.y >= 0 \
-			and local_point.x <= rect_size.x and local_point.y <= rect_size.y
+			and local_point.x <= size.x and local_point.y <= size.y
 
 
 func _is_scenario(card: Card) -> bool:

@@ -29,8 +29,8 @@ var mouse_pointer: MousePointer
 func _ready() -> void:
 	add_to_group("board")
 	if not cfc.are_all_nodes_mapped:
-		yield(cfc, "all_nodes_mapped")
-	mouse_pointer = load(CFConst.PATH_MOUSE_POINTER).instance()
+		await cfc.all_nodes_mapped
+	mouse_pointer = load(CFConst.PATH_MOUSE_POINTER).instantiate()
 	add_child(mouse_pointer)
 	for container in get_tree().get_nodes_in_group("piles"):
 		container.re_place()
@@ -39,14 +39,20 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	# _ready fica suspenso em `await cfc.all_nodes_mapped`, mas o _process já
+	# roda a cada frame; antes de o mouse_pointer existir ele é null.
+	if mouse_pointer == null:
+		return
 	mouse_pointer.global_position = \
 			mouse_pointer.determine_global_mouse_pos()
 
 func _physics_process(delta) -> void:
 	if _UT_interpolation_requested:
 		if _t < 1:
-			_t += delta * _UT_mouse_speed
-			_UT_mouse_position = _UT_current_mouse_position.linear_interpolate(
+			# Clamp so the simulated pointer stops exactly on the requested
+			# point instead of lerping past it by up to a physics tick.
+			_t = minf(_t + delta * _UT_mouse_speed, 1.0)
+			_UT_mouse_position = _UT_current_mouse_position.lerp(
 					_UT_target_mouse_position, _t)
 		else:
 			_t = 0

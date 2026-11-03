@@ -1,182 +1,119 @@
-# 🦸‍♂️ Battle Scenes Web - Painel de Controle e Tarefas
-> **Ambiente de Desenvolvimento**
-> Caminho do Projeto: Criado a partir do fork de `db0/godot-card-game-framework`
-> Caminho das Imagens (Local): `../bsdb-imagens` (pasta irmã deste repositório)
-> Documento de Arquitetura e Regras: Ver `BATTLE_SCENES_DESIGN.md`
+# 🦸‍♂️ Battle Scenes Web — TODO (só o que falta)
+
+> **Planejado e já entregue:** [CONCLUIDOS.md](./CONCLUIDOS.md)
+> **Planos que ainda precisam de decisão:** [PLANEJAMENTO.md](./PLANEJAMENTO.md)
+> Regras: [BATTLE_SCENES_DESIGN.md](./BATTLE_SCENES_DESIGN.md) · Layout: [BOARD_LAYOUT.md](./BOARD_LAYOUT.md) · Online: [ONLINE_HOSTING.md](./ONLINE_HOSTING.md) e [MULTIPLAYER.md](./MULTIPLAYER.md)
+
+Atualizado em 2026-11-02. Produção: build web de 2026-10-30 (Godot 3.4.4) em
+`https://battle-scenes.netlify.app`; relay na VM Oracle em
+`https://129-159-222-25.sslip.io`.
 
 ---
 
-## 🕹️ 1. Diretrizes do Projeto
+## ⚙️ Engine e build
 
-### Como vamos conduzir o desenvolvimento
-*   Antes de cada etapa, alinhar o plano e esclarecer decisões pendentes com o usuário.
-*   Usar este arquivo para acompanhar prioridades, tarefas, decisões e progresso; detalhar regras e decisões técnicas em `BATTLE_SCENES_DESIGN.md`.
-*   Atualizar os documentos quando uma decisão ou mudança de progresso justificar, sem registrar suposições como decisões confirmadas.
+- [ ] **Export web no Godot 4.7.2:** o preset `Web` já aponta para
+  `online/site/game/index.html` e injeta manifest/PWA pelo `head_include`.
+  Gerar o build, validar no navegador e publicar. O build no ar ainda é o de
+  2026-10-30, feito no 3.4.4.
+- [ ] **Confirmar o CI:** os workflows já baixam o Godot 4.7.2 e o GUT 9.7.1
+  está instalado; rodar a suíte no GitHub Actions e corrigir qualquer teste
+  legado que não tenha sido adaptado.
+- [ ] **Enxugar o pacote (−1,4 MB):** remover `src/core/CardViewer/DeckBuilder/`,
+  `src/core/CardViewer/CardLibrary/`, `src/custom/CGFDeckbuilder/` e os 4
+  screenshots do README na raiz (`deckbuilder-*.png`, `card-library-*.png`).
+  Sair junto o botão **DeckBuilder** e o `DeckBuilderPopup` do `CGFBoard.tscn`.
+  **Não remover** `CVGridCardObject`, `CVPreviewPopup` e `CVInfoPanel`: o
+  “Procurar” do deck depende deles. É o gatilho que paga a próxima publicação.
 
-### A. Filosofia de Controles (Mouse-Only)
-O jogo será **100% jogável apenas com o mouse** (ou toque na tela no mobile).
-*   **Movimentação:** Mecânica de Arrastar e Soltar (Drag & Drop) nativa do framework.
-*   **Ações:** Menu de ações ao passar o mouse sobre personagens em campo; capacitar/incapacitar serão as primeiras opções, sem comandos de teclado.
+## 🃏 Regras (Fase 1)
 
-### B. Arquitetura de Imagens (CDN Comunitária)
-*   **Em Desenvolvimento Local:** Os arquivos em `../bsdb-imagens` servem como referência de IDs, nomes de arquivos e testes rápidos de ícones.
-*   **No Jogo Final (Navegador):** A Godot não armazenará imagens localmente para evitar problemas de copyright. O nó `HTTPRequest` fará o download das cartas em tempo real usando a CDN do GitHub:
-    `https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main[IMAGEM]`
-*   **Dados das cartas:** Usar `dados/cards.json` no repositório local de referência. O campo `TIPO` identifica categorias como `Personagem` e será mapeado para `_tipo` nas propriedades internas do framework; `IMAGEM` fornece o caminho relativo à raiz das imagens para montar a URL da CDN.
+- [ ] **Contador de energia sobre o Personagem:** contador numérico sobre a carta
+  com a quantidade de energias carregadas.
+- [ ] **Ações cruzadas de regra entre assentos:** ataque entre assentos com dano
+  real (hoje só registra no log) e retirada de anexo de baixo do Personagem do
+  oponente (envia para Recursos/Descarte do dono). Transporte previsto:
+  mensagem `mp_card_action_request` no `MultiplayerSync` e aplicação local no
+  `_remote_meta` do espelho no solo. Valem em qualquer fase, sem limite por
+  turno.
+- [ ] **Motor validar o JSON da carta:** aplicar `PODERES`/Tags, `AFILIACAO`,
+  `ESCUDO` e `ENERGIA_EXTRA` durante a partida. A importação já guarda esses
+  campos nas propriedades da carta; falta a validação de regra.
 
----
+## 🌐 Multiplayer
 
-## 📝 2. Lista de Tarefas (Checklist de Desenvolvimento)
+- [ ] **Autoridade completa do anfitrião:** o anfitrião já é autoritativo para
+  início, d6, semente, fases e estado público, e valida as ações
+  estruturalmente. Falta aprovar cada jogada antes de aplicar e tratar as
+  próprias ações pelo mesmo fluxo. Ver
+  [MULTIPLAYER.md](./MULTIPLAYER.md#limitações-conhecidas-da-v1).
+- [ ] **Validar partida real com dois clientes:** redes diferentes, estados
+  divergentes, desconexões, reconexão automática e privacidade (mão/deck/recados).
+  Não considerar competitivo antes disso.
+- [ ] **Botão “Back to Main” no multiplayer:** o botão existe e funciona no solo,
+  mas `_setup_multiplayer()` o esconde. Mostrar, escolher posição (o canto
+  esquerdo tem o log do HUD) e decidir se sai direto ou confirma antes de
+  abandonar a partida do outro jogador. `_on_BackToMain_pressed()` já encerra a
+  sessão.
 
-### Inspeção inicial e ordem sugerida
-*   O repositório já contém `project.godot`, o framework, um tabuleiro de demonstração e testes automatizados; a etapa de importação não precisa ser presumida como trabalho futuro.
-*   O framework já oferece comportamentos de rotação e anexos, e o deck de demonstração já compra uma carta ao clique. A primeira etapa deve adaptar e validar esses recursos para as regras do Battle Scenes, não recriá-los sem necessidade.
-*   A primeira tarefa confirmada é a capacitação pelo menu de hover, usando os dados locais: mapear `TIPO` para `_tipo` e preservar a lógica de arraste do framework.
-*   Ordem sugerida para a Fase 1: capacitação pelo menu; anexos e contador de energia; dano, nocaute, prêmios e vitória. Multiplayer e deploy ficam para depois da validação do jogo local.
-*   A sequência das demais tarefas continua sujeita a alinhamento antes de cada etapa.
+## 📱 Web e distribuição
 
-### 🃏 Fase 1: Mecânicas Únicas do Battle Scenes (Singleplayer Local)
-*   [x] **Campo de jogo (2 jogadores, oponente visual):** O tabuleiro usa três faixas: exibição do oponente no topo, duas linhas de campo do jogador no meio e a Mão em uma faixa menor embaixo. O campo interativo do jogador atual fica no meio; as cartas públicas do oponente aparecem viradas 180° e as cartas de Cena/Cenário dele podem ser arrastadas. A Cena contém Personagens/Suportes e um único Cenário ativo; um novo Cenário envia o anterior a Recursos/Descarte. Recursos ficam visíveis para todos e, ao clicar, abrem em uma segunda mão para selecionar anexos. Prêmios são uma área de uma carta por jogador, com o mesmo empilhamento de Recursos, apenas o botão **Ver** e contador da soma de `ENERGIA` dos personagens derrotados (sem `ENERGIA_EXTRA`). Limbo segue junto de Recursos/Descarte.
-    *   **Estado:** Implementados o layout de três faixas, a grade dinâmica da Cena (3 colunas × 2 linhas por jogador no tamanho atual; mínimo de 2 colunas), as zonas espelhadas do oponente, os botões **Ver** para Recursos e Prêmios remotos e o arraste das cartas de Cena/Cenário do oponente. Os Prêmios usam `120x168` com escala `0,8` e o rótulo `Energia` soma `ENERGIA`. A expansão de Recursos por clique, a exigência de `ENERGIA` para Personagens/Suportes e a seleção automática de anexos seguem implementadas. Cancelar a seleção devolve a carta principal à Mão. Testes automatizados de grade, pilhas e multiplayer passam; a validação visual no Godot com dois clientes ainda está pendente.
-*   [x] **Sistema de Capacitação pelo Menu de Ações:** Ao passar o mouse sobre um personagem em campo, exibir apenas as ações válidas de capacitar/incapacitar entre `-90°`, `0°` e `+90°`, conforme `BATTLE_SCENES_DESIGN.md`.
-    *   **Estado:** Cartas de demonstração marcadas como personagens; `Capacitar`/`Incapacitar` alternam posições `-90°`/`0°`/`+90°` e mostram apenas a ação oposta nas posições inclinadas; `Escudo` disponível para personagens. Validação concluída no fluxo de uso local.
-    *   **Correção adicional:** As duas cenas do tabuleiro apontavam para um caminho incorreto da fonte Comfortaa; os caminhos agora correspondem ao arquivo existente em `fonts/comfortaa/`.
-*   [x] **Compra de Cartas por Clique:** Configurar o contêiner do `Deck` para enviar uma carta para a mão sempre que for clicada.
-*   [x] **Ações do Deck e da Mão:** Adicionar embaralhar, Clarividência e Procurar no Deck; deixar a Mão sem limite, enviar cartas para Recursos/Descarte com duplo clique e permitir visualizar essa pilha.
-*   [x] **Fluxo de Entrada em Cena com Energia e Anexos:** Ao colocar Personagem/Suporte da Mão em Cena, verificar `ENERGIA`, abrir Recursos automaticamente, permitir escolher anexos por clique e cancelar a seleção devolvendo a carta principal à Mão. Validado.
-*   [x] **Exibição de Anexos e Troca:** Cartas anexadas empilhadas para baixo sob a carta principal, com 5% da borda inferior de cada anexo visível; a carta principal fica por cima. Anexos não giram com a carta principal. Botão **Trocar** em Recursos/Descarte funcionando para substituir anexos de Personagem.
-*   [ ] **Contador de Energia sobre Personagem:** Criar um contador numérico sobre o Personagem mostrando a quantidade de energias carregadas.
-*   [x] **Lógica de Dano, Nocaute e Vitória:**
-    *   **Decisão de 2026-10-29:** até esta mecânica existir, o ataque entre assentos apenas registra no log (ver a fase de ações cruzadas); nenhuma carta perde energia ou vai para Prêmios por ataque.
-    *   [x] Criar função para tirar energias carregadas quando o personagem sofrer dano e mandá-las para o descarte do dono.
-    *   [x] Validar Nocaute: quando as energias zerarem, devolver as cartas anexadas ao descarte do dono e mover a carta do personagem para a área de Prêmios do adversário, não para a do dono.
-    *   [x] Checar Vitória: quando a soma da energia inicial (`ENERGIA`) dos personagens na área de Prêmios de um jogador chegar a 15, disparar a tela de vitória desse jogador.
-    *   **Estado (2026-10-29):** `CGFBoard.damage_character()` retira um anexo por dano para Recursos/Descarte e chama `knockout_character()` quando a última energia sai; o botão **Dano** aparece no menu de hover do personagem. O nocaute usa a rota de envio para os Prêmios; no solo, `MultiplayerSync._hold_prize_card_locally()` cria o espelho que o outro cliente devolveria, então a troca de assento restaura a carta como Prêmio real. A soma `ENERGIA` das duas áreas de Prêmios alimenta `report_prize_energy()`: 15 encerram a partida com uma sobreposição de vitória construída em código (sem editar as cenas) e uma linha no log. Faltam a validação visual e o contador de energia. Testes em `tests/integration/test_damage_knockout.gd` (6/6).
-    *   **Limite conhecido:** o botão **Dano** aplica 1 por clique e não existe ainda um ataque entre assentos que chame o dano; isso continua na fase de ações cruzadas.
+- [ ] **Validar e publicar a PWA:** implementada em 2026-11-02 (manifest,
+  service worker, ponte `pwa.js`, ícones e botão **Instalar app** no menu web).
+  Falta validar no Chrome/Edge/Android e no iPhone (instalação manual), publicar
+  `online/site` e confirmar que uma publicação nova não fica presa no cache.
+  Guia em [online/README.md](./online/README.md).
+- [ ] **Conferir arte/contraste no build web:** título e botões sobre a camada
+  escura de 62%, recorte em janelas estreitas e o playmat padrão **BS Web** para
+  quem nunca escolheu um. O build publicado já tem a arte; falta olhar no
+  navegador.
+- [ ] **Publicar em lote:** acumular mudanças de cliente e subir uma vez quando
+  houver algo que pague a rebaixa do `index.pck` (ex.: a limpeza de 1,4 MB).
+  Detalhes na tabela abaixo.
+- [ ] **Testar deploy só de Functions:** `netlify deploy --functions` sem
+  reenviar `site/` ainda não foi validado aqui; até então, considerar que
+  qualquer upload manda o diretório inteiro.
 
-### ✅ Base Funcional Validada
-*   [x] **Deck → Mão → Cena**
-*   [x] **Verificação de energia para entrada em cena**
-*   [x] **Seleção de anexos**
-*   [x] **Cancelar caso falhe**
-*   [x] **Capacitação e incapacitação por menu de ações**
+## 🧭 Layout (pós-bake, arrasto no Inspector)
 
-> Observação: a regra de “1 recurso por turno” foi removida do escopo atual e não deve permanecer como tarefa ativa.
+O layout grande já foi para a cena (Fase 5 em
+[CONCLUIDOS.md](./CONCLUIDOS.md)); falta o ajuste fino:
 
-### 🩹 Correções de 2026-10-29 (mesa Godot 3.4)
-*   [x] **Sinais duplicados nas pilhas:** `CGFDiscard` e `CGFPrizes` chamavam `._ready()` dentro do próprio `_ready`; como o Godot 3.4 executa `_ready` em todos os níveis da herança, as conexões de `View`, `ViewSorted`, `popup_hide`, `about_to_show` e `shuffle_completed` eram feitas duas vezes (10 erros `Signal '...' is already connected` no arranque da mesa). As chamadas redundantes foram removidas e o carregamento de `CGFMain.tscn` ficou sem erros.
-*   [x] **Rolagem do log no HUD:** `MatchHUD._scroll_log_to_bottom` usava `RichTextLabel.get_paragraph_count()`, que só existe no Godot 4; no 3.4 o método é `get_line_count()`. Cada atualização do log lançava `SCRIPT ERROR` a partir do início da partida solo.
-*   [x] **Prévia das cartas espelhadas e do log:** o ramo de espelho em `CardTemplate._process_card_state()` chamava `set_focus(false)` a cada frame e desfocava o closeup que o `MultiplayerSync` acabara de abrir, então os recursos do adversário não mostravam nada; agora o hover trava a prévia com `preview_locked`. O hover do log pegava a primeira cópia do nome, quase sempre virada para baixo no deck, e mostrava o verso: `_find_preview_card` só aceita uma cópia legível (`visible` e `is_faceup or was_public`) e, sem ela, instancia a prévia destacada. Em `ViewportCardFocus.focus_card()` o dupe passou a ser registrado antes do laço de visibilidade, senão focar uma carta escondida numa pilha não desenhava nada. Coberto por `tests/integration/test_viewport_focus.gd`.
-
-### 🧱 Fase 2: Infraestrutura Básica & Interface Visual
-*   [x] **Importar Projeto:** Fork do framework aberto no Godot Engine, com o tabuleiro customizado em `src/custom/`.
-*   [x] **Configurar Resolução (`CFConst.gd`):** Resolução lógica `1280x720`, `CARD_SIZE` `150x210`, escala de campo `0,55` e escala da mão `0,5`.
-*   [x] **Criar Conexão HTTP (CDN do Amigo):** `CFControl.gd` monta a URL da CDN (`https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main/cards/oficial`) e baixa as imagens por `HTTPRequest`, com cache em `user://CardImages/`.
-*   [x] **Carregar Deck por Link do BSDB:** A opção de importar link (`https://battlescenes.vercel.app/deck/...`) baixa a lista, os dados e as imagens das cartas e salva o deck no catálogo local. O deck Resgate Aracnídeo abaixo continua como lista local de teste.
-*   [x] **Montar o Tabuleiro 2D:** Zonas essenciais posicionadas em três faixas (oponente, campo com duas linhas e Mão), incluindo Deck, Recursos/Descarte, Cenário e Prêmios.
-*   [ ] **Planejar o Single Player Demo:** o botão **Single Player Demo** saiu do menu principal em 2026-10-30 — ele só abria `CGFMain.tscn` com o deck de demonstração do framework, sem as regras do Battle Scenes e sem passar pela preparação. Antes de o botão voltar, definir o roteiro da demonstração: qual deck fixo entra pronto, se há oponente (ausente, scriptado ou hotseat), quais mecânicas ela mostra (capacitação, anexos, dano/nocaute/prêmios), como o jogador sai dela e o que acontece no build web publicado.
-
-### 🌐 Fase 3: Multiplayer Simples (Espelhamento via WebSockets)
-*   [x] **Username e busca de partida na LAN:** O menu solicita username e endereço do relay, e o botão **Procurar Partida** coloca o jogador em uma fila de duas pessoas. O relay separa partidas, atribui identidades e cancela a busca pelo mesmo botão.
-*   [x] **Relay WebSocket (`Rede.gd`, `LocalRelay.gd` e `tools/ws_relay.py`):** Godot 3 usa mensagens JSON em WebSocket. Na mesma máquina ou na LAN não é preciso iniciar nada: o relay embutido sobe no primeiro cliente que criar/procurar sala (escuta em `0.0.0.0:9080` e o convidado usa o IP da máquina do anfitrião). `python tools/ws_relay.py` continua disponível como relay externo. O relay só encaminha mensagens entre os dois membros de cada partida e não deve ser exposto à internet.
-*   [x] **Relay online em Node.js (`relay/`):** Relay dedicado para o modo online, com o mesmo protocolo JSON, `join_room` por código, `hello`/`protocol_version`, `GET /healthz`, `GET /rooms`, limites por IP/conexão, heartbeat e allowlist de `Origin`; 21 testes com clientes `ws` reais passam. Entrou em produção em 30/10/2026 no S20 FE atrás de um túnel Cloudflare e desde 01/11/2026 roda numa VM Always Free da Oracle em Frankfurt, com IP público reservado `129.159.222.25` e TLS do Caddy em `129-159-222-25.sslip.io`. Plano em [ONLINE_HOSTING.md](./ONLINE_HOSTING.md) e [relay/README.md](./relay/README.md).
-*   [x] **Sincronizar ações (espelhamento):**
-    *   [x] Arrastar: a posição na Cena replica no campo visual do oponente.
-    *   [x] Rotação: capacitação/incapacitação replica no oponente.
-    *   [x] Ações ocultas: mão e deck vão virados para baixo; o oponente vê recados como "Comprou carta" e "Baixou recurso". Recursos em cena revelam a carta.
-    *   **Estado:** Protótipo LAN para dois jogadores; o relay pareia e isola conexões. O anfitrião é autoritativo para início, d6, semente e fases, mas o jogo ainda não valida cada jogada antes de aplicá-la.
-    *   **Paridade da banda de cena (2026-10-29):** o espelho usa um espaço de mesa canônico: carta em slot vai pelo rect espelhado do slot, carta solta é refletida pelo centro da mesa (`_mirrored_board_point`) e a carta espelhada é desenhada de cabeça para baixo. Voltando de assento no hotseat, slot, rotação e anexos são restaurados como estavam. Coberto por `tests/integration/test_solo_hotseat.gd`.
-*   [x] **Partida solo P1 vs P2 (hotseat):** entrada **Partida Solo** no menu, dois decks (um por assento), assento inativo guardado como dados em `_solo_hidden`, botão **Controlar P1/P2** que reconstrói a mesa pelas mesmas funções do checkpoint. O bug do terceiro swap está corrigido e coberto por GUT. Na preparação, cada assento tem o seu próprio botão de deck (`DeckP1`/`DeckP2`), já preenchido com o último deck usado naquele assento (`last_solo_deck_path_1/2`); clicar abre a lista de decks salvos e o assento clicado passa a ser o alvo da importação por link.
-*   [x] **Registro de ações com nomes clicáveis:** o autoload `GameEvents` alimenta o painel de log (RichTextLabel) com as jogadas dos dois assentos; o nome da carta no log abre a prévia grande. Fica em memória, sem gravar em disco.
-*   [x] **Mostrar a zona do adversário ao vivo:** O ponteiro remoto foi substituído por uma lupa pulsando na caixa espelhada da zona em que o adversário está (mão, deck, recursos, prêmios ou cenário), sem revelar a posição exata do ponteiro nem o conteúdo de cartas ocultas. Na partida solo a lupa roda em modo de pré-visualização, sem enviar nada.
-*   [x] **Exibir movimentos do oponente no campo espelhado:** As ações e mudanças de estado do adversário aparecem visualmente na metade espelhada, além do registro textual, com mão e deck preservados como contadores ocultos.
-*   [x] **Adicionar indicador central de fases e turnos:** Cada jogador realiza `REG` (início e verificações), `PREP` (baixar cartas e capacitar), `ADJ` (validar estado e efeitos globais) e `COMB` (combate). No bloco `COMB`, o adversário/defensor realiza `ANT` antes do jogador ativo declarar `ATK`. O botão identifica o jogador e a etapa atual; `PREP` é branco, `ANT` vermelho e `ATK` verde.
-    *   **Sequência da v1:** jogador que começa pelo d6: `REG` → `PREP` → `ADJ` → `ANT` do oponente → `ATK` do jogador ativo; depois o outro jogador realiza a mesma sequência. A rodada completa quando ambos terminarem `ATK`; o contador aumenta e o ciclo reinicia pelo jogador inicial.
-    *   **Compra (`BUY`):** planejada para a v2 do multiplayer; não entra na sequência inicial da v1.
-    *   **Limite da mão:** permanece ilimitado; `ADJ` não descarta cartas por tamanho da mão.
-    *   **Estado:** Implementado em `MatchHUD.gd`, com os resultados do d6, quem começa, rodada e etapa. O indicador é informativo e não bloqueia ações do jogo.
-*   [x] **Reconexão automática quando a conexão cai (2026-10-30):** o botão **Reconecte** já existia, mas dependia de alguém ver o aviso e clicar dentro da janela do relay. Agora `Multiplayer.gd` abre uma janela de tentativas em `_on_connection_lost()` e roda um backoff `2 → 5 → 10 → 20 → 40 s` (77 s somados, menos que os 120 s de graca do relay) chamando o mesmo `manual_reconnect()`. Não reinicia a sequência a cada queda de tentativa, não sobrepõe tentativa enquanto um socket está conectando, nunca roda na partida solo (hotseat não falou com o relay) e se encerra no rejoin, no fim da sessão e na sala expirada. Quando a janela vence, o aviso muda uma sola vez para "Conexão perdida. Reconecte à sala ou encerre a partida." Coberto por `tests/integration/test_auto_reconnect.gd` (9 testes).
-*   [x] **"Servidor: online / indisponível" no menu (2026-10-30):** `MainMenu.tscn` ganhou o rótulo `ServerStatus` abaixo do endereço do relay. Na web a sonda é no mesmo site (`GET /api/salas`, que já responde `relay.online` e a lista de salas); no desktop o endereço digitado vira `http(s)://host:porta/healthz`. Refaz a cada 20 s, sonda ~2 s depois de parar de digitar, conta as salas abertas e fica verde/vermelho. No desktop o rótulo se esconde para endereço local (`127.0.0.1`), onde o `LocalRelay` sobe junto com a criação da sala — dizer "indisponível" antes disso seria mentira. Coberto por `tests/unit/test_MainMenuServerStatus.gd` (6 testes). **Nota:** nada disso precisa de mudança no Netlify; o `/api/salas` já está publicado.
-*   [ ] **Completar a autoridade da partida:** O anfitrião já é autoritativo para início, sorteio do d6, semente, sequência de fases e estado público canônico, e as ações recebidas são validadas estruturalmente. Falta o anfitrião aprovar cada jogada antes de aplicá-la e tratar as próprias ações pelo mesmo fluxo. O relay Node.js continua apenas pareando e transportando mensagens.
-    *   **Ordem sugerida:** validar uma partida real com dois clientes; completar a validação de cada ação pelo anfitrião; testar estados divergentes, desconexões e privacidade. Não considerar o multiplayer pronto para partidas competitivas até a autoridade e a privacidade estarem verificadas. Detalhes em [MULTIPLAYER.md](./MULTIPLAYER.md#limitações-conhecidas-da-v1).
-
-*   [ ] **Ações cruzadas de regra entre assentos (ataque e retirada de anexo):** hoje a única ação sobre o campo do adversário é arrastar uma carta espelhada para outro slot. Decisões de 2026-10-29: **atacar** apenas registra no log ("X atacou Y"), sem dano, porque a mecânica de dano/nocaute/vitória continua na Fase 1; **retirar uma carta de baixo do personagem do oponente** manda a carta para Recursos/Descarte do dono, como no nocaute; as duas ações valem em qualquer fase, sem limite por turno. Transporte previsto: mensagem `mp_card_action_request` no `MultiplayerSync` e aplicação local no `_remote_meta` do espelho na partida solo.
-*   [ ] **Área para escrever texto durante a partida:** criar um campo onde o jogador digita texto dentro da mesa. Escopo a definir antes de implementar: (a) **recado entre os dois jogadores** (chat) — precisa de mensagem nova no `MultiplayerSync`, passagem pelo relay, histórico só em memória, limite de tamanho e alguma proteção contra abuso, já que o relay hoje só encaminha; ou (b) **anotação particular** (caderno do jogador) — não sai do cliente, não passa pelo relay, e pode ser só um painel com `TextEdit` ao lado do log. Decidir também onde o campo mora (painel do `MatchHUD` junto do log, ou popup), se fica visível no solo/hotseat (no solo o texto do assento inativo precisa ficar escondido, como o resto) e se o conteúdo entra no log de ações.
-*   [ ] **Botão “Back to Main” no multiplayer:** o botão existe no `CGFBoard.tscn` e a partida solo o mantém visível (`_setup_solo()` reposiciona para `148,132`), mas `_setup_multiplayer()` o esconde junto do `DeckBuilder` e dos toggles de desenvolvimento — quem está numa partida online não tem como voltar ao menu sem fechar o jogo. `_on_BackToMain_pressed()` já chama `Multiplayer.leave_session("Partida encerrada pelo jogador.")` quando há sessão ativa, então falta mostrar o botão no multiplayer, escolher a posição (o canto esquerdo tem o log do HUD; o multiplayer não tem `DeckBuilder` ocupando `8,132`) e decidir se sai direto ou pede confirmação antes de abandonar a partida do outro jogador. O `DeckBuilder` segue escondido de propósito: no multiplayer o deck é escolhido no painel de preparação do `MatchHUD`.
-
-### 🚀 Fase 4: Banco de Dados Completo & Deploy (Netlify)
-*   [ ] **Integrar Banco de Dados JSON:** A importação de deck já guarda `ENERGIA`, `PODERES`/`Tags`, `AFILIACAO`, `ESCUDO`, `ALINHAMENTO` e `ENERGIA_EXTRA` nas propriedades da carta. Falta o motor validar essas regras (poderes, afiliação, escudo) durante a partida.
-*   [x] **Exportar para HTML5:** O preset HTML5 já existe em `export_presets.cfg` com saída em `online/site/game/index.html`; o build local foi gerado com os templates do Godot 3.4.4 e validado com dois navegadores até o início da partida e com importação de deck por link. A integração do cliente web já está feita: `LocalRelay` bloqueado no navegador, endereço padrão `wss://`, `join_room` por código, entrada “Entrar com código” no menu e leitura de `?room=CODIGO`/`?relay=HOST`. **Publicado em 2026-10-30** (deploy `6ae4f75944d360a9d0f5f8f3`, `index.pck` com 7,8 MB).
-*   [ ] **Apagar do código o Deck Builder, a Card Library e os “Decks salvos”:** As quatro entradas já saíram do menu principal (no multiplayer o deck continua sendo escolhido no painel de preparação do `MatchHUD`), mas o código segue no projeto e o preset HTML5 usa `export_filter="all_resources"`, então tudo continua empacotado. Confirmado no `index.pck` atual (10,7 MB): remover `src/core/CardViewer/DeckBuilder/` (70 KB), `src/core/CardViewer/CardLibrary/` (14 KB), `src/custom/CGFDeckbuilder/` (22 KB) e os 4 screenshots do README que ficam na raiz (`deckbuilder-ff-grid.png`, `deckbuilder-preview.png`, `card-library-grid.png`, `card-library-list.png`) economiza ~1,4 MB (~13%) — quase todo o ganho vem das texturas importadas dos screenshots (~1,33 MB), que não são usadas pelo jogo. Sair junto: o botão **DeckBuilder** e o `DeckBuilderPopup` do `CGFBoard.tscn` (já ocultos no multiplayer). **Não remover** `CVGridCardObject`, `CVPreviewPopup` e `CVInfoPanel` do `src/core/CardViewer/`: a `SelectionWindow` do “Procurar” no deck depende deles.
-*   [x] **Excluir testes e tutorial do build HTML5:** o `exclude_filter` do preset HTML5 já cobre `addons/gut`, `tests/`, `tutorial/`, os screenshots do README e as artes de playmat/vibe_images; conferido dentro do `index.pck` publicado (348 arquivos, scripts `.gdc`).
-*   [x] **Hospedagem no Netlify:** site publicado em `https://battle-scenes.netlify.app` (deploy manual da CLI, sem Git CD; Public com previews protegidos). O `/api/salas` devolve o endereço do relay lido do `RELAY_URL` (`https://129-159-222-25.sslip.io`) e o lobby aproveita para anexar `?relay=` sozinho em “Abrir o jogo” e nos links de sala. O Blob `relay/address` está vazio; um registro nele, se existir, tem precedência sobre o `RELAY_URL`. Ver [ONLINE_HOSTING.md](./ONLINE_HOSTING.md).
-*   [x] **Hostname fixo do relay (resolvido, 2026-11-01):** o relay saiu do S20 FE e do túnel `trycloudflare` e roda numa VM Always Free da Oracle com **IP público reservado** `129.159.222.25` — o IP reservado sobrevive a stop/start e a recriar a instância, então o hostname `129-159-222-25.sslip.io` é estável. O `RELAY_URL` do Netlify aponta para ele e ninguém precisa correr atrás de endereço. O registrador no celular (`relay/tools/register-relay.mjs`) e o `POST /api/relay` ficaram como rota de emergência, desligados; o Blob `relay/address` está vazio (se algo for gravado nele, sobrescreve o `RELAY_URL` — apagar com `netlify blobs:delete relay address`). O `POST /api/relay` só aceita hosts `*.trycloudflare.com` (padrão `RELAY_HOST_PATTERN`), então essa rota serviria apenas para um túnel temporário novo.
-*   [ ] **v3 — Migrar o relay para Cloudflare Workers + Durable Objects (opcional):** reescrever o relay Node.js como um Worker com uma Durable Object por sala (estado SQLite, WebSocket Hibernation, `*.workers.dev`). O motivo original era acabar com o celular, o túnel e a rotação de hostname, e isso já foi resolvido pela VM da Oracle com IP reservado; agora é só uma alternativa de operação (não depender de uma VM). Custo: reimplementar e revalidar o protocolo JSON de um relay já testado (21 testes com clientes `ws` reais). Sem prazo; a VM atende até haver motivo concreto para migrar.
-
-*   [ ] **Conferir a arte nova no site publicado:** o fundo do menu principal e o playmat padrão **BS Web** vêm de `assets/brand/bs_web_backdrop.webp` (1024x576, o arquivo original, sem reencode), aprovados no desktop em 2026-10-30 e **já publicados** (deploy `6ae4f75944d360a9d0f5f8f3`). Falta olhar no build web: o contraste do título e dos botões sobre a camada escura de 62% (`ColorRect` em `MainMenu.tscn`), o recorte em janelas estreitas (celular) e o playmat padrão aparecendo para quem nunca escolheu um.
-
-### 🧭 Fase 5: Layout autoral do tabuleiro
-
-Plano completo em [BOARD_LAYOUT.md](./BOARD_LAYOUT.md). Objetivo: `CGFBoard.tscn` passa a ser a fonte da verdade das posições e as ~165 linhas de layout de `CGFBoard.gd` viram ~20, para as caixas serem arrastadas na vista 2D do editor como já acontece com o `MainMenu.tscn`.
-
-*   [x] **Etapa 0 — Medição:** dump temporário do rect real de cada nó (posição, tamanho, rotação e `margin_*`) em `.prints/board_layout.txt`, medindo o estado atual aprovado, com o rect autoral vs. derivado do `OpponentScene` e as duas larguras do `OpponentResourcesBackground` (156 e 176).
-*   [x] **Etapa 1 — Cena autoral:** gravar os números medidos em coordenadas absolutas e desfazer as âncoras da coluna direita.
-*   [x] **Etapa 2 — Runtime burro:** apagar `_layout_opponent_field()`, ler posições autorais para `_deck_position`, `_discard_position` e `_prizes_position`, sincronizar `OpponentScene` com o grid e trocar o literal `156.0` do hover de recursos por uma largura capturada da cena.
-*   [x] **Etapa 3 — Mão ajustável:** `bottom_margin` de `Hand.gd` vira `export` e o valor correspondente vai para `CGFHand.tscn`.
-*   [x] **Etapa 4 — Guarda:** comparar posição **e tamanho** do `OpponentScene` com o grid atrás do checkbox `$Debug`; a razão `scene/grid` escala o tamanho das cartas soltas do espelho.
-*   [x] **Etapa 5 — Validação e limpeza:** remover o dump e rodar `test_placement_grid`, `test_board_use`, `test_solo_hotseat`, `test_multiplayer_lobby` e `test_anchors`, comparando o render com o atual.
-*   [ ] **Depois do bake, como arrasto no Inspector:** cenário ativo no mesmo tamanho das cartas em jogo, rótulo de quantidade/energia dos Prêmios em outra posição e rótulos do lado do oponente que se espalham sobre o campo. O deck **não** entra nesta lista: continua deitado a 270° e mantém a área atual.
+- [x] **Cena como fonte da verdade (rota B):** a geometria real do campo/cenário
+  foi assada no `CGFBoard.tscn` (2026-11-02) e o runtime passou a respeitar o
+  autorado (espelho derivado do grid). O ajuste fino abaixo já vale no F5/F6.
+- [x] **Base HD+ na web / HD e Full HD no desktop:** render do SubViewport a
+  1600×900 no web; seletor HD/FHD no menu desktop (`size_2d_override` mantém as
+  coordenadas 1280×720). Entregue em 2026-11-02, descrito em
+  [CONCLUIDOS.md](./CONCLUIDOS.md).
+- [ ] Cenário ativo no mesmo tamanho das cartas em jogo.
+- [ ] Rótulo de quantidade/energia dos Prêmios em outra posição.
+- [ ] Rótulos do lado do oponente que se espalham sobre o campo.
+- O deck **não** entra nesta lista: continua deitado a 270° e mantém a área
+  atual.
 
 ---
 
-## 📦 3. Controle de publicação (o que exige subir no Netlify)
+## 📦 Controle de publicação
 
 O site é publicado por deploy manual (`netlify deploy --prod` da pasta
-`online/`) e o jogo é um **build**: o `index.pck` de 7,8 MB é baixado de novo
-por todo navegador que abrir a partida depois de uma publicação, porque os
-arquivos `.pck`/`.wasm` vão com `must-revalidate` (o Godot 3.4 pede os nomes
-sem versão). Então o custo real de um upload não é a vez de publicar, é a
-rebaixa de todo mundo que joga no navegador. A regra que usamos: **acumular as
-mudanças de cliente no branch e subir uma vez quando existir algo que pague a
-rebaixa** — por exemplo, tirar os 1,4 MB do pacote, que barateia todas as
-publicações seguintes.
+`online/`) e o jogo é um **build**: o `index.pck` é baixado de novo por todo
+navegador depois de uma publicação, porque `.pck`/`.wasm` vão com
+`must-revalidate`. O custo real de um upload é a rebaixa de todo mundo que
+joga no navegador.
 
-O que é do **relay** ou das **Functions do site** não precisa esperar upload do
-jogo: o relay roda sob systemd na VM da Oracle (`sudo systemctl restart bs-relay`
-ou `sudo systemctl reload caddy`) e uma mudança só de Function pode ser
+O que é do **relay** ou das **Functions** não espera upload do jogo: o relay
+roda sob systemd na VM da Oracle e uma mudança só de Function pode ser
 publicada sem reexportar o HTML5.
-
-**Estado da produção:** o build publicado é o deploy `6ae4f75944d360a9d0f5f8f3`
-(2026-10-30). Tudo marcado *pronto* abaixo está validado no desktop/GUT e
-**ainda não** está no navegador de ninguém.
 
 | Mudança pendente | Onde mora | Sobe no Netlify? | Estado |
 | :--- | :--- | :---: | :--- |
-| Reconexão automática com backoff (`Multiplayer.gd`) | cliente | sim (export + `site/`) | pronta, 9 testes novos passando |
-| “Servidor: online / indisponível” no menu (`MainMenu.gd`, `MainMenu.tscn`) | cliente | sim — lê o `/api/salas` **já publicado** | pronto, 6 testes novos passando |
-| Botão “Back to Main” no multiplayer | cliente | sim | não iniciado |
+| PWA: manifest, service worker, ponte e botão no menu | site + cliente | sim (site agora; botão no próximo export) | implementada, falta validar |
+| Export web no Godot 4.7.2 | cliente | sim (export + `site/`) | não iniciado |
 | Tirar DeckBuilder/CardLibrary/screenshots do pacote (−1,4 MB) | cliente | sim, **e é o gatilho que paga um upload** | não iniciado |
-| Área de texto durante a partida — caderno do jogador | cliente | sim | não iniciado |
-| Área de texto durante a partida — recado entre os dois | cliente **+ relay** | sim (a parte do jogo) | não iniciado |
-| Ações cruzadas de regra entre assentos (Fase 4 do solo) | cliente | sim | não iniciado |
+| Contador de energia sobre o Personagem | cliente | sim | não iniciado |
+| Ações cruzadas entre assentos | cliente | sim | não iniciado |
+| Autoridade do anfitrião por ação | cliente | sim | não iniciado |
+| Botão “Back to Main” no multiplayer | cliente | sim | não iniciado |
 | Conferir arte/contraste no build web | validação | não (o build já está publicado) | falta olhar no navegador |
-| `TRUST_PROXY=1` no relay em execução | VM Oracle | **não** | feito em 01/11/2026 no `.env` do `/opt/bs-relay` |
-| Relay em IP público reservado + Caddy com TLS | VM Oracle | **não** | feito em 01/11/2026 (`129-159-222-25.sslip.io`) |
-| v3 — relay em Workers + Durable Objects | servidor novo | **não** (só o registro no Blob) | opcional, sem prazo |
-| API `/api/salas`, `/api/relay`, `netlify.toml` | Netlify Functions | sim, sem reexportar o jogo | sem pendência |
-
-Detalhe por confirmar antes de contar com ele: publicar **só as Functions**
-(sem reenviar `site/`) com `netlify deploy --functions` ainda não foi testado
-aqui; até validar, considerar que qualquer upload manda o diretório inteiro.
-
----
-
-## 📊 4. Painel de Progresso Geral
-
-| Módulo do Projeto | Estado Atual | Progresso Estimado |
-| :--- | :---: | :---: |
-| **Fase 1: Mecânicas Core (BS)** | 🛠️ Em andamento (falta o contador de energia e o ataque que causa dano) | 95% |
-| **Fase 2: Interface & Imagens Web** | ✅ Implementada (falta validação visual) | 85% |
-| **Fase 3: Multiplayer (WebSockets)**| 🛠️ LAN e relay online publicados; falta a autoridade completa | 80% |
-| **Fase 4: Deploy (Netlify)** | ✅ Site, build e relay (VM Oracle, IP reservado) publicados. Falta limpar o pacote | 90% |
-| **Fase 5: Layout autoral** | ✅ Etapas 0–5 entregues; falta só a validação visual | 95% |
+| Deploy só de Functions (`--functions`) | Netlify | — | não validado |

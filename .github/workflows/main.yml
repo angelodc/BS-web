@@ -12,56 +12,55 @@ jobs:
     name: Unit & Integration Tests
     steps:
     - name: "✔️ Checkout"
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - name: Check out personal godot-tester repository
-      uses: actions/checkout@v3
-      with:
-        repository: db0/godot-tester
-        path: ./.github/actions/godot-tester
-      # Runs a single command using the runners shell
-    - name: ⚙ Run Tests
-      uses: ./.github/actions/godot-tester
-      with:
-        version: 3.4.4
-        # should be long enough for asset import files to get generated
-        import-time: 300
-        assert-check: true
-        # Allowing some fails on push, as sometimes randomly some asserts might false negative and I haven't yet located the precice reason for this inconsistency
-        max-fails: 0
-        # How long the test should be run before it's timed out and fails
-        test-timeout: 3600
-        # Directory containing Gut tests
-        direct-scene: tests/cli/tests.tscn
-  version_and_release:
+    - name: Install Godot 4.7.2
+      run: |
+        curl -fsSL -o godot.zip \
+          https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+        unzip -q godot.zip
+        chmod +x Godot_v4.7.2-stable_linux.x86_64
+        sudo mv Godot_v4.7.2-stable_linux.x86_64 /usr/local/bin/godot
+        godot --version
+    - name: Import resources
+      run: godot --headless --path . --import
+    # One process per file: the suites keep global state (card definitions,
+    # node names) and GUT's orphan checks crash when files share a process.
+    - name: ⚙ Run GUT
+      run: |
+        status=0
+        for test_file in tests/unit/*.gd tests/integration/*.gd; do
+          echo "::group::$test_file"
+          godot --headless --path . -s addons/gut/gut_cmdln.gd \
+            -gselect="$(basename "$test_file")" -gexit | tee gut.log
+          if grep -qE "^Failing Tests[[:space:]]+[1-9]" gut.log \
+              || grep -q "Program crashed with signal" gut.log; then
+            status=1
+          fi
+          echo "::endgroup::"
+        done
+        exit $status
+  export_web:
     runs-on: ubuntu-latest
-    name: Export Game
+    name: Export Web build
     needs: ["GUT"]
     steps:
     - name: "✔️ Checkout"
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - name: "🤖 Export game"
-      uses: firebelley/godot-export@v3.0.0
+      id: export
+      uses: firebelley/godot-export@v8.0.0
       with:
-        godot_executable_download_url: https://downloads.tuxfamily.org/godotengine/3.4/Godot_v3.4-stable_linux_headless.64.zip
-        godot_export_templates_download_url: https://downloads.tuxfamily.org/godotengine/3.4/Godot_v3.4-stable_export_templates.tpz
+        godot_executable_download_url: https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+        godot_export_templates_download_url: https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
         relative_project_path: ./
-        base_version: Demo
-        create_release: false
-        archive_export_output: true
-    - name: "🛠 Prepare files for publishing"
-      shell: bash
-      run: |
-          cp -v /home/runner/.local/share/godot/dist/* .
-    - name: "🚀 Upload HTML5 version to itch.io"
-      uses: josephbmanley/butler-publish-itchio-action@master
-      env:
-        BUTLER_CREDENTIALS: "${{ secrets.BUTLER_CREDENTIALS }}"
-        CHANNEL: HTML5
-        ITCH_GAME: card-game-framework
-        ITCH_USER: dbzer0
-        PACKAGE: HTML5.zip
-        VERSION: Demo
+        presets_to_export: Web
+        archive_output: true
+    - name: "📦 Upload Web build"
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-build
+        path: ${{ steps.export.outputs.archive_directory }}/*

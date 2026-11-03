@@ -1,4 +1,4 @@
-extends Reference
+extends RefCounted
 
 const DECKS_PATH := "user://Decks/"
 const LAST_DECK_SETTING := "last_deck_path"
@@ -18,19 +18,19 @@ const DEFAULT_DECK_SEEDED := "default_deck_seeded"
 static func ensure_default_deck() -> void:
 	if bool(cfc.game_settings.get(DEFAULT_DECK_SEEDED, false)):
 		return
-	if not list_decks().empty():
+	if not list_decks().is_empty():
 		cfc.set_setting(DEFAULT_DECK_SEEDED, true)
 		return
-	var source := File.new()
-	if not source.file_exists(DEFAULT_DECK_PATH) \
-			or source.open(DEFAULT_DECK_PATH, File.READ) != OK:
+	if not FileAccess.file_exists(DEFAULT_DECK_PATH):
+		return
+	var source := FileAccess.open(DEFAULT_DECK_PATH, FileAccess.READ)
+	if source == null:
 		return
 	var text := source.get_as_text()
 	source.close()
-	var directory := Directory.new()
-	directory.make_dir_recursive(DECKS_PATH)
-	var target := File.new()
-	if target.open(DECKS_PATH + DEFAULT_DECK_FILE, File.WRITE) != OK:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(DECKS_PATH))
+	var target := FileAccess.open(DECKS_PATH + DEFAULT_DECK_FILE, FileAccess.WRITE)
+	if target == null:
 		return
 	target.store_string(text)
 	target.close()
@@ -39,17 +39,17 @@ static func ensure_default_deck() -> void:
 
 static func list_decks() -> Array:
 	var entries := []
-	var directory := Directory.new()
-	if directory.open(DECKS_PATH) != OK:
+	var directory := DirAccess.open(DECKS_PATH)
+	if directory == null:
 		return entries
 	directory.list_dir_begin()
 	var file_name := directory.get_next()
-	while not file_name.empty():
+	while not file_name.is_empty():
 		if not directory.current_is_dir() and file_name.ends_with(".json"):
 			var path := DECKS_PATH + file_name
 			var deck := load_deck(path)
 			var count := count_cards(deck)
-			if not deck.empty() and count > 0:
+			if not deck.is_empty() and count > 0:
 				entries.append({
 					"path": path,
 					"deck": deck,
@@ -65,16 +65,18 @@ static func list_decks() -> Array:
 static func load_deck(path: String) -> Dictionary:
 	if not path.begins_with(DECKS_PATH) or not path.ends_with(".json"):
 		return {}
-	var file := File.new()
-	if not file.file_exists(path):
+	if not FileAccess.file_exists(path):
 		return {}
-	if file.open(path, File.READ) != OK:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
 		return {}
-	var parsed := JSON.parse(file.get_as_text())
+	var test_json_conv = JSON.new()
+	var parse_error := test_json_conv.parse(file.get_as_text())
+	var parsed = test_json_conv.get_data()
 	file.close()
-	if parsed.error != OK or typeof(parsed.result) != TYPE_DICTIONARY:
+	if parse_error != OK or typeof(parsed) != TYPE_DICTIONARY:
 		return {}
-	var deck: Dictionary = parsed.result
+	var deck: Dictionary = parsed
 	if not _is_valid_deck(deck):
 		return {}
 	return deck
@@ -96,16 +98,16 @@ static func last_deck_path() -> String:
 
 static func load_last_deck() -> Dictionary:
 	var path := last_deck_path()
-	if path.empty():
+	if path.is_empty():
 		return {}
 	return load_deck(path)
 
 
 static func find_auto_deck() -> Dictionary:
 	var path := last_deck_path()
-	if not path.empty():
+	if not path.is_empty():
 		var deck := load_deck(path)
-		if not deck.empty():
+		if not deck.is_empty():
 			return {"path": path, "deck": deck}
 	var entries := list_decks()
 	if entries.size() == 1:
@@ -114,7 +116,7 @@ static func find_auto_deck() -> Dictionary:
 
 
 static func remember_deck(path: String) -> void:
-	if path.empty() or last_deck_path() == path:
+	if path.is_empty() or last_deck_path() == path:
 		return
 	cfc.set_setting(LAST_DECK_SETTING, path)
 
@@ -130,19 +132,19 @@ static func seat_deck_path(slot: int) -> String:
 # buttons filled on the first run instead of leaving the table half chosen.
 static func find_seat_deck(slot: int) -> Dictionary:
 	var path := seat_deck_path(slot)
-	if not path.empty():
+	if not path.is_empty():
 		var deck := load_deck(path)
-		if not deck.empty():
+		if not deck.is_empty():
 			return {"path": path, "deck": deck}
 	if slot == 2:
 		var first := find_seat_deck(1)
-		if not first.empty():
+		if not first.is_empty():
 			return first
 	return find_auto_deck()
 
 
 static func remember_seat_deck(slot: int, path: String) -> void:
-	if path.empty() or seat_deck_path(slot) == path:
+	if path.is_empty() or seat_deck_path(slot) == path:
 		return
 	cfc.set_setting(SEAT_DECK_SETTING + str(slot), path)
 
@@ -158,10 +160,10 @@ static func apply_definitions(deck: Dictionary) -> void:
 
 static func _is_valid_deck(deck: Dictionary) -> bool:
 	var cards = deck.get("cards", null)
-	if typeof(cards) != TYPE_DICTIONARY or cards.empty():
+	if typeof(cards) != TYPE_DICTIONARY or cards.is_empty():
 		return false
 	for card_name in cards:
-		if str(card_name).empty() or int(cards[card_name]) <= 0:
+		if str(card_name).is_empty() or int(cards[card_name]) <= 0:
 			return false
 	var definitions = deck.get("definitions", null)
 	if definitions != null and typeof(definitions) != TYPE_DICTIONARY:

@@ -14,7 +14,7 @@ signal scripts_loaded
 signal new_card_instanced(card)
 signal card_image_loaded(image_path, texture)
 
-var load_start_time := OS.get_ticks_msec()
+var load_start_time := Time.get_ticks_msec()
 
 #-----------------------------------------------------------------------------
 # BEGIN Unit Testing Variables
@@ -41,13 +41,13 @@ var game_settings := {}
 var font_size_cache := {}
 var cache_commit_timer: SceneTreeTimer
 # If set to true, the player will be prevented from interacting with the game
-var game_paused := false setget set_game_paused
+var game_paused := false: set = set_game_paused
 # If this is false, all CardContainers will pause in their ready() scene
 # until all other CardContainers have been mapped.
 var are_all_nodes_mapped := false
 # The games initial Random Number Generator seed.
 # When this stays the same, the game randomness will always play the predictable.
-var game_rng_seed = "CFC Random Seed" setget set_seed
+var game_rng_seed = "CFC Random Seed": set = set_seed
 # This will store all card properties which are placed in the card labels
 var card_definitions := {}
 var current_deck := {}
@@ -104,7 +104,6 @@ var card_temp_property_modifiers = {}
 var ov_utils = load(CFConst.PATH_OVERRIDABLE_UTILS).new()
 var curr_scale: float
 
-var script_load_thread : Thread
 var scripts_loading := true
 const BSDB_IMAGE_BASE_URL := "https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main/cards/oficial"
 const CARD_IMAGE_CACHE_PATH := "user://CardImages/"
@@ -117,17 +116,14 @@ var _active_card_image_path := ""
 func _ready() -> void:
 	_card_image_request = HTTPRequest.new()
 	add_child(_card_image_request)
-	# warning-ignore:return_value_discarded
-	_card_image_request.connect(
-			"request_completed", self, "_on_card_image_request_completed")
-	var load_end_time = OS.get_ticks_msec()
+	_card_image_request.request_completed.connect(
+			_on_card_image_request_completed)
+	var load_end_time = Time.get_ticks_msec()
 	if OS.has_feature("debug") and not cfc.is_testing:
 		print_debug("DEBUG INFO:CFControl: instance time = %sms" % [str(load_end_time - load_start_time)])
 	
-	# warning-ignore:return_value_discarded
-	connect("all_nodes_mapped", self, "_on_all_nodes_mapped")
-	# warning-ignore:return_value_discarded
-	get_viewport().connect("size_changed", self, '_on_viewport_resized')
+	all_nodes_mapped.connect(_on_all_nodes_mapped)
+	get_viewport().size_changed.connect(_on_viewport_resized)
 	_on_viewport_resized()
 	_setup()
 
@@ -149,22 +145,18 @@ func _load_cached_card_image(image_path: String) -> ImageTexture:
 	if _card_image_textures.has(image_path):
 		return _card_image_textures[image_path]
 	var file_name := image_path.get_file()
-	var cache_file := File.new()
 	var cache_path := CARD_IMAGE_CACHE_PATH + file_name
-	if not cache_file.file_exists(cache_path):
+	if not FileAccess.file_exists(cache_path):
 		return null
-	var image := Image.new()
-	var image_error := image.load(cache_path)
-	if image_error != OK:
+	var image := Image.load_from_file(cache_path)
+	if image == null or image.is_empty():
 		push_error("Could not load cached BSDB card image: " + cache_path)
 		return null
-	var texture := ImageTexture.new()
-	texture.create_from_image(image)
-	return texture
+	return ImageTexture.create_from_image(image)
 
 
 func _start_next_card_image_request() -> void:
-	if _active_card_image_path or _card_image_queue.empty():
+	if _active_card_image_path or _card_image_queue.is_empty():
 		return
 	_active_card_image_path = _card_image_queue.pop_front()
 	var image_url := BSDB_IMAGE_BASE_URL + _active_card_image_path
@@ -177,8 +169,8 @@ func _start_next_card_image_request() -> void:
 
 
 func _on_card_image_request_completed(
-		result: int, response_code: int, _headers: PoolStringArray,
-		body: PoolByteArray) -> void:
+		result: int, response_code: int, _headers: PackedStringArray,
+		body: PackedByteArray) -> void:
 	var image_path := _active_card_image_path
 	_active_card_image_path = ""
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
@@ -196,24 +188,22 @@ func _on_card_image_request_completed(
 		_card_image_pending.erase(image_path)
 		_start_next_card_image_request()
 		return
-	var texture := ImageTexture.new()
-	texture.create_from_image(image)
+	var texture := ImageTexture.create_from_image(image)
 	_card_image_textures[image_path] = texture
-	var directory := Directory.new()
-	var directory_error := directory.make_dir_recursive(CARD_IMAGE_CACHE_PATH)
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+			ProjectSettings.globalize_path(CARD_IMAGE_CACHE_PATH))
 	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
 		push_error("Could not create card image cache directory.")
 	else:
-		var cache_file := File.new()
-		var file_error := cache_file.open(
-				CARD_IMAGE_CACHE_PATH + image_path.get_file(), File.WRITE)
-		if file_error != OK:
+		var cache_file := FileAccess.open(
+				CARD_IMAGE_CACHE_PATH + image_path.get_file(), FileAccess.WRITE)
+		if cache_file == null:
 			push_error("Could not cache BSDB card image: " + image_path)
 		else:
 			cache_file.store_buffer(body)
 			cache_file.close()
 	_card_image_pending.erase(image_path)
-	emit_signal("card_image_loaded", image_path, texture)
+	card_image_loaded.emit(image_path, texture)
 	_start_next_card_image_request()
 
 
@@ -242,18 +232,14 @@ func _setup() -> void:
 		# Initialize the game random seed
 		set_seed(game_rng_seed)
 	card_definitions = load_card_definitions()
-	var defs_load_end_time = OS.get_ticks_msec()
+	var defs_load_end_time = Time.get_ticks_msec()
 	if OS.has_feature("debug") and not cfc.is_testing:
 		print_debug("DEBUG INFO:CFControl: card definitions load time = %sms" % [str(defs_load_end_time - load_start_time)])	
-	# Removed threading since I optimized this loading function
-#	load_script_definitions()
-	# We're loading the script definitions in a thread to avoid delaying game load too much
-	if OS.get_name() == "HTML5":
-		load_script_definitions()
-	else:
-		script_load_thread = Thread.new()
-		script_load_thread.start(self, "load_script_definitions")
-	var scripts_load_end_time = OS.get_ticks_msec()
+	# The script definitions used to load in a thread. Godot 4 refuses signal
+	# emission from a worker thread, and every repeated test setup dropped the
+	# running thread, so they are loaded up front now.
+	load_script_definitions()
+	var scripts_load_end_time = Time.get_ticks_msec()
 	if OS.has_feature("debug") and not cfc.is_testing:
 		print_debug("DEBUG INFO:CFControl: card scripts load time = %sms" % [str(scripts_load_end_time - load_start_time)])	
 
@@ -335,7 +321,7 @@ func instance_card(card_name: String) -> Card:
 	# in each card. Any property can be used
 	var template = load(CFConst.PATH_CARDS
 			+ card_definitions[card_name][CardConfig.SCENE_PROPERTY] + ".tscn")
-	var card = template.instance()
+	var card = template.instantiate()
 	# We set the card_name variable so that it's able to be used later
 	card.canonical_name = card_name
 	emit_signal("new_card_instanced", card)
@@ -380,7 +366,7 @@ func load_script_definitions() -> void:
 			var card_script = scripts_obj.get_scripts(card_name)
 			var unmodified_card_script = scripts_obj.get_scripts(card_name, false)
 #			print(unmodified_card_script)
-			if not card_script.empty():
+			if not card_script.is_empty():
 				combined_scripts[card_name] = card_script
 				set_scripts[card_name] = card_script
 				unmodified_set_scripts[card_name] = unmodified_card_script
@@ -390,8 +376,11 @@ func load_script_definitions() -> void:
 
 # Setter for game_paused
 func set_game_paused(value: bool) -> void:
-	if NMAP.has("board") and NMAP.board.mouse_pointer:
-		NMAP.board.mouse_pointer.is_disabled = value
+	# The mapped board can be a freed instance after a scene teardown; the key
+	# alone still exists in NMAP, so validity has to be checked explicitly.
+	var board = NMAP.get("board")
+	if is_instance_valid(board) and board.mouse_pointer:
+		board.mouse_pointer.is_disabled = value
 	game_paused = value
 
 
@@ -399,21 +388,28 @@ func set_game_paused(value: bool) -> void:
 # permanently on-disk.
 func set_setting(setting_name: String, value) -> void:
 	game_settings[setting_name] = value
-	var file = File.new()
-	file.open(CFConst.SETTINGS_FILENAME, File.WRITE)
-	file.store_string(JSON.print(game_settings, '\t'))
+	var file := FileAccess.open(CFConst.SETTINGS_FILENAME, FileAccess.WRITE)
+	if file == null:
+		push_error("Could not write settings file: " + CFConst.SETTINGS_FILENAME)
+		return
+	file.store_string(JSON.stringify(game_settings, '\t'))
 	file.close()
 
 
 # Initiates game_settings from the contents of CFConst.SETTINGS_FILENAME
 func init_settings_from_file() -> void:
-	var file = File.new()
-	if file.file_exists(CFConst.SETTINGS_FILENAME):
-		file.open(CFConst.SETTINGS_FILENAME, File.READ)
-		var data = parse_json(file.get_as_text())
-		file.close()
-		if typeof(data) == TYPE_DICTIONARY:
-			game_settings = data.duplicate()
+	if not FileAccess.file_exists(CFConst.SETTINGS_FILENAME):
+		return
+	var file := FileAccess.open(CFConst.SETTINGS_FILENAME, FileAccess.READ)
+	if file == null:
+		push_error("Could not read settings file: " + CFConst.SETTINGS_FILENAME)
+		return
+	var test_json_conv = JSON.new()
+	test_json_conv.parse(file.get_as_text())
+	var data = test_json_conv.get_data()
+	file.close()
+	if typeof(data) == TYPE_DICTIONARY:
+		game_settings = data.duplicate()
 
 
 func set_font_cache() -> void:
@@ -424,7 +420,7 @@ func set_font_cache() -> void:
 	if not cache_commit_timer:
 		cache_commit_timer = get_tree().create_timer(1.0)
 		# warning-ignore:return_value_discarded
-		cache_commit_timer.connect("timeout", self, "_commit_font_cache")
+		cache_commit_timer.timeout.connect(_commit_font_cache)
 
 
 # Whenever a setting is changed via this function, it also stores it
@@ -432,19 +428,24 @@ func set_font_cache() -> void:
 func _commit_font_cache() -> void:
 #	timer.disconnect("timeout", self, "_commit_font_cache")
 #	timer.queue_free()
-	var file = File.new()
-	file.open(CFConst.FONT_SIZE_CACHE, File.WRITE)
-	file.store_string(JSON.print(font_size_cache, '\t'))
-	file.close()
+	var file := FileAccess.open(CFConst.FONT_SIZE_CACHE, FileAccess.WRITE)
+	if file == null:
+		push_error("Could not write font cache: " + CFConst.FONT_SIZE_CACHE)
+	else:
+		file.store_string(JSON.stringify(font_size_cache, '\t'))
+		file.close()
 	cache_commit_timer = null
 
 
 # Initiates game_settings from the contents of CFConst.SETTINGS_FILENAME
 func init_font_cache() -> void:
-	var file = File.new()
-	if file.file_exists(CFConst.FONT_SIZE_CACHE):
-		file.open(CFConst.FONT_SIZE_CACHE, File.READ)
-		var data = parse_json(file.get_as_text())
+	if FileAccess.file_exists(CFConst.FONT_SIZE_CACHE):
+		var file = FileAccess.open(CFConst.FONT_SIZE_CACHE, FileAccess.READ)
+		if file == null:
+			return
+		var test_json_conv = JSON.new()
+		test_json_conv.parse(file.get_as_text())
+		var data = test_json_conv.get_data()
 		file.close()
 		if typeof(data) == TYPE_DICTIONARY:
 			if font_size_cache.get('version') == CFConst.GAME_VERSION:
@@ -461,7 +462,7 @@ func init_font_cache() -> void:
 func reset_game() -> void:
 	var main = cfc.NMAP.main
 	clear()
-	yield(get_tree().create_timer(0.1), "timeout")
+	await get_tree().create_timer(0.1).timeout
 	main._ready()
 
 
@@ -474,7 +475,7 @@ func clear() -> void:
 	if cfc.NMAP.has("board") and is_instance_valid(cfc.NMAP.get("board")):
 		cfc.NMAP.board.queue_free()
 	# We need to give Godot time to deinstance all nodes.
-	yield(get_tree().create_timer(0.1), "timeout")
+	await get_tree().create_timer(0.1).timeout
 	NMAP.clear()
 
 
@@ -515,11 +516,6 @@ func _on_viewport_resized() -> void:
 		curr_scale = 1
 
 
-func _exit_tree():
-	if script_load_thread:
-		script_load_thread.wait_to_finish()
-
-
 # The SignalPropagator is responsible for collecting all card signals
 # and asking all cards to check if there's any automation they need to perform
 class SignalPropagator:
@@ -547,8 +543,8 @@ class SignalPropagator:
 	# to the SignalPropagator
 	func connect_new_card(card):
 		for sgn in known_card_signals:
-			if not card.is_connected(sgn, self, "_on_signal_received"):
-				card.connect(sgn, self, "_on_signal_received")
+			if not card.is_connected(sgn, Callable(self, "_on_signal_received")):
+				card.connect(sgn, Callable(self, "_on_signal_received"))
 
 
 	# When a known signal is received, it asks all existing cards to check
@@ -557,7 +553,7 @@ class SignalPropagator:
 	# This method requirses that each signal also passes its own name in the
 	# trigger variable, is this is the key sought in the CardScriptDefinitions
 	func _on_signal_received(
-			trigger_card: Card, trigger: String, details: Dictionary):
+			trigger_card, trigger: String, details: Dictionary):
 		# We use Godot groups to ask every card to check if they
 		# have [ScriptingEngine] triggers for this signal.
 		#

@@ -21,13 +21,11 @@ var scenario_grid: BoardPlacementGrid
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+	await setup_board()
 	grid = Snapshot.field_grid(board)
 	# The test board has no scenario slot, so one is added here the same way the
 	# production scene offers it.
-	scenario_grid = SCENARIO_GRID_SCENE.instance()
+	scenario_grid = SCENARIO_GRID_SCENE.instantiate()
 	scenario_grid.name = "ModifiedLabelGrid"
 	board.add_child(scenario_grid)
 	scenario_grid.add_slot()
@@ -274,7 +272,7 @@ func test_move_sends_a_card_to_the_top_of_the_prizes():
 	var cards = draw_test_cards(1)
 	actions.sync(1)
 	assert_true(_ok(actions.apply({"op": "jogar", "card": _id(cards[0])})))
-	var prizes = PILE_SCENE.instance()
+	var prizes = PILE_SCENE.instantiate()
 	prizes.name = "Prêmios"
 	autoqfree(prizes)
 	board.add_child(prizes)

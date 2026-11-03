@@ -35,26 +35,30 @@ var _deck_choice_card: Card = null
 
 
 func _ready() -> void:
+	super._ready()
 	_create_backdrop()
 	$Control/ManipulationButtons/View.show()
 	$Control/ManipulationButtons/View.text = "Ver"
-	$Control/ManipulationButtons/View.hint_tooltip = \
+	$Control/ManipulationButtons/View.tooltip_text = \
 			"Ver cartas em Recursos / Descarte"
 	$Control/ManipulationButtons/ViewSorted.hide()
 	$Control/ManipulationButtons/Shuffle.hide()
 	var label: Label = $Control/CenterContainer/VBoxContainer/Label
 	label.text = "Recursos"
-	label.align = Label.ALIGN_CENTER
+	label.align = HORIZONTAL_ALIGNMENT_CENTER
 	var swap_button := Button.new()
 	swap_button.name = "SwapResource"
 	swap_button.text = "Trocar"
-	swap_button.rect_min_size = Vector2(92, 27)
+	swap_button.custom_minimum_size = Vector2(92, 27)
 	swap_button.mouse_filter = Control.MOUSE_FILTER_PASS
 	swap_button.modulate.a = 0
 	swap_button.add_to_group("manipulation_button")
 	$Control/ManipulationButtons.add_child(swap_button)
-	swap_button.connect("pressed", self, "_on_SwapResource_pressed")
+	swap_button.pressed.connect(_on_SwapResource_pressed)
 	_build_deck_choice()
+	# The pile's own remove_child() override is never called in Godot 4, so the
+	# grid cards get their mouse detection back through the tree signal.
+	child_exiting_tree.connect(_restore_card_monitorable)
 
 
 func _exit_tree() -> void:
@@ -65,8 +69,7 @@ func _exit_tree() -> void:
 		_deck_choice = null
 
 
-func remove_child(node, legible_unique_name := false) -> void:
-	.remove_child(node, legible_unique_name)
+func _restore_card_monitorable(node: Node) -> void:
 	if node is Card:
 		# The grid cards stay out of the global mouse detection while they are
 		# here, so a card leaving the pile has to return to it.
@@ -101,19 +104,20 @@ func _keep_popup_fitted() -> void:
 			changed = true
 	if not pile_popup.visible and not changed:
 		return
-	var previous_size: Vector2 = $ViewPopup.rect_size
-	$ViewPopup.set_as_minsize()
-	if not pile_popup.visible \
-			or $ViewPopup.rect_size.is_equal_approx(previous_size):
+	# The popup is a Window in Godot 4, so its size and position are Vector2i.
+	var previous_size: Vector2i = $ViewPopup.size
+	$ViewPopup.reset_size()
+	if not pile_popup.visible or $ViewPopup.size == previous_size:
 		return
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
-	$ViewPopup.rect_position = (viewport_size - $ViewPopup.rect_size) * 0.5
+	$ViewPopup.position = Vector2i(
+			(viewport_size - Vector2($ViewPopup.size)) * 0.5)
 
 
 # Resources in the popup use the hand card scale and wrap to the viewport width.
 func populate_popup(sorted := sorted_popup) -> void:
 	_update_popup_columns(get_all_cards(false).size())
-	.populate_popup(sorted)
+	super.populate_popup(sorted)
 
 
 func _update_popup_columns(card_count: int) -> void:
@@ -144,19 +148,18 @@ func _slot_card_into_popup(card: Card) -> void:
 	card.monitorable = true
 	card.z_index = 0
 	var card_slot := Control.new()
-	card_slot.set_name("CardPopUpSlot")
-	card_slot.rect_min_size = card.get_node("Control").rect_min_size * card.scale
+	_popup_slot_serial += 1
+	card_slot.set_name("CardPopUpSlot" + str(_popup_slot_serial))
+	card_slot.custom_minimum_size = card.get_node("Control").custom_minimum_size * card.scale
 	$ViewPopup/CardView.add_child(card_slot)
 	card_slot.add_child(card)
 	card.set_is_faceup(true, true)
 	card.position = Vector2(0, 0)
 	card.state = card.CardState.IN_POPUP
-	if not card.is_connected("card_moved_to_pile", self,
-			"_on_popup_card_moved_to_pile"):
+	if not card.is_connected("card_moved_to_pile", _on_popup_card_moved_to_pile):
 		# The signal already carries the card as its first argument, so binding it
 		# again would hand four values to a three-parameter method.
-		card.connect("card_moved_to_pile", self,
-				"_on_popup_card_moved_to_pile")
+		card.card_moved_to_pile.connect(_on_popup_card_moved_to_pile)
 
 
 # A resource leaving the popup for the deck asks which side it stays on: the
@@ -186,36 +189,36 @@ func _ask_deck_choice() -> void:
 func _build_deck_choice() -> void:
 	_deck_choice = PopupPanel.new()
 	_deck_choice.name = "DeckChoice"
-	_deck_choice.popup_exclusive = true
+	_deck_choice.exclusive = true
 	# The dialog belongs to the window, not to the pile: hanging it off the root
 	# centers it on screen and leaves the pile holding only what a pile holds.
 	get_tree().root.add_child(_deck_choice)
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_constant_override("margin_" + side, 16)
+		margin.add_theme_constant_override("margin_" + side, 16)
 	_deck_choice.add_child(margin)
 	var vbox := VBoxContainer.new()
-	vbox.add_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 12)
 	margin.add_child(vbox)
 	var label := Label.new()
 	label.text = "Carta de Recursos enviada ao Deck.\nOnde ela deve ficar?"
-	label.align = Label.ALIGN_CENTER
+	label.align = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(label)
 	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGN_CENTER
-	row.add_constant_override("separation", 10)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 10)
 	vbox.add_child(row)
 	var base_button := Button.new()
 	base_button.name = "Base"
 	base_button.text = "Base"
-	base_button.rect_min_size = Vector2(92, 32)
-	base_button.connect("pressed", self, "_on_deck_choice_base")
+	base_button.custom_minimum_size = Vector2(92, 32)
+	base_button.pressed.connect(_on_deck_choice_base)
 	row.add_child(base_button)
 	var deck_button := Button.new()
 	deck_button.name = "Deck"
 	deck_button.text = "Deck"
-	deck_button.rect_min_size = Vector2(92, 32)
-	deck_button.connect("pressed", self, "_on_deck_choice_deck")
+	deck_button.custom_minimum_size = Vector2(92, 32)
+	deck_button.pressed.connect(_on_deck_choice_deck)
 	row.add_child(deck_button)
 
 
@@ -241,14 +244,14 @@ func _on_deck_choice_deck() -> void:
 # column always reads as the resources zone.
 func _create_backdrop() -> void:
 	var control: Control = get_node("Control")
-	control.add_stylebox_override("panel", StyleBoxEmpty.new())
+	control.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_backdrop = Panel.new()
 	_backdrop.name = "GridBackdrop"
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = BACKDROP_COLOR
 	style.set_corner_radius_all(BACKDROP_RADIUS)
-	_backdrop.add_stylebox_override("panel", style)
+	_backdrop.add_theme_stylebox_override("panel", style)
 	control.add_child(_backdrop)
 	control.move_child(_backdrop, 0)
 
@@ -281,26 +284,26 @@ func _layout_panel() -> void:
 	# centered inside it; scaling it needs the position corrected to keep the
 	# shrunken content centered as well.
 	var content_size: Vector2 = content.get_combined_minimum_size()
-	var label_center := label.rect_size * 0.5
+	var label_center := label.size * 0.5
 	var buttons_size: Vector2 = \
 			buttons.get_combined_minimum_size() * BUTTON_SCALE
 	var panel_size := Vector2(
 			width,
 			4.0 + content_size.y * LABEL_SCALE + 4.0 + grid_size.y + 4.0 \
 					+ buttons_size.y + 4.0)
-	control.rect_min_size = panel_size
-	if not control.rect_size.is_equal_approx(panel_size):
-		control.rect_size = panel_size
-	control.rect_position = Vector2.ZERO
+	control.custom_minimum_size = panel_size
+	if not control.size.is_equal_approx(panel_size):
+		control.size = panel_size
+	control.position = Vector2.ZERO
 	if is_instance_valid(_backdrop):
-		_backdrop.rect_size = panel_size
-	label.rect_scale = Vector2(LABEL_SCALE, LABEL_SCALE)
-	label.rect_position = Vector2(
+		_backdrop.size = panel_size
+	label.scale = Vector2(LABEL_SCALE, LABEL_SCALE)
+	label.position = Vector2(
 			label_center.x - label_center.x * LABEL_SCALE,
 			4.0 + content_size.y * LABEL_SCALE * 0.5 \
 					- label_center.y * LABEL_SCALE)
-	buttons.rect_scale = Vector2(BUTTON_SCALE, BUTTON_SCALE)
-	buttons.rect_position = Vector2(
+	buttons.scale = Vector2(BUTTON_SCALE, BUTTON_SCALE)
+	buttons.position = Vector2(
 			width - buttons_size.x - 6.0,
 			panel_size.y - buttons_size.y - 4.0)
 	_grid_origin = Vector2(

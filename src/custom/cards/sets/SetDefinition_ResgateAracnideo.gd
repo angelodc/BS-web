@@ -1,6 +1,6 @@
 # Minimal card data for the official BSDB deck used in local gameplay tests.
 # Full card data and artwork are intended to be loaded from the BSDB link later.
-extends Reference
+extends RefCounted
 
 const SET = "Resgate Aracnídeo"
 const TEST_DECK := {

@@ -27,7 +27,7 @@
 # followed by draws is reproducible. Nothing is applied when an expectation
 # fails: the script stops at the first failure and reports its index.
 class_name TableScript
-extends Reference
+extends RefCounted
 
 const _Table = preload("res://src/core/table/TableState.gd")
 const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
@@ -89,9 +89,9 @@ static func run(actions, script, seat := 0) -> Dictionary:
 						"A espera do passo " + str(index + 1)
 						+ " precisa ser um objeto.")
 			var issues := check(actions, expect, actions.get_seat())
-			if not issues.empty():
+			if not issues.is_empty():
 				return _stop(result, actions, index, "espera_falhou",
-						PoolStringArray(issues).join("; "))
+						"; ".join(PackedStringArray(issues)))
 			result["steps"].append({"ok": true, "expect": expect})
 			continue
 		var intent := resolve_intent(actions.state, step, script_seat)
@@ -137,7 +137,7 @@ static func resolve_intent(state, step : Dictionary, seat := 0) -> Dictionary:
 	for key in CARD_KEYS:
 		if intent.has(key) and intent[key] is String:
 			var id := resolve_card(state, str(intent[key]))
-			if not id.empty():
+			if not id.is_empty():
 				intent[key] = id
 	if int(seat) > 0:
 		intent["seat"] = int(seat)
@@ -148,7 +148,7 @@ static func resolve_intent(state, step : Dictionary, seat := 0) -> Dictionary:
 # id the state uses. Empty when nothing matches.
 static func resolve_card(state, reference : String) -> String:
 	var ref := str(reference)
-	if ref.empty() or state == null:
+	if ref.is_empty() or state == null:
 		return ""
 	if state.cards.has(ref):
 		return ref
@@ -209,7 +209,7 @@ static func display_names(state) -> Dictionary:
 
 static func _primary_key(state, id : String) -> String:
 	var keys := _keys_of(state, id)
-	if keys.empty():
+	if keys.is_empty():
 		return str(id)
 	return str(keys[0])
 
@@ -220,7 +220,7 @@ static func _keys_of(state, id : String) -> Array:
 		return keys
 	var entry: Dictionary = state.cards[str(id)]
 	for key in [str(entry.get("name", "")), str(entry.get("definition", ""))]:
-		if key.empty() or keys.has(key):
+		if key.is_empty() or keys.has(key):
 			continue
 		keys.append(key)
 	return keys
@@ -235,7 +235,7 @@ static func _ordered_ids(state) -> Array:
 	if state == null:
 		return ids
 	var scenario := str(state.scenario)
-	if not scenario.empty():
+	if not scenario.is_empty():
 		_append_id(ids, scenario)
 	for seat in SEATS:
 		for id in state.hand.get(seat, []):
@@ -262,7 +262,7 @@ static func _ordered_ids(state) -> Array:
 
 
 static func _append_id(ids : Array, id : String) -> void:
-	if id.empty() or ids.has(id):
+	if id.is_empty() or ids.has(id):
 		return
 	ids.append(id)
 
@@ -290,7 +290,7 @@ static func check(actions, expect : Dictionary, seat := 1) -> Array:
 	if expect.has("card"):
 		var ref := str(expect["card"])
 		var id := resolve_card(state, ref)
-		if id.empty():
+		if id.is_empty():
 			issues.append("carta desconhecida: " + ref)
 		elif expect.has("address"):
 			var address := str(expect["address"])
@@ -350,11 +350,11 @@ static func _resolved_names(state, names : Dictionary, raw) -> Array:
 		return result
 	for ref in raw:
 		var text := str(ref)
-		if text.empty():
+		if text.is_empty():
 			result.append("")
 			continue
 		var id := resolve_card(state, text)
-		if id.empty():
+		if id.is_empty():
 			result.append(text)
 		else:
 			result.append(str(names.get(id, text)))
@@ -363,6 +363,6 @@ static func _resolved_names(state, names : Dictionary, raw) -> Array:
 
 static func _last_log_text(actions) -> String:
 	var history: Array = actions.history
-	if history.empty():
+	if history.is_empty():
 		return ""
 	return str(history[history.size() - 1].get("text", ""))

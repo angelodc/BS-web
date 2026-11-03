@@ -4,7 +4,7 @@ const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 
 
 func _ready() -> void:
-	._ready()
+	super._ready()
 	var image_path: String = properties.get("_bsdb_image_path", "")
 	if image_path and not cfc.ut:
 		card_front.load_card_image(image_path)
@@ -46,9 +46,7 @@ func _restore_after_invalid_board_drop(tags: Array) -> void:
 	var original_parent: Node = get_parent()
 	var original_position = _placement_slot \
 			if original_parent == cfc.NMAP.board else null
-	var movement = .move_to(original_parent, -1, original_position, tags)
-	if movement is GDScriptFunctionState:
-		yield(movement, "completed")
+	var movement = await super.move_to(original_parent, -1, original_position, tags)
 
 
 # The drop is one more caller of the same intents the buttons and the scripts
@@ -83,7 +81,7 @@ func common_pre_drop_scripts(destination : Node) -> bool:
 		if not _is_local_slot(slot):
 			return false
 		var address: String = _Snapshot.slot_address(slot, seat)
-		if address.empty():
+		if address.is_empty():
 			return false
 		# A scenario only enters its own slot; anywhere else the original path
 		# sends it back, as it always did.
@@ -172,29 +170,19 @@ func move_to(targetHost: Node,
 					placement_slot.get_grid_name() == "Cenário Ativo"
 		if is_battle_scenes_scenario():
 			if not is_scenario_slot:
-				var restore_scenario = \
+				var restore_scenario = await \
 						_restore_after_invalid_board_drop(tags)
-				if restore_scenario is GDScriptFunctionState:
-					yield(restore_scenario, "completed")
 				return
 			var previous_scenario: Card = placement_slot.occupying_card
 			if previous_scenario and previous_scenario != self:
-				var movement = previous_scenario.move_to(cfc.NMAP.discard)
-				if movement is GDScriptFunctionState:
-					yield(movement, "completed")
-			var scenario_movement = \
-					.move_to(targetHost, index, placement_slot, tags)
-			if scenario_movement is GDScriptFunctionState:
-				yield(scenario_movement, "completed")
+				var movement = await previous_scenario.move_to(cfc.NMAP.discard)
+			var scenario_movement = await \
+					super.move_to(targetHost, index, placement_slot, tags)
 			return
 		if is_scenario_slot:
-			var restore_card = _restore_after_invalid_board_drop(tags)
-			if restore_card is GDScriptFunctionState:
-				yield(restore_card, "completed")
+			var restore_card = await _restore_after_invalid_board_drop(tags)
 			return
-	var card_movement = .move_to(targetHost, index, board_position, tags)
-	if card_movement is GDScriptFunctionState:
-		yield(card_movement, "completed")
+	var card_movement = await super.move_to(targetHost, index, board_position, tags)
 	if needs_resources and required_resources > 0:
 		board.begin_resource_selection(self, required_resources)
 
@@ -242,20 +230,23 @@ func set_card_rotation(
 	if current_host_card:
 		return CFConst.ReturnCode.FAILED
 	if not is_battle_scenes_character() or not value in [-90, 0, 90]:
-		return .set_card_rotation(value, toggle, start_tween, check, tags)
+		return super.set_card_rotation(value, toggle, start_tween, check, tags)
 	if not cfc.NMAP.has("board") or get_parent() != cfc.NMAP.board:
 		return CFConst.ReturnCode.FAILED
 	if card_rotation == value:
 		if toggle:
-			return .set_card_rotation(0, false, start_tween, check, tags)
+			return super.set_card_rotation(0, false, start_tween, check, tags)
 		return CFConst.ReturnCode.OK
 	if check:
 		return CFConst.ReturnCode.CHANGED
-	card_rotation = value
+	_store_card_rotation(value)
 	$CollisionShape2D.rotation_degrees = value
-	_add_tween_rotation($Control.rect_rotation, value)
+	# Capacitar/incapacitar just lays the card on its side: a linear turn has no
+	# overshoot, bounce or extra spin.
+	_add_tween_rotation($Control.rotation_degrees, value,
+			0.2, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
 	if start_tween:
-		$Tween.start()
+		_tween.start()
 	emit_signal(
 			"card_rotated", self,
 			"card_rotated",
@@ -272,7 +263,7 @@ func _on_Card_gui_input(event) -> void:
 	if network_mirror:
 		return
 	if event is InputEventMouseButton \
-			and event.get_button_index() == BUTTON_LEFT \
+			and event.get_button_index() == MOUSE_BUTTON_LEFT \
 			and not event.is_pressed() \
 			and cfc.NMAP.has("hand") \
 			and get_parent() == cfc.NMAP.hand \
@@ -280,10 +271,10 @@ func _on_Card_gui_input(event) -> void:
 			and not buttons.are_hovered() \
 			and not tokens.are_hovered():
 		var control: Control = get_node("Control")
-		var left_half: bool = event.position.x < control.rect_size.x * 0.5
+		var left_half: bool = event.position.x < control.size.x * 0.5
 		cfc.card_drag_ongoing = null
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-		control.set_default_cursor_shape(Input.CURSOR_ARROW)
+		control.set_default_cursor_shape(Control.CURSOR_ARROW)
 		_handle_hand_half_click(left_half)
 		return
 	# The resource popup is opened with the board pointer switched off, so its
@@ -291,7 +282,7 @@ func _on_Card_gui_input(event) -> void:
 	# The pick has to accept the plain popup state or the click is lost.
 	if event is InputEventMouseButton \
 			and not event.is_pressed() \
-			and event.get_button_index() == BUTTON_LEFT \
+			and event.get_button_index() == MOUSE_BUTTON_LEFT \
 			and cfc.NMAP.has("board") \
 			and state in [CardState.IN_POPUP, CardState.FOCUSED_IN_POPUP]:
 		if cfc.NMAP.board.pending_resource_host:
@@ -302,12 +293,12 @@ func _on_Card_gui_input(event) -> void:
 			return
 	if event is InputEventMouseButton \
 			and event.is_pressed() \
-			and event.get_button_index() == BUTTON_LEFT \
+			and event.get_button_index() == MOUSE_BUTTON_LEFT \
 			and cfc.NMAP.has("board") \
 			and cfc.NMAP.board.pending_resource_swap_card \
 			and cfc.NMAP.board.swap_attached_resource(self):
 		return
-	._on_Card_gui_input(event)
+	super._on_Card_gui_input(event)
 	if event is InputEventMouseButton:
 		if event.is_pressed() and event.get_button_index() == 2:
 			targeting_arrow.initiate_targeting()

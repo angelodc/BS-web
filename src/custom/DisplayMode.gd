@@ -1,11 +1,13 @@
 extends Node
 
+const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 const WINDOWED_ENV := "BS_WINDOWED"
-const WINDOWED_SIZE := Vector2(960, 540)
-const WINDOWED_POSITION := Vector2(220, 140)
-# With stretch mode 2D the UI keeps its 1280x720 design coordinates while
-# rendering at the window's native resolution, so a larger window stays sharp.
-const DESKTOP_WINDOW_SIZE := Vector2(1280, 720)
+const WINDOWED_SIZE := Vector2i(960, 540)
+const WINDOWED_POSITION := Vector2i(220, 140)
+# With stretch mode canvas_items the UI keeps its 1280x720 design coordinates
+# while rendering at the window's native resolution, so a larger window stays
+# sharp. The desktop also picks the board raster density in the menu; the
+# window follows it so the table is shown 1:1.
 const TITLE_BAR_ALLOWANCE := 30.0
 
 
@@ -16,52 +18,68 @@ func _ready() -> void:
 		_apply_desktop_window()
 
 
+# Called by the menu when the board render size changes. The table reads the
+# setting when a match starts; here we only match the window to the choice.
+func apply_render_choice() -> void:
+	if OS.get_environment(WINDOWED_ENV) == "1":
+		_apply_windowed()
+		return
+	_apply_desktop_window()
+
+
+func _desktop_window_size() -> Vector2i:
+	if OS.has_feature("web"):
+		return RenderResolution.DESIGN_SIZE
+	return RenderResolution.window_size()
+
+
 func _apply_desktop_window() -> void:
-	OS.window_fullscreen = false
-	if OS.get_screen_count() == 0:
-		OS.window_borderless = true
-		OS.window_size = DESKTOP_WINDOW_SIZE
+	get_window().mode = Window.MODE_EXCLUSIVE_FULLSCREEN if (false) else Window.MODE_WINDOWED
+	var target_size := _desktop_window_size()
+	if DisplayServer.get_screen_count() == 0:
+		get_window().borderless = true
+		get_window().size = target_size
 		return
 	var screen := _primary_screen()
-	var screen_position := OS.get_screen_position(screen)
-	var screen_size := OS.get_screen_size(screen)
+	var screen_position := DisplayServer.screen_get_position(screen)
+	var screen_size := DisplayServer.screen_get_size(screen)
 	# A window tall enough to touch the screen edges only fits without a title
 	# bar and taskbar, so it takes over the monitor as a borderless window.
-	var borderless := DESKTOP_WINDOW_SIZE.y + TITLE_BAR_ALLOWANCE > screen_size.y
-	OS.window_borderless = borderless
-	var window_size := Vector2(
-			min(DESKTOP_WINDOW_SIZE.x, screen_size.x),
-			min(DESKTOP_WINDOW_SIZE.y, screen_size.y))
+	var borderless := target_size.y + TITLE_BAR_ALLOWANCE > screen_size.y
+	get_window().borderless = borderless
+	var window_size := Vector2i(
+			min(target_size.x, screen_size.x),
+			min(target_size.y, screen_size.y))
 	if not borderless:
-		window_size = Vector2(
+		window_size = Vector2i(
 				min(window_size.x, screen_size.x - 40),
 				min(window_size.y, screen_size.y - 70))
-	OS.window_size = window_size
+	get_window().size = window_size
 	var y_offset := (screen_size.y - window_size.y) * 0.5
 	if not borderless:
 		y_offset -= TITLE_BAR_ALLOWANCE * 0.5
-	OS.window_position = screen_position + Vector2(
-			(screen_size.x - window_size.x) * 0.5, y_offset)
+	get_window().position = screen_position + Vector2i(
+			int((screen_size.x - window_size.x) * 0.5), int(y_offset))
 
 
 # Godot's screen order does not follow the primary monitor order. Windows
 # always places the primary monitor at the virtual desktop origin.
 func _primary_screen() -> int:
-	for index in range(OS.get_screen_count()):
-		if OS.get_screen_position(index) == Vector2.ZERO:
+	for index in range(DisplayServer.get_screen_count()):
+		if DisplayServer.screen_get_position(index) == Vector2i.ZERO:
 			return index
 	return 0
 
 
 func _apply_windowed() -> void:
-	OS.window_fullscreen = false
-	OS.window_borderless = false
-	OS.window_size = WINDOWED_SIZE
-	OS.window_position = WINDOWED_POSITION
+	get_window().mode = Window.MODE_EXCLUSIVE_FULLSCREEN if (false) else Window.MODE_WINDOWED
+	get_window().borderless = false
+	get_window().size = WINDOWED_SIZE
+	get_window().position = WINDOWED_POSITION
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
-			and event.scancode == KEY_F11:
-		OS.window_fullscreen = not OS.window_fullscreen
-		get_tree().set_input_as_handled()
+			and event.keycode == KEY_F11:
+		get_window().mode = Window.MODE_EXCLUSIVE_FULLSCREEN if (not ((get_window().mode == Window.MODE_EXCLUSIVE_FULLSCREEN) or (get_window().mode == Window.MODE_FULLSCREEN))) else Window.MODE_WINDOWED
+		get_viewport().set_input_as_handled()

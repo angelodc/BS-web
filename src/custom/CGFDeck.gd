@@ -26,9 +26,9 @@ const BUTTONS_TOP_OFFSET := 43.0
 # strip because drawing is the common action.
 const MILL_ZONE_RATIO := 0.30
 
-onready var _clarividencia_button: Button = get_node_or_null(
+@onready var _clarividencia_button: Button = get_node_or_null(
 		"Control/ManipulationButtons/Clarividencia")
-onready var _search_button: Button = get_node_or_null(
+@onready var _search_button: Button = get_node_or_null(
 		"Control/ManipulationButtons/Procurar")
 
 var _peek_menu: PopupMenu
@@ -54,12 +54,12 @@ func keep_children_upright() -> void:
 	var label: Control = get_node("Control/CenterContainer")
 	var buttons: Control = get_node("Control/ManipulationButtons")
 	for child in [label, buttons]:
-		child.rect_pivot_offset = child.rect_size * 0.5
-		child.rect_rotation = 90
-	label.rect_position = Vector2(
+		child.pivot_offset = child.size * 0.5
+		child.rotation_degrees = 90
+	label.position = Vector2(
 			BOX_BOTTOM_GAP + BOX_SIZE.y - LABEL_TOP_OFFSET \
-					- label.rect_size.x * 0.5,
-			control.rect_size.y * 0.5 - label.rect_size.y * 0.5)
+					- label.size.x * 0.5,
+			control.size.y * 0.5 - label.size.y * 0.5)
 	_place_manipulation_buttons(control)
 
 
@@ -69,21 +69,21 @@ func keep_children_upright() -> void:
 # that after the buttons are turned back upright.
 func _place_manipulation_buttons(control: Control) -> void:
 	var buttons: Control = get_node("Control/ManipulationButtons")
-	var pivot: Vector2 = buttons.rect_size * 0.5
-	if buttons.rect_pivot_offset != pivot:
-		buttons.rect_pivot_offset = pivot
-	var box_top: float = position.y - control.rect_position.x \
-			- control.rect_size.x
+	var pivot: Vector2 = buttons.size * 0.5
+	if buttons.pivot_offset != pivot:
+		buttons.pivot_offset = pivot
+	var box_top: float = position.y - control.position.x \
+			- control.size.x
 	var center := Vector2(
-			control.rect_position.y + control.rect_size.y * 0.5,
+			control.position.y + control.size.y * 0.5,
 			box_top + BUTTONS_TOP_OFFSET)
-	buttons.rect_position = Vector2(
-			position.y - center.y - buttons.rect_size.x * 0.5,
-			center.x - buttons.rect_size.y * 0.5)
+	buttons.position = Vector2(
+			position.y - center.y - buttons.size.x * 0.5,
+			center.x - buttons.size.y * 0.5)
 
 
 func _process(delta: float) -> void:
-	._process(delta)
+	super._process(delta)
 	if cfc.ut:
 		return
 	_hold_layout()
@@ -95,12 +95,12 @@ func _process(delta: float) -> void:
 func _hold_layout() -> void:
 	var control: Control = get_node("Control")
 	var panel_size := Vector2(BOX_SIZE.y, BOX_SIZE.x)
-	if not control.rect_size.is_equal_approx(panel_size):
-		control.rect_size = panel_size
+	if not control.size.is_equal_approx(panel_size):
+		control.size = panel_size
 		call_deferred("keep_children_upright")
-	control.rect_position = Vector2(
+	control.position = Vector2(
 			BOX_BOTTOM_GAP + BOX_SIZE.y - panel_size.x, 0.0)
-	$Control/Highlight.rect_size = panel_size
+	$Control/Highlight.size = panel_size
 	_place_mill_divider(control)
 	_place_manipulation_buttons(control)
 	_refresh_label()
@@ -134,25 +134,25 @@ func _refresh_label() -> void:
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
+	super._ready()
 	if not cfc.are_all_nodes_mapped:
-		yield(cfc, "all_nodes_mapped")
+		await cfc.all_nodes_mapped
 	# warning-ignore:return_value_discarded
-	$Control.connect("gui_input", self, "_on_Deck_input_event")
+	$Control.gui_input.connect(_on_Deck_input_event)
 	# warning-ignore:return_value_discarded
-	connect("draw_card", cfc.NMAP.hand, "draw_card")
+	draw_card.connect(cfc.NMAP.hand.draw_card)
 	# warning-ignore:return_value_discarded
-	connect("shuffle_completed", self, "_on_shuffle_completed")
+	shuffle_completed.connect(_on_shuffle_completed)
 	if _clarividencia_button:
-		_clarividencia_button.connect(
-				"pressed", self, "_on_clarividencia_pressed")
+		_clarividencia_button.pressed.connect(_on_clarividencia_pressed)
 	if _search_button:
-		_search_button.connect("pressed", self, "_on_search_pressed")
+		_search_button.pressed.connect(_on_search_pressed)
 	_create_peek_menu()
 	_create_custom_peek_dialog()
 	# The count is shown next to the pile name, so the separate count box is
 	# not needed and would cover the cards.
 	$Control/CenterContainer/VBoxContainer/PanelContainer.hide()
-	pile_name_label.align = Label.ALIGN_CENTER
+	pile_name_label.align = HORIZONTAL_ALIGNMENT_CENTER
 	_create_mill_zone()
 
 
@@ -163,29 +163,28 @@ func _create_peek_menu() -> void:
 	_peek_menu.add_item("Espiar 2 cartas", 2)
 	_peek_menu.add_item("Espiar 3 cartas", 3)
 	_peek_menu.add_item("+ Outra quantidade", 4)
-	_peek_menu.connect("id_pressed", self, "_on_peek_count_selected")
+	_peek_menu.id_pressed.connect(_on_peek_count_selected)
 
 
 func _create_custom_peek_dialog() -> void:
 	_custom_peek_dialog = ConfirmationDialog.new()
-	_custom_peek_dialog.window_title = "Clarividência"
-	_custom_peek_dialog.rect_min_size = Vector2(280, 90)
-	_custom_peek_dialog.get_ok().text = "Espiar"
+	_custom_peek_dialog.title = "Clarividência"
+	_custom_peek_dialog.min_size = Vector2i(280, 90)
+	_custom_peek_dialog.get_ok_button().text = "Espiar"
 	_custom_peek_count = SpinBox.new()
 	_custom_peek_count.min_value = 4
 	_custom_peek_count.step = 1
-	_custom_peek_count.rect_position = Vector2(16, 16)
-	_custom_peek_count.rect_size = Vector2(240, 30)
+	_custom_peek_count.position = Vector2(16, 16)
+	_custom_peek_count.size = Vector2(240, 30)
 	_custom_peek_dialog.add_child(_custom_peek_count)
 	add_child(_custom_peek_dialog)
-	_custom_peek_dialog.connect(
-			"confirmed", self, "_on_custom_peek_confirmed")
+	_custom_peek_dialog.confirmed.connect(_on_custom_peek_confirmed)
 
 
 func get_top_cards(amount: int) -> Array:
 	var top_cards := []
 	var cards := get_all_cards()
-	var count := min(max(amount, 0), cards.size())
+	var count: int = min(max(amount, 0), cards.size())
 	for index in range(count):
 		top_cards.append(cards[cards.size() - index - 1])
 	return top_cards
@@ -206,12 +205,12 @@ func _clarividencia_anchor() -> Vector2:
 	if not _clarividencia_button or not _clarividencia_button.is_inside_tree():
 		return get_viewport().get_mouse_position()
 	var xf: Transform2D = _clarividencia_button.get_global_transform_with_canvas()
-	var size: Vector2 = _clarividencia_button.rect_size
+	var size: Vector2 = _clarividencia_button.size
 	var corners := [
-			xf.xform(Vector2.ZERO),
-			xf.xform(Vector2(size.x, 0.0)),
-			xf.xform(size),
-			xf.xform(Vector2(0.0, size.y))]
+			xf * (Vector2.ZERO),
+			xf * (Vector2(size.x, 0.0)),
+			xf * (size),
+			xf * (Vector2(0.0, size.y))]
 	var min_point: Vector2 = corners[0]
 	var max_point: Vector2 = corners[0]
 	for corner in corners:
@@ -235,11 +234,9 @@ func _on_custom_peek_confirmed() -> void:
 
 func _show_top_cards(amount: int) -> void:
 	var cards := get_top_cards(amount)
-	if cards.empty():
+	if cards.is_empty():
 		return
-	var reveal = _reveal_top_cards(cards)
-	if reveal is GDScriptFunctionState:
-		yield(reveal, "completed")
+	var reveal = await _reveal_top_cards(cards)
 
 
 func _reveal_top_cards(cards: Array) -> void:
@@ -251,39 +248,35 @@ func _reveal_top_cards(cards: Array) -> void:
 		if not is_instance_valid(card) or card.get_parent() != self:
 			continue
 		card.set_is_faceup(true, true)
-		var move_to_board = card.move_to(
+		var move_to_board = await card.move_to(
 				cfc.NMAP.board,
 				-1,
 				_get_reveal_position(revealed_cards.size(), cards.size()),
 				["Clarividência"])
-		if move_to_board is GDScriptFunctionState:
-			yield(move_to_board, "completed")
 		revealed_cards.append(card)
-	yield(get_tree().create_timer(3.0), "timeout")
-	revealed_cards.invert()
+	await get_tree().create_timer(3.0).timeout
+	revealed_cards.reverse()
 	for card in revealed_cards:
 		if not is_instance_valid(card) or card.get_parent() != cfc.NMAP.board:
 			continue
-		var return_to_deck = card.move_to(self, -1, null, ["Clarividência"])
-		if return_to_deck is GDScriptFunctionState:
-			yield(return_to_deck, "completed")
+		var return_to_deck = await card.move_to(self, -1, null, ["Clarividência"])
 	_deck_action_in_progress = false
 
 
 func _get_reveal_position(index: int, card_count: int) -> Vector2:
 	var board: Control = cfc.NMAP.board
-	var spacing := min(
+	var spacing: float = min(
 			CFConst.CARD_SIZE.x + 12.0,
 			max(
-					board.rect_size.x - CFConst.CARD_SIZE.x,
+					board.size.x - CFConst.CARD_SIZE.x,
 					1.0) / max(card_count - 1, 1))
-	var total_width := min(
+	var total_width: float = min(
 			CFConst.CARD_SIZE.x + spacing * max(card_count - 1, 0),
-			board.rect_size.x)
-	var start_x := (board.rect_size.x - total_width) / 2
+			board.size.x)
+	var start_x: float = (board.size.x - total_width) / 2
 	return Vector2(
 			start_x + index * spacing,
-			board.rect_size.y * 0.68 - CFConst.CARD_SIZE.y / 2)
+			board.size.y * 0.68 - CFConst.CARD_SIZE.y / 2)
 
 
 func _on_search_pressed() -> void:
@@ -294,13 +287,11 @@ func _on_search_pressed() -> void:
 		if not cards_by_name.has(card.canonical_name):
 			cards_by_name[card.canonical_name] = card
 	var card_options := cards_by_name.values()
-	card_options.sort_custom(CFUtils, "sort_scriptables_by_name")
-	var selection_window = SELECTION_WINDOW_SCENE.instance()
+	card_options.sort_custom(Callable(CFUtils, "sort_scriptables_by_name"))
+	var selection_window = SELECTION_WINDOW_SCENE.instantiate()
 	cfc.NMAP.board.add_child(selection_window)
-	selection_window.connect(
-			"card_selected", self, "_on_search_card_selected")
-	selection_window.connect(
-			"confirmed", selection_window, "queue_free")
+	selection_window.card_selected.connect(_on_search_card_selected)
+	selection_window.confirmed.connect(selection_window.queue_free)
 	selection_window.close_on_selection = true
 	selection_window.initiate_selection(card_options, 1, "equal", true)
 
@@ -308,7 +299,7 @@ func _on_search_pressed() -> void:
 func _on_search_card_selected(
 		_selection_window, _signal_name: String, details: Dictionary) -> void:
 	var selected_cards: Array = details.get("selected_cards", [])
-	if selected_cards.empty():
+	if selected_cards.is_empty():
 		return
 	_reveal_searched_card(selected_cards[0])
 
@@ -320,20 +311,16 @@ func _reveal_searched_card(card: Card) -> void:
 		return
 	_deck_action_in_progress = true
 	card.set_is_faceup(true, true)
-	var move_to_board = card.move_to(
+	var move_to_board = await card.move_to(
 			cfc.NMAP.board,
 			-1,
 			_get_reveal_position(0, 1),
 			["Procurar"])
-	if move_to_board is GDScriptFunctionState:
-		yield(move_to_board, "completed")
-	yield(get_tree().create_timer(3.0), "timeout")
+	await get_tree().create_timer(3.0).timeout
 	if not is_instance_valid(card) or card.get_parent() != cfc.NMAP.board:
 		_deck_action_in_progress = false
 		return
-	var move_to_hand = card.move_to(cfc.NMAP.hand, -1, null, ["Procurar"])
-	if move_to_hand is GDScriptFunctionState:
-		yield(move_to_hand, "completed")
+	var move_to_hand = await card.move_to(cfc.NMAP.hand, -1, null, ["Procurar"])
 	_deck_action_in_progress = false
 
 
@@ -343,7 +330,7 @@ func _on_Deck_input_event(event) -> void:
 			or event.get_button_index() != 1:
 		return
 	var control: Control = get_node("Control")
-	if event.position.y <= control.rect_size.y * MILL_ZONE_RATIO:
+	if event.position.y <= control.size.y * MILL_ZONE_RATIO:
 		_mill_top_card_to_resources()
 		return
 	# The click is the same intent the keyboard and the scripts use: the draw
@@ -360,7 +347,7 @@ func _on_Deck_input_event(event) -> void:
 # stacked cards cannot cover it. A Control has no z_index in this engine.
 func _create_mill_zone() -> void:
 	var control: Control = get_node("Control")
-	control.hint_tooltip = "Esquerda: topo do deck para Recursos · " \
+	control.tooltip_text = "Esquerda: topo do deck para Recursos · " \
 			+ "Direita: compra para a Mão"
 	_mill_divider = ColorRect.new()
 	_mill_divider.name = "MillDivider"
@@ -376,9 +363,9 @@ func _place_mill_divider(control: Control) -> void:
 	# The box is turned with the pile, so a rect that is wide in the local x and
 	# thin in the local y lands as a vertical line on the screen, exactly on the
 	# ratio the click uses.
-	_mill_divider.rect_position = Vector2(
-			0.0, control.rect_size.y * MILL_ZONE_RATIO)
-	_mill_divider.rect_size = Vector2(control.rect_size.x, 1.0)
+	_mill_divider.position = Vector2(
+			0.0, control.size.y * MILL_ZONE_RATIO)
+	_mill_divider.size = Vector2(control.size.x, 1.0)
 
 
 # The left strip of the deck sends its top card straight to Recursos/Descarte

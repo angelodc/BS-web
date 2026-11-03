@@ -9,7 +9,7 @@
 # Meta properties and the game will not attempt to display them on the card
 # front.
 class_name CardConfig
-extends Reference
+extends RefCounted
 
 # Properties which are placed as they are in appropriate labels
 const PROPERTIES_STRINGS := ["Type", "Requirements", "Abilities"]
@@ -20,6 +20,12 @@ const NUMBER_WITH_LABEL := []
 # Properties provided in a list which are converted into a string for the
 # label text, using the array_join() method
 const PROPERTIES_ARRAYS := ["Tags"]
+# Properties that are stored and used by the game but never drawn on the card
+# front. They are not meta properties (no `_` prefix), so without this list the
+# framework prints a "does not have a matching label" warning for each one.
+# `Cost` is a leftover of the framework demo: Battle Scenes decks always set it
+# to 0 and use `ENERGIA` instead (shown in the rupee slot).
+const PROPERTIES_NOT_DISPLAYED := ["Cost"]
 	# This property matches the name of the scene file (without the .tcsn file)
 # which is used as a template For this card.
 const SCENE_PROPERTY = "Type"

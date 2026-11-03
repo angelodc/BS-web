@@ -9,7 +9,7 @@
 # actions that already exist; `pagar`, `trocar_recurso`, `buscar` and
 # `usar_habilidade` still need a UI flow of their own and are not accepted yet.
 class_name TableRules
-extends Reference
+extends RefCounted
 
 const _Table = preload("res://src/core/table/TableState.gd")
 
@@ -141,7 +141,7 @@ func _validate_mill(state, normalized : Dictionary) -> Dictionary:
 func _validate_play(state, normalized : Dictionary,
 		context : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "hand":
 		return _fail("fora_da_mão", "Só é possível jogar uma carta da mão.")
@@ -150,7 +150,7 @@ func _validate_play(state, normalized : Dictionary,
 	var to := str(normalized.get("to", ""))
 	if card_type == "Cenário":
 		to = SCENARIO_ADDRESS
-	elif to.empty():
+	elif to.is_empty():
 		to = _next_field_address(state, seat, card_type == "Suporte")
 	var parsed := _Table.parse_address(to)
 	match str(parsed.get("kind", "")):
@@ -164,7 +164,7 @@ func _validate_play(state, normalized : Dictionary,
 			if int(parsed.get("column", 0)) < 1:
 				return _fail("coluna_invalida", "A coluna começa em 1.")
 			var occupant = state.card_at(to)
-			if not occupant.empty() and occupant != str(normalized["card"]):
+			if not occupant.is_empty() and occupant != str(normalized["card"]):
 				return _fail("slot_ocupado", "O slot " + to + " já está ocupado.")
 		"scenario":
 			if card_type != "Cenário":
@@ -172,7 +172,7 @@ func _validate_play(state, normalized : Dictionary,
 						"Só uma carta de cenário entre em " + SCENARIO_ADDRESS
 						+ ".")
 			var current = state.card_at(SCENARIO_ADDRESS)
-			if not current.empty() and current != str(normalized["card"]):
+			if not current.is_empty() and current != str(normalized["card"]):
 				# Replacing is allowed; the action sends the old one to the
 				# owner's resources, as the confirmed rule says.
 				normalized["replaces"] = current
@@ -192,7 +192,7 @@ func _validate_play(state, normalized : Dictionary,
 
 func _validate_attach(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	var zone := str(entry["zone"])
 	if not zone in ["hand", "field", "attachment"]:
@@ -205,7 +205,7 @@ func _validate_attach(state, normalized : Dictionary) -> Dictionary:
 		return _fail("carta_nao_anexavel",
 				"Um personagem não pode ser anexado a outra carta.")
 	var host_id := str(normalized.get("host", ""))
-	if host_id.empty() or not state.cards.has(host_id):
+	if host_id.is_empty() or not state.cards.has(host_id):
 		return _fail("hospedeiro_desconhecido", "Hospedeiro desconhecido.")
 	if host_id == str(normalized["card"]):
 		return _fail("anexo_em_si", "Uma carta não pode ser anexada a si mesma.")
@@ -223,14 +223,14 @@ func _validate_attach(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_move(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) == "deck":
 		return _fail("carta_no_deck",
 				"Cartas no deck só saem por compra ou topo para recursos.")
 	var to := str(normalized.get("to", ""))
 	var parsed := _Table.parse_address(to)
-	if parsed.empty():
+	if parsed.is_empty():
 		return _fail("destino_invalido", "Destino inválido: " + to)
 	var seat := int(normalized["seat"])
 	match str(parsed.get("kind", "")):
@@ -276,19 +276,19 @@ func _validate_move(state, normalized : Dictionary) -> Dictionary:
 			if int(parsed.get("column", 0)) < 1:
 				return _fail("coluna_invalida", "A coluna começa em 1.")
 			var occupant = state.card_at(to)
-			if not occupant.empty() and occupant != str(normalized["card"]):
+			if not occupant.is_empty() and occupant != str(normalized["card"]):
 				return _fail("slot_ocupado", "O slot " + to + " já está ocupado.")
 		"scenario":
 			if str(entry.get("type", "")) != "Cenário":
 				return _fail("cenario_exige_cenario",
 						"Só uma carta de cenário entra em " + SCENARIO_ADDRESS + ".")
 			var current = state.card_at(SCENARIO_ADDRESS)
-			if not current.empty() and current != str(normalized["card"]):
+			if not current.is_empty() and current != str(normalized["card"]):
 				return _fail("use_jogar",
 						"Para trocar o cenário ativo, use jogar.")
 		"attachment":
 			var host_id = state.card_at(str(parsed.get("host_address", "")))
-			if host_id.empty():
+			if host_id.is_empty():
 				return _fail("hospedeiro_desconhecido",
 						"O hospedeiro do anexo não está na mesa.")
 			if int(state.cards[host_id]["seat"]) != seat:
@@ -305,7 +305,7 @@ func _validate_move(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_discard(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if not str(entry["zone"]) in ["hand", "field", "attachment", "scenario",
 			"prizes"]:
@@ -316,7 +316,7 @@ func _validate_discard(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_wound(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "field":
 		return _fail("fora_do_campo", "Só uma carta na cena pode levar dano.")
@@ -331,7 +331,7 @@ func _validate_wound(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_knockout(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "field":
 		return _fail("fora_do_campo", "Só uma carta na cena pode ser nocauteada.")
@@ -344,7 +344,7 @@ func _validate_knockout(state, normalized : Dictionary) -> Dictionary:
 func _validate_send_prizes(state, normalized : Dictionary,
 		context : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "field":
 		return _fail("fora_do_campo", "Só uma carta na cena vai aos prêmios.")
@@ -358,7 +358,7 @@ func _validate_send_prizes(state, normalized : Dictionary,
 
 func _validate_shield(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "field":
 		return _fail("fora_do_campo", "Só uma carta na cena tem escudo.")
@@ -375,7 +375,7 @@ func _validate_shield(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_flip(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) == "transit":
 		return _fail("destino_invalido", "Uma carta em trânsito não vira.")
@@ -384,7 +384,7 @@ func _validate_flip(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_rotate(state, normalized : Dictionary) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "field":
 		return _fail("fora_do_campo", "Só uma carta na cena gira.")
@@ -401,7 +401,7 @@ func _validate_rotate(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_stage(state, normalized : Dictionary, step : int) -> Dictionary:
 	var entry := _entry_of(state, normalized)
-	if entry.empty():
+	if entry.is_empty():
 		return _fail("carta_desconhecida", "A carta não está na mesa.")
 	if str(entry["zone"]) != "field":
 		return _fail("fora_do_campo", "Só uma carta na cena muda de estado.")
@@ -444,7 +444,7 @@ func _validate_shuffle(state, normalized : Dictionary) -> Dictionary:
 
 func _validate_undo(normalized : Dictionary, context : Dictionary) -> Dictionary:
 	var entry = context.get("undo_entry", null)
-	if not (entry is Dictionary) or entry.empty():
+	if not (entry is Dictionary) or entry.is_empty():
 		return _fail("nada_para_desfazer", "Não há ação para desfazer.")
 	if not bool(entry.get("undoable", false)):
 		return _fail("acao_nao_desfazivel",
@@ -462,7 +462,7 @@ func _validate_undo(normalized : Dictionary, context : Dictionary) -> Dictionary
 # the grid before moving the card.
 func _next_field_address(state, seat : int, prefer_back : bool) -> String:
 	var address: String = state.find_field_slot(seat, prefer_back, false)
-	if not address.empty():
+	if not address.is_empty():
 		return address
 	return _Table.field_address(seat, "frente", int(state.columns) + 1)
 

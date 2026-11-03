@@ -11,9 +11,7 @@ const Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		yield(setup, "completed")
+	await setup_board()
 
 
 func _new_state():
@@ -28,16 +26,14 @@ func test_state_matches_the_table_addresses():
 	var cards := draw_test_cards(4)
 	var grid: BoardPlacementGrid = board.get_node("BoardPlacementGrid")
 	cards[0].move_to(board, -1, grid.get_slot(0))
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1)
 	for _i in range(4):
 		grid.add_slot()
 	cards[1].move_to(board, -1, grid.get_slot(4))
-	yield(yield_for(0.1), YIELD)
+	await yield_for(0.1)
 	cards[2].attach_to_host(cards[0])
-	yield(yield_for(0.2), YIELD)
-	var move = cards[3].move_to(discard)
-	if move is GDScriptFunctionState:
-		yield(move, "completed")
+	await yield_for(0.2)
+	await cards[3].move_to(discard)
 
 	var state = _new_state()
 	state.load_board(board, 1)
@@ -60,9 +56,7 @@ func test_state_detects_a_card_that_moved_after_the_capture():
 	var cards := draw_test_cards(2)
 	var state = _new_state()
 	state.load_board(board, 1)
-	var move = cards[0].move_to(discard)
-	if move is GDScriptFunctionState:
-		yield(move, "completed")
+	await cards[0].move_to(discard)
 
 	var issues = state.compare_with(Snapshot.capture(board, 1))
 

@@ -130,25 +130,25 @@ func _ready() -> void:
 	# o processo fica desligado enquanto nao ha conexao perdida.
 	set_process(false)
 	# warning-ignore:return_value_discarded
-	Rede.connect("match_found", self, "_on_rede_match_found")
+	Rede.match_found.connect(_on_rede_match_found)
 	# warning-ignore:return_value_discarded
-	Rede.connect("message_received", self, "_on_network_message")
+	Rede.message_received.connect(_on_network_message)
 	# warning-ignore:return_value_discarded
-	Rede.connect("opponent_lost", self, "_on_opponent_lost")
+	Rede.opponent_lost.connect(_on_opponent_lost)
 	# warning-ignore:return_value_discarded
-	Rede.connect("opponent_reconnected", self, "_on_opponent_reconnected")
+	Rede.opponent_reconnected.connect(_on_opponent_reconnected)
 	# warning-ignore:return_value_discarded
-	Rede.connect("opponent_left", self, "_on_opponent_left")
+	Rede.opponent_left.connect(_on_opponent_left)
 	# warning-ignore:return_value_discarded
-	Rede.connect("connection_lost", self, "_on_connection_lost")
+	Rede.connection_lost.connect(_on_connection_lost)
 	# warning-ignore:return_value_discarded
-	Rede.connect("room_expired", self, "_on_room_expired")
+	Rede.room_expired.connect(_on_room_expired)
 	# warning-ignore:return_value_discarded
-	Rede.connect("status_changed", self, "_on_rede_status_changed")
+	Rede.status_changed.connect(_on_rede_status_changed)
 	# warning-ignore:return_value_discarded
-	Rede.connect("rejoined", self, "_on_rejoined")
+	Rede.rejoined.connect(_on_rejoined)
 	# warning-ignore:return_value_discarded
-	Rede.connect("join_failed", self, "_on_join_failed")
+	Rede.join_failed.connect(_on_join_failed)
 
 
 func _process(delta: float) -> void:
@@ -288,7 +288,7 @@ func get_deck_summary() -> String:
 				+ " · " + get_slot_username(2) + ": " + _solo_deck_text(2)
 	var mine := str(local_deck_count) + "/" + str(DECK_SIZE)
 	var theirs := str(opponent_deck_count) + "/" + str(DECK_SIZE)
-	if opponent_deck_count == 0 and opponent_deck_name.empty():
+	if opponent_deck_count == 0 and opponent_deck_name.is_empty():
 		theirs = "aguardando"
 	elif opponent_deck_ready:
 		theirs += " pronto"
@@ -297,7 +297,7 @@ func get_deck_summary() -> String:
 
 func _solo_deck_text(slot: int) -> String:
 	var deck: Dictionary = solo_decks.get(slot, {})
-	if deck.empty():
+	if deck.is_empty():
 		return "aguardando"
 	return str(deck.get("name", "Deck")) + " " \
 			+ str(_count_deck_cards(deck)) + "/" + str(DECK_SIZE)
@@ -314,28 +314,28 @@ func get_display_info() -> Dictionary:
 	var board_size := Vector2.ZERO
 	if is_instance_valid(_board):
 		viewport_size = _board.get_viewport().get_visible_rect().size
-		board_size = _board.rect_size
-	var screen_size := OS.get_screen_size()
+		board_size = _board.size
+	var screen_size := DisplayServer.screen_get_size()
 	return {
 		"screen": [int(screen_size.x), int(screen_size.y)],
-		"window": [int(OS.window_size.x), int(OS.window_size.y)],
+		"window": [int(get_window().size.x), int(get_window().size.y)],
 		"viewport": [int(viewport_size.x), int(viewport_size.y)],
 		"board": [int(board_size.x), int(board_size.y)],
 		"stretch": str(ProjectSettings.get_setting(
 				"display/window/stretch/mode")),
 		"aspect": str(ProjectSettings.get_setting(
 				"display/window/stretch/aspect")),
-		"fullscreen": OS.window_fullscreen,
+		"fullscreen": ((get_window().mode == Window.MODE_EXCLUSIVE_FULLSCREEN) or (get_window().mode == Window.MODE_FULLSCREEN)),
 	}
 
 
 func get_display_summary() -> String:
 	var lines := ["Você: " + _format_display(get_display_info())]
-	if opponent_display.empty():
+	if opponent_display.is_empty():
 		lines.append("Oponente: aguardando resolução")
 	else:
 		lines.append("Oponente: " + _format_display(opponent_display))
-	return PoolStringArray(lines).join("\n")
+	return "\n".join(PackedStringArray(lines))
 
 
 #-----------------------------------------------------------------------------
@@ -346,9 +346,9 @@ func register_board(board: Control, hud: Control, sync_node: Control) -> void:
 	_board = board
 	_hud = hud
 	_sync = sync_node
-	if not _restore_pending.empty():
+	if not _restore_pending.is_empty():
 		_apply_pending_restore()
-	elif not _start_payload.empty() and not _start_applied:
+	elif not _start_payload.is_empty() and not _start_applied:
 		_apply_start(_start_payload)
 
 
@@ -438,14 +438,14 @@ func advance_phase() -> bool:
 
 
 func manual_reconnect() -> bool:
-	if Rede.room_id.empty():
+	if Rede.room_id.is_empty():
 		return false
 	return Rede.reconnect_room(Rede.last_address, Rede.player_username)
 
 
 func can_manual_reconnect() -> bool:
 	return state == State.WAITING and _waiting_reason == "local" \
-			and not Rede.room_id.empty()
+			and not Rede.room_id.is_empty()
 
 
 # As mesmas condicoes do botao, mais as duas que o botao nao precisa: hotseat
@@ -454,7 +454,7 @@ func can_manual_reconnect() -> bool:
 func _auto_reconnect_armed() -> bool:
 	if state != State.WAITING or _waiting_reason != "local":
 		return false
-	if mode == Mode.SOLO or Rede.room_id.empty():
+	if mode == Mode.SOLO or Rede.room_id.is_empty():
 		return false
 	return _retry_step < RECONNECT_RETRY_SECONDS.size()
 
@@ -486,7 +486,7 @@ func leave_session(message := "", disconnect := true) -> void:
 	_hud = null
 	_sync = null
 	emit_signal("session_changed")
-	if not message.empty():
+	if not message.is_empty():
 		emit_signal("session_ended", message)
 
 
@@ -508,7 +508,7 @@ func begin_match(
 		username: String,
 		as_host: bool) -> Dictionary:
 	var cleaned := username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		return {"ok": false, "reason": "Digite seu username."}
 	reset_session()
 	mode = Mode.MATCH
@@ -535,9 +535,9 @@ func begin_join(
 		username: String,
 		room_code: String) -> Dictionary:
 	var cleaned := username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		return {"ok": false, "reason": "Digite seu username."}
-	if room_code.strip_edges().empty():
+	if room_code.strip_edges().is_empty():
 		return {"ok": false, "reason": "Informe o codigo da sala."}
 	reset_session()
 	mode = Mode.MATCH
@@ -551,7 +551,7 @@ func begin_join(
 # before returning, so the preparation state is ready when this call ends.
 func begin_solo(username: String) -> Dictionary:
 	var cleaned := username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		return {"ok": false, "reason": "Digite seu username."}
 	reset_session()
 	if not Rede.start_solo(cleaned):
@@ -570,13 +570,13 @@ func begin_resume(
 		participants: Array,
 		as_host: bool) -> Dictionary:
 	var cleaned := username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		return {"ok": false, "reason": "Digite seu username."}
-	if checkpoint_game_id.empty():
+	if checkpoint_game_id.is_empty():
 		return {"ok": false, "reason": "Este save não identifica a partida."}
 	if as_host and participants.size() != 2:
 		return {"ok": false, "reason": "Este save não identifica os dois jogadores."}
-	if not participants.empty() and not cleaned in participants:
+	if not participants.is_empty() and not cleaned in participants:
 		return {
 			"ok": false,
 			"reason": "Este save exige os jogadores: " + str(participants[0]) \
@@ -601,10 +601,10 @@ func begin_resume(
 
 func change_username(new_username: String) -> Dictionary:
 	var cleaned := new_username.strip_edges()
-	if cleaned.empty():
+	if cleaned.is_empty():
 		return {"ok": false, "reason": "O username não pode ficar vazio."}
 	var old_username := str(cfc.game_settings.get("multiplayer_username", ""))
-	if old_username != cleaned and not old_username.empty():
+	if old_username != cleaned and not old_username.is_empty():
 		var result := CheckpointStore.reprotect_all(old_username, cleaned)
 		var skipped := int(result.get("skipped", 0))
 		if skipped > 0:
@@ -619,10 +619,10 @@ func change_username(new_username: String) -> Dictionary:
 
 
 func ensure_card_id(card: Card) -> String:
-	if card.network_id.empty():
-		if _id_prefix.empty():
-			_id_prefix = (Rede.peer_tag if not Rede.peer_tag.empty() else "P") \
-					+ str(OS.get_ticks_usec())
+	if card.network_id.is_empty():
+		if _id_prefix.is_empty():
+			_id_prefix = (Rede.peer_tag if not Rede.peer_tag.is_empty() else "P") \
+					+ str(Time.get_ticks_usec())
 		_id_counter += 1
 		card.network_id = _id_prefix + "_" + str(_id_counter)
 	return card.network_id
@@ -661,7 +661,7 @@ func _on_rede_match_found(_opponent: String) -> void:
 		kept_name = local_deck_name
 		kept_count = local_deck_count
 	_clear_session_fields()
-	if not kept_deck.empty():
+	if not kept_deck.is_empty():
 		local_deck = kept_deck
 		local_deck_name = kept_name
 		local_deck_count = kept_count
@@ -670,8 +670,8 @@ func _on_rede_match_found(_opponent: String) -> void:
 	else:
 		mode = Mode.RESUME if Rede.match_mode == "resume" else Mode.MATCH
 	game_id = Rede.game_id
-	_id_prefix = (Rede.peer_tag if not Rede.peer_tag.empty() else "P") \
-			+ str(OS.get_ticks_usec())
+	_id_prefix = (Rede.peer_tag if not Rede.peer_tag.is_empty() else "P") \
+			+ str(Time.get_ticks_usec())
 	opponent_counts = {"hand": 0, "deck": 0}
 	var my_name := Rede.player_username
 	if mode == Mode.SOLO:
@@ -805,7 +805,7 @@ func _on_opponent_reconnected(_username: String, _role: String) -> void:
 		emit_signal("session_changed")
 		return
 	if mode == Mode.MATCH and _resume_state_before_wait == State.STARTING:
-		if is_authority() and not _start_payload.empty():
+		if is_authority() and not _start_payload.is_empty():
 			Rede.send_message(_start_payload)
 			state = State.PLAYING
 			_start_applied = true
@@ -835,7 +835,7 @@ func _on_rejoined(_role: String, _opponent: String) -> void:
 		return
 	if mode == Mode.MATCH and _resume_state_before_wait == State.STARTING:
 		_send_hello()
-		if is_authority() and not _start_payload.empty():
+		if is_authority() and not _start_payload.is_empty():
 			Rede.send_message(_start_payload)
 			state = State.PLAYING
 			_start_applied = true
@@ -873,7 +873,7 @@ func _on_join_failed(message: String) -> void:
 func _on_rede_status_changed(text: String) -> void:
 	if state == State.PREPARING and mode == Mode.MATCH \
 			and not Rede.is_searching and not Rede.is_connected \
-			and Rede.room_id.empty():
+			and Rede.room_id.is_empty():
 		_end_session(text)
 
 
@@ -897,7 +897,7 @@ func _on_mp_hello(data: Dictionary) -> void:
 	_store_opponent_display(data)
 	if state == State.PREPARING:
 		_send_prep()
-		if is_authority() and not opponent_deck_name.empty():
+		if is_authority() and not opponent_deck_name.is_empty():
 			emit_signal("prep_changed")
 
 
@@ -1022,7 +1022,7 @@ func _apply_start(data: Dictionary) -> void:
 	if not _board or not is_instance_valid(_board) or not _sync:
 		return
 	var seed_text := str(data.get("seed", ""))
-	if local_deck.empty() or _count_deck_cards(local_deck) != DECK_SIZE:
+	if local_deck.is_empty() or _count_deck_cards(local_deck) != DECK_SIZE:
 		_abort_match("Seu deck não tem 60 cartas; não é possível iniciar.")
 		return
 	if not _build_local_start(seed_text):
@@ -1103,7 +1103,7 @@ func _build_solo_opponent(seed_text: String) -> bool:
 	if _count_deck_cards(deck) != DECK_SIZE:
 		return false
 	var payload := _solo_hidden_payload(deck, opponent_slot, seed_text)
-	if payload.empty():
+	if payload.is_empty():
 		return false
 	_solo_hidden[opponent_slot] = payload
 	set_opponent_counts({
@@ -1153,7 +1153,7 @@ func swap_solo_seat() -> bool:
 	if not _board or not is_instance_valid(_board) or not _sync:
 		return false
 	var target_slot := opponent_slot
-	if _solo_hidden.get(target_slot, {}).empty():
+	if _solo_hidden.get(target_slot, {}).is_empty():
 		_log("O assento " + get_slot_username(target_slot)
 				+ " ainda não tem cartas.")
 		return false
@@ -1454,7 +1454,7 @@ func _build_private_payload() -> Dictionary:
 
 
 func _send_private_envelope(seq: int) -> void:
-	if seq < 0 or Rede.player_username.empty():
+	if seq < 0 or Rede.player_username.is_empty():
 		return
 	# A hotseat has no peer to send to and both seats share one username, so a
 	# checkpoint could never hold two distinct envelopes.
@@ -1483,11 +1483,11 @@ func _on_mp_private(data: Dictionary) -> void:
 		return
 	var seq := int(data.get("sequence", -1))
 	var envelope := str(data.get("envelope", ""))
-	if seq < 0 or envelope.empty():
+	if seq < 0 or envelope.is_empty():
 		return
 	var payload := CheckpointStore.unprotect_payload(
 			envelope, Rede.opponent_username)
-	if payload.empty():
+	if payload.is_empty():
 		_log("Dados privados do oponente não puderam ser verificados.")
 		return
 	if not _private_envelopes.has(seq):
@@ -1543,7 +1543,7 @@ func _try_save_checkpoint(seq: int) -> void:
 		var username := p1_username if slot == 1 else p2_username
 		var payload := CheckpointStore.unprotect_payload(
 				str(envelopes[username]), username)
-		if payload.empty():
+		if payload.is_empty():
 			return
 		var hand = payload.get("hand", [])
 		var deck = payload.get("deck", [])
@@ -1599,7 +1599,7 @@ func save_current_game() -> Dictionary:
 
 
 func get_save_label() -> String:
-	if p1_username.empty() or p2_username.empty():
+	if p1_username.is_empty() or p2_username.is_empty():
 		return "partida"
 	return p1_username + " vs " + p2_username
 
@@ -1656,10 +1656,10 @@ func _sanitize_manifests(manifests: Array) -> Array:
 			continue
 		var seq := int(manifest.get("sequence", -1))
 		var checksum := str(manifest.get("checksum", ""))
-		if seq < 0 or checksum.empty():
+		if seq < 0 or checksum.is_empty():
 			continue
 		result.append({"sequence": seq, "checksum": checksum})
-	result.sort_custom(self, "_sort_manifest_desc")
+	result.sort_custom(Callable(self, "_sort_manifest_desc"))
 	return result
 
 
@@ -1673,7 +1673,7 @@ func _decide_resume() -> void:
 	var mine := CheckpointStore.manifests_for_game(game_id)
 	var theirs := _resume_peer_manifests
 	var common := _find_common_manifest(mine, theirs)
-	if not common.empty():
+	if not common.is_empty():
 		var loaded := CheckpointStore.load_checkpoint(
 				game_id, int(common["sequence"]))
 		if loaded.get("ok", false):
@@ -1696,7 +1696,7 @@ func _decide_resume() -> void:
 		})
 		emit_signal("resume_status", "Cópia local corrompida; recuperando do oponente...")
 		return
-	if not mine.empty() and theirs.empty():
+	if not mine.is_empty() and theirs.is_empty():
 		var latest: Dictionary = mine[0]
 		var loaded := CheckpointStore.load_checkpoint(
 				game_id, int(latest["sequence"]))
@@ -1712,7 +1712,7 @@ func _decide_resume() -> void:
 			return
 		_abort_resume("O checkpoint local está corrompido e o oponente não tem cópia.")
 		return
-	if mine.empty() and not theirs.empty():
+	if mine.is_empty() and not theirs.is_empty():
 		_resume_waiting_ack = true
 		_send_resume_plan({
 			"t": "mp_resume_plan",
@@ -1723,7 +1723,7 @@ func _decide_resume() -> void:
 		})
 		emit_signal("resume_status", "Recebendo o checkpoint íntegro do oponente...")
 		return
-	if mine.empty() and theirs.empty():
+	if mine.is_empty() and theirs.is_empty():
 		_abort_resume("Nenhum checkpoint íntegro foi encontrado. Não é possível retomar este jogo.")
 		return
 	_abort_resume("Os saves não têm um checkpoint em comum. Não é possível retomar automaticamente.")
@@ -1737,7 +1737,7 @@ func _find_common_manifest(mine: Array, theirs: Array) -> Dictionary:
 	for manifest in mine:
 		var seq := int(manifest["sequence"])
 		if their_checksums.get(seq, "") == str(manifest["checksum"]):
-			if best.empty() or seq > int(best["sequence"]):
+			if best.is_empty() or seq > int(best["sequence"]):
 				best = manifest
 	return best
 
@@ -1840,7 +1840,7 @@ func _send_resume_copy_to_guest(request: Dictionary) -> void:
 		"sequence": seq,
 		"checkpoint": loaded["data"],
 	})
-	if state != State.PLAYING and _restore_pending.empty():
+	if state != State.PLAYING and _restore_pending.is_empty():
 		_apply_resume_data(loaded["data"])
 
 
@@ -1869,7 +1869,7 @@ func _fail_resume(message: String) -> void:
 
 
 func _apply_resume_data(checkpoint: Dictionary) -> void:
-	if not _restore_pending.empty():
+	if not _restore_pending.is_empty():
 		return
 	var validation := CheckpointStore.validate_checkpoint(checkpoint)
 	if not validation.get("ok", false):
@@ -1884,7 +1884,7 @@ func _apply_resume_data(checkpoint: Dictionary) -> void:
 	if not my_name in [checkpoint_p1, checkpoint_p2]:
 		_abort_resume("Este checkpoint não inclui o seu username.")
 		return
-	if mode == Mode.RESUME and not _resume_expected_participants.empty():
+	if mode == Mode.RESUME and not _resume_expected_participants.is_empty():
 		if not checkpoint_p1 in _resume_expected_participants \
 				or not checkpoint_p2 in _resume_expected_participants:
 			_abort_resume("Este checkpoint não corresponde aos jogadores da sala.")
@@ -1919,7 +1919,7 @@ func _reload_for_restore() -> void:
 
 
 func _apply_pending_restore() -> void:
-	if _restore_pending.empty() or not _board or not _sync:
+	if _restore_pending.is_empty() or not _board or not _sync:
 		return
 	var checkpoint: Dictionary = _restore_pending
 	var validation := CheckpointStore.validate_checkpoint(checkpoint)
@@ -1930,7 +1930,7 @@ func _apply_pending_restore() -> void:
 	var public_state = checkpoint.get("public", {})
 	var payload := CheckpointStore.get_private_payload(
 			checkpoint, Rede.player_username)
-	if payload.empty():
+	if payload.is_empty():
 		_restore_pending = {}
 		_fail_resume("Seus dados privados no checkpoint não puderam ser abertos.")
 		return
@@ -1993,7 +1993,7 @@ func _restore_own_hidden_cards(payload: Dictionary) -> void:
 	if typeof(definitions) == TYPE_DICTIONARY:
 		for card_name in definitions:
 			if typeof(definitions[card_name]) == TYPE_DICTIONARY \
-					and not definitions[card_name].empty():
+					and not definitions[card_name].is_empty():
 				cfc.card_definitions[str(card_name)] = definitions[card_name]
 	for entry in deck_entries:
 		if typeof(entry) != TYPE_DICTIONARY:
@@ -2062,7 +2062,7 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 				elif zone == "board":
 					slot = _scene_placement_slot(int(entry.get("slot", -1)))
 				if slot:
-					card.global_position = slot.rect_global_position
+					card.global_position = slot.global_position
 					card._placement_slot = slot
 					slot.occupying_card = card
 				else:
@@ -2073,7 +2073,7 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 				card.set_card_rotation(
 						int(entry.get("rot", 0)), false, true, false)
 		var host_id := str(entry.get("host", ""))
-		if not host_id.empty():
+		if not host_id.is_empty():
 			pending_attachments.append({
 				"card": card,
 				"host": host_id,
@@ -2111,7 +2111,7 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 		if int(entry.get("owner", 0)) != opponent_slot:
 			continue
 		var host_id := str(entry.get("host", ""))
-		if host_id.empty():
+		if host_id.is_empty():
 			continue
 		var card = _sync.find_remote_card(str(entry.get("id", "")))
 		if not card:
@@ -2130,7 +2130,7 @@ func _restore_own_public_cards(public_state: Dictionary) -> void:
 
 
 func _instance_restored_card(card_name: String) -> Card:
-	if card_name.empty():
+	if card_name.is_empty():
 		push_warning("Carta restaurada sem nome; assento pode ficar incompleto.")
 		return null
 	if not cfc.card_definitions.has(card_name):
@@ -2172,10 +2172,10 @@ func _scene_placement_slot(index: int) -> BoardPlacementSlot:
 func _denormalize_board_position(normalized: Vector2) -> Vector2:
 	var grid: Control = _board.get_node_or_null("PlacementGridDemo")
 	if not grid:
-		return normalized * _board.rect_size
-	return grid.rect_global_position + Vector2(
-			normalized.x * grid.rect_size.x,
-			normalized.y * grid.rect_size.y)
+		return normalized * _board.size
+	return grid.global_position + Vector2(
+			normalized.x * grid.size.x,
+			normalized.y * grid.size.y)
 
 
 #-----------------------------------------------------------------------------
@@ -2211,7 +2211,7 @@ func _update_pause() -> void:
 
 
 func _abort_match(message: String) -> void:
-	if Rede.is_connected and not game_id.empty():
+	if Rede.is_connected and not game_id.is_empty():
 		Rede.send_message({
 			"t": "mp_abort",
 			"game_id": game_id,
@@ -2287,7 +2287,7 @@ func _clear_session_fields() -> void:
 
 func _store_opponent_display(data: Dictionary) -> void:
 	var display = data.get("display", {})
-	if typeof(display) != TYPE_DICTIONARY or display.empty():
+	if typeof(display) != TYPE_DICTIONARY or display.is_empty():
 		return
 	opponent_display = display
 	_check_display_mismatch()
@@ -2309,7 +2309,7 @@ func _check_display_mismatch() -> void:
 
 
 func _format_display(display: Dictionary) -> String:
-	if display.empty():
+	if display.is_empty():
 		return "—"
 	var screen := _size_text(display.get("screen", []))
 	var window := _size_text(display.get("window", []))

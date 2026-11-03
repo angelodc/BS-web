@@ -612,6 +612,12 @@ func _on_Card_mouse_exited() -> void:
 					# This will also set the state to IN_HAND afterwards
 					c.reorganize_self()
 		CardState.FOCUSED_ON_BOARD:
+			# A focused attachment lifted its host and siblings too; dropping
+			# only this card would leave the pile floating over the hand.
+			if is_instance_valid(current_host_card):
+				current_host_card.z_index = 0
+				for attachment in current_host_card._live_attachments():
+					attachment.z_index = 0
 			set_state(CardState.ON_PLAY_BOARD)
 		CardState.FOCUSED_IN_POPUP:
 			set_state(CardState.IN_POPUP)
@@ -2860,15 +2866,20 @@ func _process_card_state() -> void:
 
 		CardState.FOCUSED_ON_BOARD:
 			# The rows overlap slightly and the card played last in the row
-			# behind can hide the one being read. The focus lifts the card and
-			# its attachments over the rest of the table, still under the hand.
-			z_index = CFConst.TABLE_FOCUS_Z
-			for attachment in _live_attachments():
+			# behind can hide the one being read. The focus lifts the whole
+			# pile over the hand, with the host kept in front so a focused
+			# attachment never draws over its own host.
+			var stack_root: Card = \
+					current_host_card if is_instance_valid(current_host_card) else self
+			stack_root.z_index = CFConst.TABLE_FOCUS_Z
+			for attachment in stack_root._live_attachments():
 				attachment.z_index = CFConst.TABLE_FOCUS_Z
 			# Used when card is focused on by the mouse hovering over it while it is on the board.
 			set_focus(true)
 			set_control_mouse_filters(true)
-			buttons.set_active(true)
+			# Attachments are read through the preview; the manipulation menu
+			# belongs to the host.
+			buttons.set_active(current_host_card == null)
 			# We don't change state yet, only when the focus is removed from this card
 			_organize_attachments()
 

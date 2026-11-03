@@ -53,8 +53,8 @@ func test_hand_draws_above_the_table():
 
 
 # The rows overlap by a few pixels, so the card played last in the row behind
-# can hide the one being read. Hovering brings it to the front until the mouse
-# leaves it again.
+# can hide the one being read. Hovering lifts it over the hand until the mouse
+# leaves it again, when the hand goes back over the table.
 func test_focused_table_card_lifts_over_its_neighbours():
 	for _iter in range(0, 3):
 		cards.append(hand.draw_card())
@@ -68,12 +68,14 @@ func test_focused_table_card_lifts_over_its_neighbours():
 			"The card being read comes forward")
 	assert_true(cards[1].z_index > cards[0].z_index,
 			"It draws over the neighbouring table card")
-	assert_true(hand.z_index > cards[1].z_index,
-			"The hand still draws over the table")
+	assert_true(cards[1].z_index > hand.z_index,
+			"It is read above the hand while the pointer is on it")
 	cards[1]._on_Card_mouse_exited()
 	await yield_for(0.1)
 	assert_eq(0, cards[1].z_index,
 			"Leaving the card returns it to the table layer")
+	assert_true(hand.z_index > cards[1].z_index,
+			"The hand draws over the table again")
 
 
 # The physics overlap list carries no draw order, so picking the hover by the

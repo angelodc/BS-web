@@ -150,9 +150,9 @@ const PREVIEW_SCALE := 1.5
 const FOCUSED_SCALE := 1.5
 # Draw order on the table. Table cards are reparented under the board as they
 # are played, so they end up after the hand in the tree; these layers keep the
-# hand over the table and lift the card being read over its own rows.
+# hand over the table and lift the pile being read over the hand on hover.
 const TABLE_HAND_Z := 5
-const TABLE_FOCUS_Z := 3
+const TABLE_FOCUS_Z := 6
 # The margin towards the bottom of the viewport on which to draw the cards.
 #
 # More than 0 and the card will appear hidden under the display area.

@@ -950,7 +950,12 @@ func set_card_size(value: Vector2, ignore_area = false) -> void:
 		node.call_deferred('set_size', node.custom_minimum_size)
 	highlight.position = Vector2(-3, -3)
 	if not ignore_area:
-		$CollisionShape2D.shape.size = value
+		# Preview dupes share this shape with their source card, so resizing it
+		# in place would inflate the source's hitbox as well. Resize a private
+		# copy instead.
+		if $CollisionShape2D.shape:
+			$CollisionShape2D.shape = $CollisionShape2D.shape.duplicate()
+			$CollisionShape2D.shape.size = value
 		$CollisionShape2D.position = value / 2
 
 

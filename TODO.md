@@ -79,13 +79,13 @@ Atualizado em 2026-11-02. Produção: build web de 2026-10-30 (Godot 3.4.4) em
 O layout grande já foi para a cena (Fase 5 em
 [CONCLUIDOS.md](./CONCLUIDOS.md)); falta o ajuste fino:
 
-- [ ] **Cena como fonte da verdade (rota B):** a geometria real do campo/cenário
+- [x] **Cena como fonte da verdade (rota B):** a geometria real do campo/cenário
   foi assada no `CGFBoard.tscn` (2026-11-02) e o runtime passou a respeitar o
-  autorado (espelho derivado do grid). Falta o ajuste fino abaixo, agora válido
-  no F5/F6.
-- [ ] **Base HD+ na web / HD e Full HD no desktop:** render do SubViewport a
+  autorado (espelho derivado do grid). O ajuste fino abaixo já vale no F5/F6.
+- [x] **Base HD+ na web / HD e Full HD no desktop:** render do SubViewport a
   1600×900 no web; seletor HD/FHD no menu desktop (`size_2d_override` mantém as
-  coordenadas 1280×720). Plano em [PLANEJAMENTO.md](./PLANEJAMENTO.md).
+  coordenadas 1280×720). Entregue em 2026-11-02, descrito em
+  [CONCLUIDOS.md](./CONCLUIDOS.md).
 - [ ] Cenário ativo no mesmo tamanho das cartas em jogo.
 - [ ] Rótulo de quantidade/energia dos Prêmios em outra posição.
 - [ ] Rótulos do lado do oponente que se espalham sobre o campo.

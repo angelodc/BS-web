@@ -148,4 +148,4 @@ O plano original acima assava a geometria uma vez e mantinha o runtime recalcula
 
 O playmat continua runtime-only de propósito: o export web exclui `assets/playmats/*` do pacote, então a arte não pode ser referenciada pela cena. No editor vê-se a geometria real sobre o fundo cinza do projeto.
 
-A decisão de base de resolução (HD+ 1600×900 na web, HD/Full HD no desktop) foi registrada em [PLANEJAMENTO.md](./PLANEJAMENTO.md) §3 e ainda não foi implementada.
+A decisão de base de resolução (HD+ 1600×900 na web, HD/Full HD no desktop) foi registrada em [PLANEJAMENTO.md](./PLANEJAMENTO.md) §3 e implementada em 2026-11-02: o SubViewport do tabuleiro e o da prévia crescem em pixels com `size_2d_override` fixo em 1280×720/300×450, então nenhuma coordenada autoral muda.

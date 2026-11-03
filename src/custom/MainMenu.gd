@@ -2,6 +2,7 @@ extends Panel
 
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const RedeScript = preload("res://src/custom/Rede.gd")
+const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 
 @onready var v_buttons := $MainMenu/VBox/Center/VButtons
 @onready var main_menu := $MainMenu
@@ -59,6 +60,7 @@ func _ready() -> void:
 	_apply_backdrop()
 	_update_lobby_controls()
 	_setup_pwa_entry()
+	_setup_render_option()
 	_probe_server()
 	# warning-ignore:return_value_discarded
 	get_viewport().size_changed.connect(_on_Menu_resized)
@@ -431,6 +433,40 @@ func _js_flag(expression: String) -> bool:
 	if value == null:
 		return false
 	return str(value).strip_edges().to_lower() == "true"
+
+
+# A densidade do tabuleiro e da prévia só é escolhida no desktop: no navegador
+# o build renderiza sempre em HD+ e quem manda no tamanho é o canvas. A escolha
+# vale a partir da próxima partida, porque o board lê o ajuste ao abrir.
+func _setup_render_option() -> void:
+	if RenderResolution.is_web():
+		return
+	var hint := "Densidade de renderização do tabuleiro e da prévia de carta. " \
+			+ "Vale a partir da próxima partida."
+	var row := HBoxContainer.new()
+	row.name = "RenderResolution"
+	var caption := Label.new()
+	caption.text = "Tabuleiro"
+	caption.tooltip_text = hint
+	row.add_child(caption)
+	var options := OptionButton.new()
+	options.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	options.tooltip_text = hint
+	options.add_item(RenderResolution.label(RenderResolution.HD))
+	options.add_item(RenderResolution.label(RenderResolution.FULL_HD))
+	options.selected = 1 if RenderResolution.current_choice() \
+			== RenderResolution.FULL_HD else 0
+	options.item_selected.connect(_on_render_option_selected)
+	row.add_child(options)
+	v_buttons.add_child(row)
+	# Above the Exit button, so the way out stays the last row.
+	v_buttons.move_child(row, v_buttons.get_child_count() - 2)
+
+
+func _on_render_option_selected(index: int) -> void:
+	var choice := RenderResolution.FULL_HD if index == 1 else RenderResolution.HD
+	RenderResolution.set_choice(choice)
+	DisplayMode.apply_render_choice()
 
 
 func _on_lobby_ready() -> void:

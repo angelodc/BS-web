@@ -296,6 +296,28 @@ func test_search_selection_closes_immediately_after_card_click():
 	selection_window.queue_free()
 
 
+# The deck search builds the same selection window and hovers its cards, which
+# shows the enlarged preview. That preview used to position itself through a
+# Viewport method that does not exist in Godot 4 and broke the search.
+func test_search_selection_preview_placement():
+	var card: Card = hand.draw_card()
+	var selection_window = load(
+			"res://src/core/SelectionWindow.tscn").instantiate()
+	board.add_child(selection_window)
+	selection_window.initiate_selection([card], 1, "max", true)
+	await yield_to(selection_window, "selection_window_opened", 2)
+	var grid_card_obj = selection_window.get_node("GridContainer").get_child(0)
+	var preview_popup = grid_card_obj.preview_popup
+	preview_popup.show_preview_card(card.canonical_name)
+	await yield_for(0.3)
+
+	var placement = preview_popup.get_preview_placement()
+	assert_eq(typeof(placement), TYPE_VECTOR2,
+			"Preview placement is computed inside the selection window")
+	assert_true(placement.is_finite(), "Preview placement is a finite point")
+	assert_almost_eq(preview_popup.position, placement, Vector2(30,30),
+			"Preview follows its computed placement instead of the grid cell")
+	selection_window.queue_free()
 func test_clairvoyance_reveals_top_cards_then_restores_the_deck():
 	var expected_top := deck.get_top_card()
 	var deck_count := deck.get_card_count()

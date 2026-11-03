@@ -17,7 +17,7 @@ class TestManipulationButtons:
 		await yield_for(0.2)
 		await move_mouse(card.global_position)
 		await yield_to(cards[0]._tween, "tween_all_completed", 1)
-		assert_almost_eq(Vector2(143.527466, -210.20842),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(87.27745, -210.20842),cards[0].position,Vector2(2,2),
 				"Card focused and in correct global position")
 		assert_almost_eq(Vector2(1.5, 1.5),cards[0].scale,Vector2(0.1,0.1),
 				"Card has correct scale")

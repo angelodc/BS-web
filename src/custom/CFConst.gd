@@ -129,7 +129,9 @@ const PATH_MOUSE_POINTER := PATH_CORE + "MousePointer.tscn"
 # The amount of distance neighboring cards are pushed during card focus
 #
 # It's based on the card width. Bigger percentage means larger push.
-const NEIGHBOUR_PUSH := 0.75
+# The focused hand card grows to 1.5x, so the neighbours need to clear that
+# extra width instead of only the resting card width.
+const NEIGHBOUR_PUSH := 1.0
 # The scale of a card while on the play area
 # You can adjust this for each different card type
 const PLAY_AREA_SCALE := 0.66
@@ -146,6 +148,11 @@ const PREVIEW_SCALE := 1.5
 # The scale of a card while it's shown focused on the top right.
 # You can adjust this for each different card type
 const FOCUSED_SCALE := 1.5
+# Draw order on the table. Table cards are reparented under the board as they
+# are played, so they end up after the hand in the tree; these layers keep the
+# hand over the table and lift the card being read over its own rows.
+const TABLE_HAND_Z := 5
+const TABLE_FOCUS_Z := 3
 # The margin towards the bottom of the viewport on which to draw the cards.
 #
 # More than 0 and the card will appear hidden under the display area.

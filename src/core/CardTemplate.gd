@@ -218,6 +218,9 @@ var definitions_key := ""
 var network_id := ""
 # Remote copies of the opponent's cards must not accept input or fire scripts.
 var network_mirror := false
+# A mouse release can reach both _input and the card's GUI. The flag keeps the
+# same release from dropping the card twice.
+var _drop_release_handled := false
 # When true, the mirrored card still accepts pointer input so the local player
 # can drag it. The drop is handled by MultiplayerSync and sent to its owner.
 var remote_draggable := false
@@ -474,7 +477,13 @@ func _input(event) -> void:
 			# because the click depress will not trigger on the card for some reason
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 			$Control.set_default_cursor_shape(Control.CURSOR_ARROW)
+			# The card's own GUI release is not delivered while it is dragged,
+			# so the drop is resolved here, where the release always arrives.
+			var was_dragged: bool = state == CardState.DRAGGED and not network_mirror
 			cfc.card_drag_ongoing = null
+			if was_dragged:
+				_drop_release_handled = true
+				_drop_dragged_card()
 
 
 # A signal for whenever the player clicks on a card
@@ -482,16 +491,13 @@ func _on_Card_gui_input(event) -> void:
 	if network_mirror:
 		return
 	if event is InputEventMouseButton and cfc.NMAP.has("board"):
-		# because of https://github.com/godotengine/godot/issues/44138
-		# we need to double check that the card which is receiving the
-		# gui input, is actually the one with the highest index.
-		# We use our mouse pointer which is tracking this info.
-		if cfc.NMAP.board.mouse_pointer.current_focused_card \
-				and self != cfc.NMAP.board.mouse_pointer.current_focused_card:
-			cfc.NMAP.board.mouse_pointer.current_focused_card._on_Card_gui_input(event)
+		# The card that receives the click is the one drawn under the pointer.
+		# Echoing the event to the previously focused card (a Godot 3-era
+		# workaround for godotengine/godot#44138) made a click on a neighbour
+		# start dragging that other card instead of the one the player pressed.
 		# If the player left clicks, we need to see if it's a double-click
 		# or a long click
-		elif event.is_pressed() \
+		if event.is_pressed() \
 				and event.get_button_index() == 1 \
 				and not buttons.are_hovered() \
 				and not tokens.are_hovered():
@@ -545,27 +551,38 @@ func _on_Card_gui_input(event) -> void:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 			$Control.set_default_cursor_shape(Control.CURSOR_ARROW)
 			cfc.card_drag_ongoing = null
-			match state:
-				CardState.DRAGGED:
-					# if the card was being dragged, it's index is very high
-					# to always draw above other objects
-					# We need to reset it to the default of 0
-					z_index = 0
-					for attachment in _live_attachments():
-						attachment.z_index = 0
-
-					var destination = cfc.NMAP.board
-					if potential_container:
-						destination = potential_container
-						potential_container.highlight.set_highlight(false)
-					# A project can take the drop over and run it as its own
-					# table action; it returns true when the move is already
-					# handled, applied or refused.
-					if not common_pre_drop_scripts(destination):
-						move_to(destination)
-					_focus_completed = false
+			if state == CardState.DRAGGED and not _drop_release_handled:
+				_drop_release_handled = true
+				_drop_dragged_card()
 		else:
 			_process_more_card_inputs(event)
+
+
+# Resolves the drop of a card that is being dragged. Called from _input, where
+# the release always arrives, and from the GUI release as a fallback.
+func _drop_dragged_card() -> void:
+	# if the card was being dragged, it's index is very high
+	# to always draw above other objects
+	# We need to reset it to the default of 0
+	z_index = 0
+	for attachment in _live_attachments():
+		attachment.z_index = 0
+
+	var destination = cfc.NMAP.board
+	if potential_container:
+		destination = potential_container
+		potential_container.highlight.set_highlight(false)
+	# A project can take the drop over and run it as its own
+	# table action; it returns true when the move is already
+	# handled, applied or refused.
+	if not common_pre_drop_scripts(destination):
+		# The legacy path must still show up in a recorded match,
+		# so the board is told about the drop before it happens.
+		var table = cfc.NMAP.get("board", null)
+		if is_instance_valid(table) and table.has_method("note_drop"):
+			table.note_drop(self, destination)
+		move_to(destination)
+	_focus_completed = false
 
 
 # Overridable function to allow games to extend the _on_Card_gui_input() functionality
@@ -2192,7 +2209,13 @@ func _organize_attachments() -> void:
 #
 # Returns the adjusted global_mouse_position
 func _determine_board_position_from_mouse() -> Vector2:
-	var targetpos: Vector2 = cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos() - (_drag_offset * scale)
+	var mouse: Vector2 = \
+			cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos()
+	# The anchor is stored in the card's own space, so it follows the Control's
+	# rotation and the scale the drag tween applies.
+	var grab: Vector2 = \
+			$Control.get_global_transform_with_canvas().basis_xform(_drag_offset)
+	var targetpos: Vector2 = mouse - grab
 	if targetpos.x + card_size.x * scale.x >= get_viewport().get_visible_rect().size.x:
 		targetpos.x = get_viewport().get_visible_rect().size.x - card_size.x * scale.x
 	if targetpos.x < 0:
@@ -2233,6 +2256,8 @@ func _pushAside(targetpos: Vector2, target_rotation: float) -> void:
 
 # Pick up a card to drag around with the mouse.
 func _start_dragging(drag_offset: Vector2) -> void:
+	# The offset is in this card's own GUI space. Since the card that receives
+	# the click is the one under the pointer, it is never another card's.
 	_drag_offset = drag_offset
 	# When dragging we want the dragged card and attachments to always be drawn above all else
 	z_index = 99
@@ -2252,6 +2277,7 @@ func _start_dragging(drag_offset: Vector2) -> void:
 #		else:
 #			get_viewport().warp_mouse(global_position + _drag_anchor)
 	set_state(CardState.DRAGGED)
+	_drop_release_handled = false
 	# We check if the card was already overlapping with other card
 	# before we started dragging. If so, we activate the code
 	# which checks for potential hosts, on all these cards to make sure

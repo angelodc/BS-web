@@ -220,20 +220,14 @@ func _focus_adjacent_hand_card(card: Card, side: int) -> void:
 func determine_global_mouse_pos() -> Vector2:
 	if cfc.ut and cfc.NMAP.get("board"):
 		return cfc.NMAP.board._UT_mouse_position
-	var current_scene = get_tree().current_scene
-	if not current_scene:
+	# The board lives in a SubViewport, so the only position that matches its
+	# GUI hit-testing is the one that viewport received. The Godot 3 offset and
+	# camera-zoom workaround for godotengine/godot#30215 stopped being needed
+	# in 4.0 and only shifted the answer away from the card under the cursor.
+	var viewport := get_viewport()
+	if viewport == null:
 		return global_position
-	var zoom = Vector2(1,1)
-	# We have to do the below offset hack due to godotengine/godot#30215
-	# This is caused because we're using a viewport node and
-	# scaling the game in full-creen.
-	if get_viewport() and get_viewport().has_node("Camera2D"):
-		zoom = get_viewport().get_node("Camera2D").zoom
-	var offset_mouse_position = current_scene.get_global_mouse_position() \
-			- get_viewport_transform().origin
-	offset_mouse_position *= zoom
-	#var scaling_offset = get_tree().get_root().get_node('Main').get_viewport().get_size_override() * OS.window_size
-	return offset_mouse_position
+	return viewport.get_mouse_position()
 
 
 # Disables the mouse from interacting with the board

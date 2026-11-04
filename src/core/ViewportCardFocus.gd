@@ -89,9 +89,11 @@ func _process(_delta) -> void:
 
 
 # A card known to both players can be previewed face up even while its copy on
-# the table is face down, which is what the log preview asks for.
+# the table is face down, which is what the log preview asks for. A viewed card
+# is known to both players, so an already existing dupe must not be flipped
+# back down when the focus is restarted over it.
 func _preview_faceup(card: Card) -> bool:
-	return card.is_faceup or card.preview_force_front
+	return card.is_faceup or card.is_viewed or card.preview_force_front
 
 
 # Displays the card closeup in the Focus viewport

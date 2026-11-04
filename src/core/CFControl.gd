@@ -104,7 +104,6 @@ var card_temp_property_modifiers = {}
 var ov_utils = load(CFConst.PATH_OVERRIDABLE_UTILS).new()
 var curr_scale: float
 
-var script_load_thread : Thread
 var scripts_loading := true
 const BSDB_IMAGE_BASE_URL := "https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main/cards/oficial"
 const CARD_IMAGE_CACHE_PATH := "user://CardImages/"
@@ -236,14 +235,10 @@ func _setup() -> void:
 	var defs_load_end_time = Time.get_ticks_msec()
 	if OS.has_feature("debug") and not cfc.is_testing:
 		print_debug("DEBUG INFO:CFControl: card definitions load time = %sms" % [str(defs_load_end_time - load_start_time)])	
-	# Removed threading since I optimized this loading function
-#	load_script_definitions()
-	# We're loading the script definitions in a thread to avoid delaying game load too much
-	if OS.get_name() == "HTML5":
-		load_script_definitions()
-	else:
-		script_load_thread = Thread.new()
-		script_load_thread.start(Callable(self, "load_script_definitions"))
+	# The script definitions used to load in a thread. Godot 4 refuses signal
+	# emission from a worker thread, and every repeated test setup dropped the
+	# running thread, so they are loaded up front now.
+	load_script_definitions()
 	var scripts_load_end_time = Time.get_ticks_msec()
 	if OS.has_feature("debug") and not cfc.is_testing:
 		print_debug("DEBUG INFO:CFControl: card scripts load time = %sms" % [str(scripts_load_end_time - load_start_time)])	
@@ -381,8 +376,11 @@ func load_script_definitions() -> void:
 
 # Setter for game_paused
 func set_game_paused(value: bool) -> void:
-	if NMAP.has("board") and NMAP.board.mouse_pointer:
-		NMAP.board.mouse_pointer.is_disabled = value
+	# The mapped board can be a freed instance after a scene teardown; the key
+	# alone still exists in NMAP, so validity has to be checked explicitly.
+	var board = NMAP.get("board")
+	if is_instance_valid(board) and board.mouse_pointer:
+		board.mouse_pointer.is_disabled = value
 	game_paused = value
 
 
@@ -516,11 +514,6 @@ func _on_viewport_resized() -> void:
 	curr_scale = curr_pix / pix
 	if curr_scale > 1:
 		curr_scale = 1
-
-
-func _exit_tree():
-	if script_load_thread:
-		script_load_thread.wait_to_finish()
 
 
 # The SignalPropagator is responsible for collecting all card signals

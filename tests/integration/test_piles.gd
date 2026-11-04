@@ -6,24 +6,24 @@ class TestMoveToContainer:
 	func test_move_to_container():
 		var card: Card
 		card = cards[2]
-		await drag_drop(card, cfc.NMAP.discard.position).completed
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await drag_drop(card, cfc.NMAP.discard.position)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 		assert_almost_eq(card.global_position,cfc.NMAP.discard.position,Vector2(2,2),
 				"Card's final position matches pile's position")
 		assert_eq(1,cfc.NMAP.discard.get_card_count(),
 				"The correct amount of cards are hosted")
 
 	func test_move_to_multiple_container():
-		await drag_drop(cards[2], cfc.NMAP.discard.position + Vector2(10,10)).completed
-		await move_mouse(Vector2(500,300)).completed
-		await drag_drop(cards[4], cfc.NMAP.deck.position + Vector2(10,10)).completed
-		await move_mouse(Vector2(500,300)).completed
-		await drag_drop(cards[1], cfc.NMAP.discard.position + Vector2(10,10)).completed
-		await move_mouse(Vector2(500,300)).completed
-		await drag_drop(cards[0], cfc.NMAP.deck.position + Vector2(10,10)).completed
-		await yield_to(cards[0]._tween, "tween_all_completed", 0.5).YIELD
-		await yield_to(cards[0]._tween, "tween_all_completed", 0.5).YIELD
+		await drag_drop(cards[2], cfc.NMAP.discard.position + Vector2(10,10))
+		await move_mouse(Vector2(500,300))
+		await drag_drop(cards[4], cfc.NMAP.deck.position + Vector2(10,10))
+		await move_mouse(Vector2(500,300))
+		await drag_drop(cards[1], cfc.NMAP.discard.position + Vector2(10,10))
+		await move_mouse(Vector2(500,300))
+		await drag_drop(cards[0], cfc.NMAP.deck.position + Vector2(10,10))
+		await yield_to(cards[0]._tween, "tween_all_completed", 0.5)
+		await yield_to(cards[0]._tween, "tween_all_completed", 0.5)
 		assert_almost_eq(cards[2].global_position,
 				cfc.NMAP.discard.global_position,Vector2(2,2),
 				"Card 2 final position matches pile's position")
@@ -47,14 +47,14 @@ class TestMoveToContainer:
 	func test_move_from_board_to_deck_to_hand():
 		var card: Card
 		card = cards[2]
-		await drag_drop(card, Vector2(1000,100)).completed
-		await drag_drop(card, cfc.NMAP.deck.position).completed
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await drag_drop(card, Vector2(1000,100))
+		await drag_drop(card, cfc.NMAP.deck.position)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 	# warning-ignore:return_value_discarded
 		hand.draw_card()
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 		assert_almost_eq(hand.to_global(card.recalculate_position()),
 				card.global_position,Vector2(2,2),
 				"Card finished move to hand from deck from board")
@@ -65,13 +65,13 @@ class TestPileFacing:
 	func test_pile_facing():
 		var card: Card = cfc.NMAP.deck.get_top_card()
 		card.move_to(cfc.NMAP.discard)
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 		assert_true(card.is_faceup, "Card should be faceup in discard")
 		card = cards[0]
 		card.move_to(cfc.NMAP.deck)
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 		assert_false(card.is_faceup,"Card should be facedown in deck")
 
 class TestPopupView:
@@ -81,22 +81,23 @@ class TestPopupView:
 		var discard = cfc.NMAP.discard
 		for card in cfc.NMAP.deck.get_all_cards():
 			card.move_to(discard)
-		await yield_for(1).YIELD
+		await yield_for(1)
 		discard._on_View_Button_pressed()
-		await yield_for(1).YIELD
-		assert_eq(6,len(discard.get_children()),
-				"No cards should appear in the pile root after popup")
+		await yield_for(1)
+		for child in discard.get_children():
+			assert_false(child is Card,
+					"No cards should appear in the pile root after popup")
 		assert_eq(12,discard.get_card_count(),
 				"Cards in popup should be returned with get_all_cards()")
 		assert_eq(12,discard.get_node("ViewPopup/CardView").get_child_count(),
 				"All cards all migrated to popup window")
-		assert_eq(1.0,discard.get_node("ViewPopup").modulate[3],
+		assert_true(discard.get_node("ViewPopup").visible,
 				"ViewPopup should be visible")
 		for slot in discard.get_node("ViewPopup/CardView").get_children():
 			assert_true(slot.get_child(0).visible,
 					"Every card in the popup should be visible")
 		cards[1].move_to(discard)
-		await yield_for(1).YIELD
+		await yield_for(1)
 		assert_eq(13,discard.get_node("ViewPopup/CardView").get_child_count(),
 				"Hosting a card in the pile, while popup is open, puts it in the popup")
 		var hand_scale: float = cfc.NMAP.hand.card_display_scale
@@ -109,7 +110,7 @@ class TestPopupView:
 		assert_false(discard.get_node("Control/ManipulationButtons").visible,
 				"Manipulation Buttons should be hidden while popup is active")
 		discard.get_node("ViewPopup").hide()
-		await yield_for(1).YIELD
+		await yield_for(1)
 		assert_true(cards[1].is_faceup,
 				"Cards returning from popup should respect piles card facing")
 
@@ -117,28 +118,30 @@ class TestPopupView:
 		var discard = cfc.NMAP.discard
 		for card in cfc.NMAP.deck.get_all_cards():
 			card.move_to(discard)
-		await yield_for(1).YIELD
+		await yield_for(1)
 		discard._on_View_Button_pressed()
-		await yield_for(1).YIELD
+		await yield_for(1)
 		var grid: GridContainer = discard.get_node("ViewPopup/CardView")
 		var card: Card = discard.pre_sorted_order[0]
 		var slot: Control = card.get_parent()
 		card.move_to(cfc.NMAP.deck)
-		await yield_for(0.5).YIELD
+		await yield_for(0.5)
 		assert_false(is_instance_valid(slot),
 				"The slot of a card that left the popup should be dropped")
 		assert_eq(11, grid.get_child_count(),
 				"The popup should keep only the remaining cards")
 		discard.get_node("ViewPopup").hide()
-		await yield_for(1).YIELD
+		await yield_for(1)
 
 	func test_popup_deck_view():
 		var deck = cfc.NMAP.deck
 		var card: Card = deck.get_top_card()
 		deck._on_View_Button_pressed()
-		await yield_to(deck.get_node('ViewPopup/Tween'), "tween_all_completed", 0.5).YIELD
+		# PopupPanel is a Window in Godot 4: it no longer fades in through a
+		# tween child, so just give the popup a frame to settle.
+		await yield_for(0.5)
 		card.move_to(deck)
-		await yield_for(0.3).YIELD
+		await yield_for(0.3)
 		assert_eq(Vector2(0,0),card.position,
 				"Moving card from popup back to the same pile, should do nothing")
 		assert_eq(Vector2(0.75,0.75),card.scale,
@@ -146,7 +149,7 @@ class TestPopupView:
 		assert_true(card.is_faceup,
 				"Moving card from popup back to the same pile, should do nothing")
 		deck.get_node("ViewPopup").hide()
-		await yield_for(1).YIELD
+		await yield_for(1)
 		assert_false(card.is_faceup,
 				"Cards returning from popup should respect piles card facing")
 
@@ -157,14 +160,14 @@ class TestStacking:
 		var deck : Pile = cfc.NMAP.deck
 		var card: Card = cards[4]
 		card.move_to(deck)
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 		assert_eq(deck.get_stack_position(card),card.position,
 				"Card moved in, placed in stack position")
 		card = cards[2]
 		card.move_to(deck)
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
-		await yield_to(card.get_node('Tween'), "tween_all_completed", 0.5).YIELD
+		await yield_to(card._tween, "tween_all_completed", 0.5)
+		await yield_to(card._tween, "tween_all_completed", 0.5)
 		assert_eq(deck.get_stack_position(card),card.position,
 				"Card moved in, placed in stack position")
 		deck.shuffle_cards(false)
@@ -179,17 +182,17 @@ class TestShuffleRng:
 		var card = deck.get_bottom_card()
 		var prev_index = card.get_my_card_index()
 		deck.shuffle_cards()
-		await yield_for(1).YIELD
+		await yield_for(1)
 		if prev_index == card.get_my_card_index():
 			rng_threshold += 1
 		prev_index = card.get_my_card_index()
 		deck.shuffle_cards()
-		await yield_for(1).YIELD
+		await yield_for(1)
 		if prev_index == card.get_my_card_index():
 			rng_threshold += 1
 		prev_index = card.get_my_card_index()
 		deck.shuffle_cards()
-		await yield_for(1).YIELD
+		await yield_for(1)
 		if prev_index == card.get_my_card_index():
 			rng_threshold += 1
 		prev_index = card.get_my_card_index()
@@ -205,10 +208,10 @@ class TestPileDisplayScale:
 				load("res://src/core/Pile.tscn").instantiate())
 		scaled_pile.card_size = Vector2(120, 168)
 		scaled_pile.card_display_scale = 0.8
-		await yield_for(0.1).YIELD
+		await yield_for(0.1)
 		var card: Card = cards[0]
 		card.move_to(scaled_pile)
-		await yield_for(1).YIELD
+		await yield_for(1)
 		assert_eq(Vector2(0.8, 0.8), card.scale,
 				"Card keeps the pile display scale while idle in the pile")
 		assert_eq(scaled_pile.get_stack_position(card), card.position,

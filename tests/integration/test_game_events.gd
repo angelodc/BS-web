@@ -1,14 +1,14 @@
 extends "res://tests/UTcommon.gd"
 
+const SCENARIO_GRID_SCENE = preload("res://src/custom/CGFModifiedLabelGrid.tscn")
+
 var cards := []
 
 
 func before_each():
-	var confirm_return = setup_board()
-	if confirm_return is GDScriptFunctionState:
-		confirm_return = await confirm_return.completed
+	await setup_board()
 	cards = draw_test_cards(3)
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	GameEvents.set_enabled(true)
 
 
@@ -21,7 +21,7 @@ func test_move_to_board_logs_the_card_name():
 	var card: Card = cards[0]
 	card.properties["_tipo"] = "Habilidade"
 	card.move_to(board)
-	await yield_for(0.3).YIELD
+	await yield_for(0.3)
 	assert_eq(GameEvents.entries.size(), 1, "One entry for the move")
 	var entry: Dictionary = GameEvents.entries.back()
 	assert_eq(entry["action"], "played_field", "A plain field play is classified")
@@ -35,7 +35,7 @@ func test_character_play_is_classified():
 	var card: Card = cards[0]
 	card.properties["_tipo"] = "Personagem"
 	card.move_to(board)
-	await yield_for(0.3).YIELD
+	await yield_for(0.3)
 	var entry: Dictionary = GameEvents.entries.back()
 	assert_eq(entry["action"], "played_character", "Characters get their own action")
 	assert_true(str(entry["text"]).find("na cena") >= 0,
@@ -45,8 +45,15 @@ func test_character_play_is_classified():
 func test_scenario_play_is_classified_separately():
 	var card: Card = cards[1]
 	card.properties["_tipo"] = "Cenário"
-	card.move_to(board)
-	await yield_for(0.3).YIELD
+	# The test board has no scenario slot, and a scenario is only allowed into
+	# that slot; add the production grid before playing the card.
+	var scenario_grid: BoardPlacementGrid = SCENARIO_GRID_SCENE.instantiate()
+	scenario_grid.name = "ModifiedLabelGrid"
+	board.add_child(scenario_grid)
+	scenario_grid.add_slot()
+	await yield_for(0.1)
+	card.move_to(board, -1, scenario_grid.get_slot(0))
+	await yield_for(0.3)
 	var entry: Dictionary = GameEvents.entries.back()
 	assert_eq(entry["action"], "played_scenario", "Scenario cards get their own action")
 	assert_true(str(entry["text"]).find("cenário") >= 0,
@@ -56,7 +63,7 @@ func test_scenario_play_is_classified_separately():
 func test_move_to_resources_reveals_the_name():
 	var card: Card = cards[2]
 	card.move_to(discard)
-	await yield_for(0.3).YIELD
+	await yield_for(0.3)
 	var entry: Dictionary = GameEvents.entries.back()
 	assert_eq(entry["action"], "placed_resources",
 			"The discard pile is the resource zone")
@@ -66,7 +73,7 @@ func test_move_to_resources_reveals_the_name():
 func test_draw_from_deck_hides_the_card_identity():
 	var card: Card = deck.get_top_card()
 	card.move_to(hand)
-	await yield_for(0.3).YIELD
+	await yield_for(0.3)
 	var entry: Dictionary = GameEvents.entries.back()
 	assert_eq(entry["action"], "drew", "Drawing from the deck is classified")
 	assert_eq(entry["card"], "", "The drawn card keeps its identity private")
@@ -91,7 +98,7 @@ func test_privacy_rules():
 func test_net_tagged_changes_are_ignored():
 	var card: Card = cards[0]
 	card.move_to(board, -1, null, ["net"])
-	await yield_for(0.3).YIELD
+	await yield_for(0.3)
 	assert_eq(GameEvents.entries.size(), 0,
 			"A network replay does not log the same move twice")
 
@@ -130,7 +137,7 @@ func test_disabled_bus_records_nothing():
 
 func test_log_line_links_the_card_name():
 	var hud = add_child_autofree(load("res://src/custom/MatchHUD.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	hud._append_log("P1 colocou Carta X nos Recursos", "Carta X")
 	var index: int = hud._logs.size() - 1
 	var line := str(hud._line_bbcode(index))
@@ -143,7 +150,7 @@ func test_log_line_links_the_card_name():
 
 func test_log_line_without_card_has_no_meta():
 	var hud = add_child_autofree(load("res://src/custom/MatchHUD.tscn").instantiate())
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	hud._append_log("P2 comprou 1 carta")
 	var line := str(hud._line_bbcode(hud._logs.size() - 1))
 	assert_eq(line.find("[url="), -1, "A private line carries no link")

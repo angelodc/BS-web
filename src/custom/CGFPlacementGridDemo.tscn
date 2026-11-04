@@ -8,44 +8,104 @@ auto_arrange = true
 minimum_columns = 2
 
 [node name="GridContainer" parent="." index="0"]
-offset_right = 374.0
-offset_bottom = 345.0
-columns = 3
+offset_right = 957.0
+offset_bottom = 282.2
+theme_override_constants/h_separation = 44
+theme_override_constants/v_separation = 5
+columns = 7
 
 [node name="BoardPlacementSlot" parent="GridContainer" index="0"]
-offset_right = 120.0
-offset_bottom = 168.0
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_right = 99.0
+offset_bottom = 138.6
 
 [node name="BoardPlacementSlot2" parent="GridContainer" index="1" instance=ExtResource( 1 )]
-offset_left = 125.0
-offset_right = 245.0
-offset_bottom = 168.0
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 143.0
+offset_right = 242.0
+offset_bottom = 138.6
 
 [node name="BoardPlacementSlot3" parent="GridContainer" index="2" instance=ExtResource( 1 )]
-offset_left = 250.0
-offset_right = 370.0
-offset_bottom = 168.0
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 286.0
+offset_right = 385.0
+offset_bottom = 138.6
 
 [node name="BoardPlacementSlot4" parent="GridContainer" index="3" instance=ExtResource( 1 )]
-offset_top = 173.0
-offset_right = 120.0
-offset_bottom = 341.0
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 429.0
+offset_right = 528.0
+offset_bottom = 138.6
 
 [node name="BoardPlacementSlot5" parent="GridContainer" index="4" instance=ExtResource( 1 )]
-offset_left = 125.0
-offset_top = 173.0
-offset_right = 245.0
-offset_bottom = 341.0
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 572.0
+offset_right = 671.0
+offset_bottom = 138.6
 
 [node name="BoardPlacementSlot6" parent="GridContainer" index="5" instance=ExtResource( 1 )]
-offset_left = 250.0
-offset_top = 173.0
-offset_right = 370.0
-offset_bottom = 341.0
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 715.0
+offset_right = 814.0
+offset_bottom = 138.6
+
+[node name="BoardPlacementSlot7" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 858.0
+offset_right = 957.0
+offset_bottom = 138.6
+
+[node name="BoardPlacementSlot8" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_top = 143.6
+offset_right = 99.0
+offset_bottom = 282.2
+
+[node name="BoardPlacementSlot9" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 143.0
+offset_top = 143.6
+offset_right = 242.0
+offset_bottom = 282.2
+
+[node name="BoardPlacementSlot10" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 286.0
+offset_top = 143.6
+offset_right = 385.0
+offset_bottom = 282.2
+
+[node name="BoardPlacementSlot11" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 429.0
+offset_top = 143.6
+offset_right = 528.0
+offset_bottom = 282.2
+
+[node name="BoardPlacementSlot12" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 572.0
+offset_top = 143.6
+offset_right = 671.0
+offset_bottom = 282.2
+
+[node name="BoardPlacementSlot13" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 715.0
+offset_top = 143.6
+offset_right = 814.0
+offset_bottom = 282.2
+
+[node name="BoardPlacementSlot14" parent="GridContainer" instance=ExtResource( 1 )]
+custom_minimum_size = Vector2( 99, 138.6 )
+offset_left = 858.0
+offset_top = 143.6
+offset_right = 957.0
+offset_bottom = 282.2
 
 [node name="Control" parent="." index="1"]
-offset_right = 374.0
-offset_bottom = 345.0
+offset_right = 957.0
+offset_bottom = 282.2
 
 [node name="Label" parent="Control" index="0"]
 text = "Cena: Personagens e Suportes"

@@ -100,7 +100,7 @@ custom_minimum_size = Vector2( 150, 3 )
 mouse_filter = 2
 theme_override_constants/margin_top = 3
 
-[node name="TextureRect" type="TextureRect" parent="."]
+[node name="Glow" type="TextureRect" parent="."]
 visible = false
 modulate = Color( 1.7, 1, 1, 1 )
 anchor_right = 1.0

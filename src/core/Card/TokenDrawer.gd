@@ -7,8 +7,17 @@ extends Node2D
 const _TOKEN_SCENE_FILE = CFConst.PATH_CORE + "Token.tscn"
 const _TOKEN_SCENE = preload(_TOKEN_SCENE_FILE)
 
-# A flag on whether the token drawer is currently open
-var is_drawer_open := false: set = set_is_drawer_open
+# A flag on whether the token drawer is currently open.
+#
+# The animation below owns the state, so it writes the backing field directly;
+# writing the property itself would call this setter again and recurse.
+var _is_drawer_open := false
+var is_drawer_open: bool:
+	get:
+		return _is_drawer_open
+	set(value):
+		if _is_drawer_open != value:
+			token_drawer(value)
 
 @onready var _tween := LegacyTween.new(self)
 # Stores a reference to the Card that is hosting this node
@@ -31,13 +40,6 @@ func _process(_delta: float) -> void:
 		# We're extending the area of the drawer a bit, to try and avoid it
 		# glitching when moving from card to drawer and back
 		shape.size = $Drawer.size + Vector2(20,0)
-
-# Setter for is_drawer_open
-# Simply calls token_drawer()
-func set_is_drawer_open(value: bool) -> void:
-	if is_drawer_open != value:
-		token_drawer(value)
-
 
 # Reveals or Hides the token drawer
 #
@@ -66,7 +68,7 @@ func token_drawer(requested_state := true) -> void:
 				token.expand()
 			# Normally the drawer is invisible. We make it visible now
 			$Drawer.self_modulate.a = 1
-			is_drawer_open = true
+			_is_drawer_open = true
 			# warning-ignore:return_value_discarded
 			_tween.start()
 			# We need to make our tokens appear on top of other cards on the table
@@ -90,7 +92,7 @@ func token_drawer(requested_state := true) -> void:
 			for token in $Drawer/VBoxContainer.get_children():
 				token.retract()
 			$Drawer.self_modulate.a = 0
-			is_drawer_open = false
+			_is_drawer_open = false
 			z_index = 0
 
 
@@ -201,10 +203,15 @@ func get_token_count(token_name: String) -> int:
 # This is used to retain focus on the card
 # while the player is manipulating tokens.
 func are_hovered() -> bool:
-	var is_hovered = false
-	if cfc.NMAP.board.mouse_pointer in $Drawer/Area2D.get_overlapping_areas():
-		is_hovered = true
-	return(is_hovered)
+	# The drawer's Area2D overlap list can go stale in Godot 4: it keeps
+	# reporting the MousePointer after the cursor has already left, which
+	# would lock the card focus and leave the drawer open. Test the drawer
+	# rectangle directly instead.
+	var area: Area2D = $Drawer/Area2D
+	var shape: RectangleShape2D = $Drawer/Area2D/CollisionShape2D.shape
+	var half_size: Vector2 = shape.size * area.global_scale / 2.0
+	var drawer_rect := Rect2(area.global_position - half_size, half_size * 2.0)
+	return drawer_rect.has_point(cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos())
 
 
 # Resizes Token Drawer to min size whenever a token is removed completely.

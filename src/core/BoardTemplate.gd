@@ -49,7 +49,9 @@ func _process(_delta: float) -> void:
 func _physics_process(delta) -> void:
 	if _UT_interpolation_requested:
 		if _t < 1:
-			_t += delta * _UT_mouse_speed
+			# Clamp so the simulated pointer stops exactly on the requested
+			# point instead of lerping past it by up to a physics tick.
+			_t = minf(_t + delta * _UT_mouse_speed, 1.0)
 			_UT_mouse_position = _UT_current_mouse_position.lerp(
 					_UT_target_mouse_position, _t)
 		else:

@@ -73,7 +73,7 @@ func handle_event(event : InputEventKey) -> bool:
 		return false
 	if _text_input_focused():
 		return false
-	return handle_key(int(event.keycode), event.shift, event.control)
+	return handle_key(int(event.keycode), event.shift_pressed, event.ctrl_pressed)
 
 
 # Test and script entry. Returns true when the key was consumed.

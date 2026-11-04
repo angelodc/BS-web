@@ -25,9 +25,10 @@ func _init(
 	# For Alterants, we might need to calculate them per subject in a subject list
 	if prev_subject != null:
 		prev_subjects = [prev_subject]
-	# Godot 4 constructors cannot be coroutines, so the filter/confirm/subjects
-	# pass runs deferred. AlterantEngine.execute() waits for the primed signal.
-	_prime.call_deferred()
+	# The priming pass runs synchronously when it does not need the player, which
+	# keeps a plain mod_counter alteration applied by the time execute_scripts()
+	# returns. It only suspends when a confirm or a subject scan awaits.
+	_prime()
 
 
 func _prime() -> void:

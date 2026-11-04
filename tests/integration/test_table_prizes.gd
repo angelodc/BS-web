@@ -27,9 +27,7 @@ var _saved := {}
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		await setup.completed
+	await setup_board()
 	actions = Actions.new(board, 1)
 	sink = FakePrizeSink.new()
 	actions.prize_sink = sink
@@ -164,7 +162,7 @@ func test_the_resource_count_survives_the_view_popup():
 	assert_true(_ok(actions.apply({"op": "mandar_topo_para_recursos"})))
 	assert_true(_ok(actions.apply({"op": "mandar_topo_para_recursos"})))
 	discard._on_View_Button_pressed()
-	await yield_for(1).YIELD
+	await yield_for(1)
 
 	var snapshot = Snapshot.capture(board, 1)
 

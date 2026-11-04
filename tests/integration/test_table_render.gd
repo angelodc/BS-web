@@ -19,9 +19,7 @@ var scenario_grid: BoardPlacementGrid
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		await setup.completed
+	await setup_board()
 	grid = Snapshot.field_grid(board)
 	# The test board has no scenario slot, so one is added here the same way the
 	# production scene offers it.

@@ -60,12 +60,6 @@ faceup_cards = true
 self_modulate = Color( 1, 1, 1, 0.501961 )
 theme_override_styles/panel = SubResource( 1 )
 
-[node name="Tween" parent="Discard/Control/ManipulationButtons" index="3" groups=["cgf_tween"]]
-
-[node name="Tween" parent="Discard/ViewPopup" index="1" groups=["cgf_tween"]]
-
-[node name="Tween" parent="Discard" index="3" groups=["cgf_tween"]]
-
 [node name="Hand" parent="." instance=ExtResource( 3 )]
 
 [node name="Counters" parent="." instance=ExtResource( 6 )]

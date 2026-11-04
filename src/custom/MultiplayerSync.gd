@@ -150,6 +150,9 @@ func _input(event) -> void:
 func _pointer_position() -> Vector2:
 	if _pointer_known:
 		return _pointer_pos
+	# A bare instance (tests, teardown) has no viewport to ask for the mouse.
+	if not is_inside_tree():
+		return Vector2.ZERO
 	return get_global_mouse_position()
 
 
@@ -513,9 +516,12 @@ func _apply_remote_card(data: Dictionary) -> void:
 	# The mirror is seen from the other side of the table, so it is shown
 	# upside down like a real opponent's card, the resource miniatures
 	# included: their grid is already reflected, so the card has to turn with
-	# it or the two sides would only half match. The rotation only reaches the
-	# drawn control through the tween, so it has to start here.
-	var mirror_rotation := (rotation + 180) % 360
+	# it or the two sides would only half match. Resources are only ever
+	# head-down, so a rotation carried over from the owner cannot leave them
+	# crooked. The rotation only reaches the drawn control through the tween,
+	# so it has to start here.
+	var mirror_rotation := 180 if zone == "resources" \
+			else (rotation + 180) % 360
 	# warning-ignore:return_value_discarded
 	card.set_card_rotation(mirror_rotation, false, true, false, ["net"])
 	if card.attachments.size() > 0:

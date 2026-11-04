@@ -465,9 +465,15 @@ func spawn_card(script: ScriptTask) -> void:
 		grid = cfc.NMAP.board.get_grid(grid_name)
 		if grid:
 			for _iter in range(count + alteration):
+				# The script can outlive the grid and the board (a test teardown
+				# frees them while this loop still waits), so stop cleanly.
+				if not is_instance_valid(grid) or not is_instance_valid(script.owner):
+					return
 				slot = grid.find_available_slot()
 				# We need a small delay, to allow a potential new slot to instance
 				await script.owner.get_tree().create_timer(0.05).timeout
+				if not is_instance_valid(grid) or not is_instance_valid(script.owner):
+					return
 				if slot:
 					card = cfc.instance_card(canonical_name)
 					cfc.NMAP.board.add_child(card)
@@ -736,7 +742,9 @@ func ask_integer(script: ScriptTask) -> void:
 	var maximum = script.get_property(SP.KEY_ASK_INTEGER_MAX)
 	integer_dialog.prep(script.owner.canonical_name, minimum, maximum)
 	# We have to wait until the player has finished selecting an option
-	await integer_dialog.popup_hide
+	# AcceptDialog is a plain Window in Godot 4, so it no longer exposes Popup's
+	# popup_hide signal; hiding it (submit or close) changes visibility.
+	await integer_dialog.visibility_changed
 	stored_integer = integer_dialog.number
 	# Garbage cleanup
 	integer_dialog.queue_free()

@@ -7,9 +7,7 @@ var deck2 : Pile
 
 
 func before_each():
-	var confirm_return = setup_board()
-	if confirm_return is GDScriptFunctionState: # Still working.
-		confirm_return = await confirm_return.completed
+	await setup_board()
 	deck2 = autoqfree(_PILE_SCENE.instantiate())
 
 func test_anchor_positioning_and_groups():
@@ -23,7 +21,7 @@ func test_anchor_positioning_and_groups():
 			"Bottom right anchor placement works")
 	assert_true("bottom" in discard.get_groups(), "bottom Position group assigned")
 	assert_true("right" in discard.get_groups(), "right Position group assigned")
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_almost_eq(hand.position, Vector2(160.5,615), Vector2(5,5),
 			"Bottom middle anchor placement works")
 	assert_almost_eq(hand.control.size, Vector2(966.5,210), Vector2(5,5),
@@ -70,7 +68,7 @@ func test_overlap_shift_up():
 	deck2.overlap_shift_direction = CFInt.OverlapShiftDirection.UP
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_almost_eq(deck2.position, Vector2(0,277.6), Vector2(5,5),
 			"overlapping deck2 shifted up")
 	assert_almost_eq(deck.position, Vector2(0,510), Vector2(5,5),
@@ -93,7 +91,7 @@ func test_overlap_shift_left():
 	deck2.re_place()
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_almost_eq(deck2.position, Vector2(977,510), Vector2(5,5),
 			"overlapping deck2 shifted left")
 	assert_almost_eq(discard.position, Vector2(1130,510), Vector2(5,5),
@@ -116,7 +114,7 @@ func test_overlap_shift_right():
 	deck2.re_place()
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	assert_almost_eq(deck2.position, Vector2(160.5,510), Vector2(5,5),
 			"overlapping deck2 shifted left")
 	assert_almost_eq(deck.position, Vector2(0,510), Vector2(5,5),
@@ -134,7 +132,7 @@ func test_overlap_shift_right():
 
 func test_viewport_size_does_not_change_logical_layout():
 	get_viewport().size = Vector2(1920, 1080)
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	for container in get_tree().get_nodes_in_group("card_containers"):
 		container.re_place()
 	assert_eq(get_viewport().get_visible_rect().size, Vector2(1280, 720),

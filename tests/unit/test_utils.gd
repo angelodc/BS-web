@@ -21,7 +21,9 @@ func test_array_join():
 func test_list_files_in_directory():
 	var list := CFUtils.list_files_in_directory(
 			"res://src/custom/cards/sets/")
-	assert_eq(5,len(list), "There should be 5 files")
+	# Demo1, Demo2, ResgateAracnideo definitions plus SetPreload and the two
+	# SetScripts files.
+	assert_eq(6,len(list), "There should be 6 files")
 	list = CFUtils.list_files_in_directory(
 			"res://src/custom/cards/sets/", "SetScripts_")
 	assert_eq(2,len(list), "There should be 2 set files")

@@ -55,7 +55,7 @@ func keep_children_upright() -> void:
 	var buttons: Control = get_node("Control/ManipulationButtons")
 	for child in [label, buttons]:
 		child.pivot_offset = child.size * 0.5
-		child.rotation = 90
+		child.rotation_degrees = 90
 	label.position = Vector2(
 			BOX_BOTTOM_GAP + BOX_SIZE.y - LABEL_TOP_OFFSET \
 					- label.size.x * 0.5,

@@ -3,6 +3,25 @@ extends "res://tests/UTcommon.gd"
 const CheckpointStore = preload("res://src/custom/CheckpointStore.gd")
 const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
 
+var _saved_session := {}
+
+
+func before_each():
+	_saved_session = {
+		"state": Multiplayer.state,
+		"mode": Multiplayer.mode,
+		"game_paused": cfc.game_paused,
+	}
+
+
+func after_each():
+	# A resume match_found parks the session in WAITING, which pauses the
+	# game. Rede.disconnect_game() does not reset the Multiplayer state, so
+	# leaving it behind would freeze every script the later test files run.
+	Multiplayer.state = _saved_session["state"]
+	Multiplayer.mode = _saved_session["mode"]
+	cfc.game_paused = _saved_session["game_paused"]
+
 
 func test_match_found_assigns_player_role_and_opponent_name():
 	Rede.disconnect_game()
@@ -82,11 +101,9 @@ func test_unreadable_checkpoint_stays_joinable():
 	CheckpointStore.ensure_root()
 	var game_id := "gtest_corrupt_" + str(Time.get_ticks_usec())
 	var game_dir := CheckpointStore.game_directory(game_id)
-	var directory := DirAccess.new()
-	directory.make_dir_recursive(game_dir)
+	DirAccess.make_dir_recursive_absolute(game_dir)
 	var path := game_dir + "0.json"
-	var file := File.new()
-	file.open(path, File.WRITE)
+	var file := FileAccess.open(path, FileAccess.WRITE)
 	file.store_string("not json")
 	file.close()
 
@@ -98,8 +115,8 @@ func test_unreadable_checkpoint_stays_joinable():
 	assert_false(found.is_empty())
 	assert_true(bool(found.get("join_only", false)))
 	assert_eq(found.get("participants", []).size(), 0)
-	directory.remove(path)
-	directory.remove(game_dir.substr(0, game_dir.length() - 1))
+	DirAccess.remove_absolute(path)
+	DirAccess.remove_absolute(game_dir.substr(0, game_dir.length() - 1))
 
 
 func test_display_diagnostics_are_shared():
@@ -249,18 +266,18 @@ func test_main_menu_error_dialog_has_ok_button():
 	assert_true(menu.action_error.visible)
 	assert_eq(menu.action_error.dialog_text, "Mensagem de teste")
 	assert_true(menu.action_error.get_ok_button() != null)
-	assert_true(menu.action_error.get_label().autowrap)
+	assert_true(menu.action_error.get_label().autowrap_mode
+			!= TextServer.AUTOWRAP_OFF)
 	menu.action_error.hide()
 	menu.free()
 
 
 func test_deck_catalog_lists_saved_decks():
-	var directory := DirAccess.new()
-	var make_error := directory.make_dir_recursive(CFConst.DECKS_PATH)
+	var make_error := DirAccess.make_dir_recursive_absolute(CFConst.DECKS_PATH)
 	assert_true(make_error == OK or make_error == ERR_ALREADY_EXISTS)
 	var path: String = CFConst.DECKS_PATH + "gut_deck_catalog.json"
-	var file := File.new()
-	assert_eq(file.open(path, File.WRITE), OK)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	assert_not_null(file, "The deck file must be writable")
 	file.store_string(JSON.stringify({
 		"name": "GUT Catalog",
 		"cards": {"BSCA_001": 2, "BSCA_002": 1},
@@ -276,18 +293,17 @@ func test_deck_catalog_lists_saved_decks():
 	if not found.is_empty():
 		assert_eq(str(found["name"]), "GUT Catalog")
 		assert_eq(int(found["count"]), 3)
-	directory.remove(path)
+	DirAccess.remove_absolute(path)
 
 
 func test_deck_catalog_rejects_invalid_saved_decks():
 	var path: String = CFConst.DECKS_PATH + "gut_deck_catalog_invalid.json"
-	var file := File.new()
-	assert_eq(file.open(path, File.WRITE), OK)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	assert_not_null(file, "The deck file must be writable")
 	file.store_string(JSON.stringify({"name": "Incompleto", "cards": {}}))
 	file.close()
 	assert_true(DeckCatalog.load_deck(path).is_empty())
-	var directory := DirAccess.new()
-	directory.remove(path)
+	DirAccess.remove_absolute(path)
 
 
 func test_match_hud_exposes_preparation_controls():
@@ -359,9 +375,8 @@ func test_reprotect_keeps_checkpoint_on_username_collision():
 	assert_true(updated.get("ok", false))
 	assert_eq(str(updated["data"]["p1"]), renamed)
 
-	var directory := DirAccess.new()
-	directory.remove(CheckpointStore.checkpoint_path(game_id, 0))
-	directory.remove(CheckpointStore.game_directory(game_id))
+	DirAccess.remove_absolute(CheckpointStore.checkpoint_path(game_id, 0))
+	DirAccess.remove_absolute(CheckpointStore.game_directory(game_id))
 
 
 func test_checkpoint_validation_requires_both_players_envelopes():

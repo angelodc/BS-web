@@ -15,9 +15,7 @@ const PREFIX := "p1"
 
 
 func before_each():
-	var setup = setup_board()
-	if setup is GDScriptFunctionState:
-		await setup.completed
+	await setup_board()
 
 
 func test_fresh_table_describes_the_deck_without_changing_it():
@@ -63,14 +61,14 @@ func test_field_slot_sets_the_card_address():
 	var cards := draw_test_cards(2)
 	var grid: BoardPlacementGrid = board.get_node("BoardPlacementGrid")
 	cards[0].move_to(board, -1, grid.get_slot(0))
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 
 	# The test grid starts with a single row; adding four slots creates the
 	# back row without changing the four columns.
 	for _i in range(4):
 		grid.add_slot()
 	cards[1].move_to(board, -1, grid.get_slot(4))
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 
 	var snapshot = Table.capture(board, 1)
 
@@ -93,7 +91,7 @@ func test_attachment_belongs_to_its_host_address():
 	var grid: BoardPlacementGrid = board.get_node("BoardPlacementGrid")
 	cards[0].move_to(board, -1, grid.get_slot(0))
 	cards[1].attach_to_host(cards[0])
-	await yield_for(0.2).YIELD
+	await yield_for(0.2)
 
 	var snapshot = Table.capture(board, 1)
 	var host_id = Table.id_of(cards[0])
@@ -114,9 +112,7 @@ func test_attachment_belongs_to_its_host_address():
 func test_resources_are_numbered_from_the_top_of_the_discard():
 	var cards := draw_test_cards(3)
 	for card in cards:
-		var move = card.move_to(discard)
-		if move is GDScriptFunctionState:
-			await move.completed
+		await card.move_to(discard)
 
 	var snapshot = Table.capture(board, 1)
 
@@ -136,12 +132,10 @@ func test_prizes_number_the_first_free_slot_from_the_top():
 	prizes.name = "Prêmios"
 	board.add_child(prizes)
 	autofree(prizes)
-	await yield_for(0.1).YIELD
+	await yield_for(0.1)
 	var cards := draw_test_cards(2)
 	for card in cards:
-		var move = card.move_to(prizes)
-		if move is GDScriptFunctionState:
-			await move.completed
+		await card.move_to(prizes)
 
 	var snapshot = Table.capture(board, 1)
 

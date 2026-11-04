@@ -85,8 +85,11 @@ func _ready() -> void:
 
 
 func _init_control_size() -> void:
-	var parent_control: Control = get_parent()
-	if placement == Anchors.CONTROL and parent_control.size_flags_horizontal != 3:
+	# A pile added straight to a bare board can hang off a plain Node, which has
+	# no size flags to adjust.
+	var parent_control := get_parent() as Control
+	if placement == Anchors.CONTROL and parent_control \
+			and parent_control.size_flags_horizontal != 3:
 		parent_control.custom_minimum_size = control.size * scale
 		parent_control.size = control.size * scale
 

@@ -678,9 +678,12 @@ func modify_property(
 			if properties.get(property) == null\
 					or typeof(properties.get(property)) == typeof(value):
 				properties[property] = value
-			if not card_front.card_labels.has(property):
-				if not property.begins_with("_") \
-						and not property in CardConfig.PROPERTIES_NOT_DISPLAYED:
+			# Properties declared as not displayed (e.g. the framework `Cost`,
+			# which Battle Scenes never draws) still need the numeric and array
+			# conversions below; only their label update is skipped.
+			if not card_front.card_labels.has(property) \
+					and not property in CardConfig.PROPERTIES_NOT_DISPLAYED:
+				if not property.begins_with("_"):
 					print_debug("Warning: ", property,
 							" does not have a matching label!")
 				retcode = CFConst.ReturnCode.FAILED
@@ -855,19 +858,16 @@ func get_property_and_alterants(property: String,
 # This allows the card layout to scale without using the .scale property
 # Which prevents the font from getting blurry
 func resize_recursively(control_node: Node, requested_scale: float) -> void:
+	# The card_size setter rewrites the min size of the control, the front/back
+	# containers and the highlight. Record every pristine layout first, or the
+	# originals capture the already-scaled values and the scale is applied twice.
+	_record_original_layouts(control_node)
 	if card_size != canonical_size * requested_scale:
 		card_size = canonical_size * requested_scale
 	if _original_layouts.has(control_node)\
-			and CFUtils.compare_floats(requested_scale, _original_layouts[control_node].get('scale')):
+			and _original_layouts[control_node].has('scale')\
+			and CFUtils.compare_floats(requested_scale, _original_layouts[control_node]['scale']):
 		return
-	if control_node as Control and not _original_layouts.has(control_node):
-		_original_layouts[control_node] = {}
-		_original_layouts[control_node]["size"] = control_node.custom_minimum_size
-		_original_layouts[control_node]["position"] = control_node.position
-		if control_node as MarginContainer:
-			for margin in ["top","bottom", "left", "right"]:
-				_original_layouts[control_node]["margin_" + margin]\
-						= control_node.get("theme_override_constants/margin_" + margin)
 	for child in control_node.get_children():
 		resize_recursively(child, requested_scale)
 	if control_node as Control:
@@ -881,6 +881,19 @@ func resize_recursively(control_node: Node, requested_scale: float) -> void:
 					current_margin = 0.0
 				control_node.set("theme_override_constants/margin_" + margin,current_margin * requested_scale)
 		_original_layouts[control_node]["scale"] = requested_scale
+
+
+func _record_original_layouts(control_node: Node) -> void:
+	if control_node is Control and not _original_layouts.has(control_node):
+		_original_layouts[control_node] = {}
+		_original_layouts[control_node]["size"] = control_node.custom_minimum_size
+		_original_layouts[control_node]["position"] = control_node.position
+		if control_node is MarginContainer:
+			for margin in ["top","bottom", "left", "right"]:
+				_original_layouts[control_node]["margin_" + margin]\
+						= control_node.get("theme_override_constants/margin_" + margin)
+	for child in control_node.get_children():
+		_record_original_layouts(child)
 
 
 # Sets the card size and adjusts all nodes depending on it.
@@ -1183,9 +1196,9 @@ func set_card_rotation(
 		if not state in [CardState.PREVIEW, CardState.DECKBUILDER_GRID]\
 				and not get_parent().is_in_group("hands") \
 				and cfc.game_settings.hand_use_oval_shape \
-				and $Control.rotation != 0.0 \
+				and $Control.rotation_degrees != 0.0 \
 				and not _tween.is_active():
-			_add_tween_rotation($Control.rotation,value)
+			_add_tween_rotation($Control.rotation_degrees,value)
 			if start_tween:
 				_tween.start()
 	else:
@@ -1208,7 +1221,7 @@ func set_card_rotation(
 			# to avoid a deadlock
 			# There's no way to rotate the Area2D node,
 			# so we just rotate the internal $Control. The results are the same.
-			_add_tween_rotation($Control.rotation,value)
+			_add_tween_rotation($Control.rotation_degrees,value)
 			# We only start the animation if this flag is set to true
 			# This allows us to set the card to rotate on the next
 			# available tween, instead of immediately.
@@ -1535,7 +1548,10 @@ func move_to(targetHost: Node,
 					parentHost.translate_card_index_to_node_index(index))
 		elif "CardPopUpSlot" in parentHost.name:
 			set_state(CardState.IN_POPUP)
-	common_post_move_scripts(targetHost.name, parentHost.name, tags)
+	# An animated move can outlive the containers it passed through (a popup slot
+	# is dropped as soon as its card leaves), so only report hosts still alive.
+	if is_instance_valid(targetHost) and is_instance_valid(parentHost):
+		common_post_move_scripts(targetHost.name, parentHost.name, tags)
 
 
 # Executes the tasks defined in the card's scripts in order.
@@ -1757,6 +1773,11 @@ func attach_to_host(
 				+ Vector2(
 				(attach_index + 1) * card_size.x * attach_offset.x,
 				(attach_index + 1) * card_size.y * attach_offset.y))
+		# The new attachment is the newest child, so it is drawn above the
+		# host until some hover re-focuses the host and rebuilds the stack.
+		# Restore the order and the other attachments' slots right away, or
+		# the pointer keeps focusing the attachment that covers the host.
+		current_host_card._organize_attachments()
 		emit_signal("card_attached",
 				self,
 				"card_attached",
@@ -2353,8 +2374,11 @@ func _add_tween_rotation(
 		runtime := 0.3,
 		trans_type = Tween.TRANS_BACK,
 		ease_type = Tween.EASE_IN_OUT):
-	_tween.remove($Control,'rotation')
-	_tween.interpolate_property($Control,'rotation',
+	# Godot 4 stores Control.rotation in radians, while every caller here works
+	# in degrees. Tweening rotation_degrees keeps the requested angle; tweening
+	# rotation with degree values made the card spin several extra turns.
+	_tween.remove($Control,'rotation_degrees')
+	_tween.interpolate_property($Control,'rotation_degrees',
 			expected_rotation, target_rotation, runtime,
 			trans_type, ease_type)
 	# We ensure the card_rotation value is also kept up to date
@@ -2458,8 +2482,9 @@ func _process_card_state() -> void:
 			if cfc.game_settings.hand_use_oval_shape:
 				_target_rotation  = _recalculate_rotation()
 				if not _tween.is_active() \
-						and not CFUtils.compare_floats($Control.rotation, _target_rotation):
-					_add_tween_rotation($Control.rotation,_target_rotation,
+						and not CFUtils.compare_floats(
+								$Control.rotation_degrees, _target_rotation):
+					_add_tween_rotation($Control.rotation_degrees,_target_rotation,
 						in_hand_tween_duration)
 					_tween.start()
 			if not _tween.is_active():
@@ -2534,7 +2559,7 @@ func _process_card_state() -> void:
 				_add_tween_scale(scale, Vector2(1.5,1.5), focus_tween_duration)
 
 				if cfc.game_settings.hand_use_oval_shape:
-					_add_tween_rotation($Control.rotation, 0, focus_tween_duration)
+					_add_tween_rotation($Control.rotation_degrees, 0, focus_tween_duration)
 				else:
 					# warning-ignore:return_value_discarded
 					set_card_rotation(0)
@@ -2616,7 +2641,7 @@ func _process_card_state() -> void:
 				if state == CardState.MOVING_TO_CONTAINER:
 					_add_tween_position(position, _target_position,
 						to_container_tween_duration, Tween.TRANS_SINE, Tween.EASE_IN_OUT)
-					_add_tween_rotation($Control.rotation,_target_rotation,
+					_add_tween_rotation($Control.rotation_degrees,_target_rotation,
 						to_container_tween_duration)
 					_tween.start()
 					await _tween.tween_all_completed
@@ -2637,7 +2662,7 @@ func _process_card_state() -> void:
 				if not scale.is_equal_approx(_get_resting_scale()):
 					_add_tween_scale(scale, _get_resting_scale(),
 						reorganization_tween_duration)
-				_add_tween_rotation($Control.rotation,_target_rotation,
+				_add_tween_rotation($Control.rotation_degrees,_target_rotation,
 					reorganization_tween_duration)
 				_tween.start()
 				set_state(CardState.IN_HAND)
@@ -2653,7 +2678,7 @@ func _process_card_state() -> void:
 					not position.is_equal_approx(_target_position):
 				_add_tween_position(position, _target_position,
 					pushed_aside_tween_duration, Tween.TRANS_QUART, Tween.EASE_IN)
-				_add_tween_rotation($Control.rotation, _target_rotation,
+				_add_tween_rotation($Control.rotation_degrees, _target_rotation,
 					pushed_aside_tween_duration)
 				if not scale.is_equal_approx(_get_resting_scale()):
 					_add_tween_scale(scale, _get_resting_scale(),
@@ -2735,8 +2760,8 @@ func _process_card_state() -> void:
 				# retain a slight rotation.
 				# We check if the card already has been rotated to a different
 				# card_cotation
-				if not int($Control.rotation) in [0,90,180,270]:
-					_add_tween_rotation($Control.rotation, _target_rotation, to_board_tween_duration)
+				if not int($Control.rotation_degrees) in [0,90,180,270]:
+					_add_tween_rotation($Control.rotation_degrees, _target_rotation, to_board_tween_duration)
 				# We want cards on the board to be slightly smaller than in hand.
 				if not scale.is_equal_approx(Vector2(1,1) * play_area_scale):
 					_add_tween_scale(scale, Vector2(1,1) * play_area_scale, to_board_tween_duration,
@@ -2778,7 +2803,9 @@ func _process_card_state() -> void:
 			if state_finalized:
 				return
 			z_index = 0
-			cfc.NMAP.main.focus_card(self)
+			# A bare board (tests) has no Main node to host the focus viewport.
+			if cfc.NMAP.has("main"):
+				cfc.NMAP.main.focus_card(self)
 			set_control_mouse_filters(false)
 			buttons.set_active(false)
 			# warning-ignore:return_value_discarded

@@ -121,6 +121,9 @@ densidade do raster do `SubViewport`.
 - No desktop o padrão é **Full HD**; HD fica para telas menores, onde a janela
   1080p não caberia. HD+ segue só na web — se virar opção do desktop, basta
   acrescentar a entrada em `RenderResolution`.
+- Alternativa descartada: re-autorar todas as cenas em 1600×900 (×1,25 em cada
+  offset/fonte). Custo alto, ganho pequeno — o `size_2d_override` já dá a
+  nitidez sem tocar nas coordenadas autorais.
 
 **Em aberto:** se o desktop ganha HD+ como terceira opção.
 

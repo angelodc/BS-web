@@ -257,6 +257,11 @@ func _connect_for_action(
 	_reset_match()
 	last_address = address
 	player_username = cleaned
+	# O relay usa o sub do token como identidade; sem login a mensagem segue
+	# so com o username, como antes.
+	var token := Auth.get_access_token()
+	if not token.is_empty():
+		action["token"] = token
 	_pending_action = action
 	is_searching = true
 	_client = WebSocketPeer.new()

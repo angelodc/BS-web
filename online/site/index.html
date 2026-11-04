@@ -59,8 +59,10 @@
 
   <div class="actions">
     <a class="button primary" id="open-game" href="/game/">Abrir o jogo</a>
+    <button type="button" id="auth" hidden>Entrar com Google</button>
     <button type="button" id="refresh">Atualizar</button>
     <button type="button" id="install" hidden>Instalar app</button>
+    <button type="button" id="cookies" hidden>Cookies</button>
   </div>
 
   <ul id="rooms"></ul>
@@ -166,6 +168,8 @@
   load();
   setInterval(load, REFRESH_MS);
 </script>
+<script src="/analytics.js" defer></script>
+<script src="/auth.js" defer></script>
 <script src="/pwa.js" defer></script>
 </body>
 </html>

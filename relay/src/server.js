@@ -24,6 +24,10 @@ function listFromEnv(name) {
 
 const relay = createRelay({
 	version: process.env.RELAY_VERSION || DEFAULT_VERSION,
+	// Com a URL do projeto o relay valida o access_token do Supabase e usa o
+	// sub como identidade. Sem ela, aceita apenas username.
+	supabaseUrl: process.env.SUPABASE_URL
+		|| "https://ulchgvwidctalaaxugeg.supabase.co",
 	allowedOrigins: listFromEnv("ALLOWED_ORIGINS"),
 	trustProxy: boolFromEnv("TRUST_PROXY", false),
 	maxConnections: numberFromEnv("MAX_CONNECTIONS", 500),
@@ -52,6 +56,7 @@ relay.httpServer.listen(port, host, () => {
 		port,
 		protocol: PROTOCOL_VERSION,
 		version: relay.config.version,
+		auth: Boolean(relay.config.supabaseUrl),
 	});
 });
 

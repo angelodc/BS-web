@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { test } from "node:test";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { WebSocket } from "ws";
 import { createRelay, PROTOCOL_VERSION } from "../src/relay.js";
 
@@ -158,6 +159,63 @@ function clientState(relay, username) {
 	return null;
 }
 
+// ---------------------------------------------------------------------
+// Supabase simulado: um JWKS local e tokens ES256 assinados pelo teste.
+// ---------------------------------------------------------------------
+const JWKS_PATH = "/auth/v1/.well-known/jwks.json";
+const TEST_KID = "test-key";
+let authMaterialPromise = null;
+
+function authMaterial() {
+	authMaterialPromise ??= (async () => {
+		const { publicKey, privateKey } = await generateKeyPair("ES256", {
+			extractable: true,
+		});
+		const jwk = await exportJWK(publicKey);
+		return {
+			privateKey,
+			jwk: { ...jwk, kid: TEST_KID, alg: "ES256", use: "sig" },
+		};
+	})();
+	return authMaterialPromise;
+}
+
+async function startAuthContext(t, overrides = {}) {
+	const material = await authMaterial();
+	const jwksServer = http.createServer((req, res) => {
+		if (req.method === "GET" && req.url === JWKS_PATH) {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ keys: [material.jwk] }));
+			return;
+		}
+		res.writeHead(404).end();
+	});
+	await new Promise((resolve, reject) => {
+		jwksServer.once("error", reject);
+		jwksServer.listen(0, "127.0.0.1", resolve);
+	});
+	const supabaseUrl = `http://127.0.0.1:${jwksServer.address().port}`;
+	const context = await startRelay({ supabaseUrl, ...overrides });
+	context.supabaseUrl = supabaseUrl;
+	context.sign = (sub) => new SignJWT({ role: "authenticated" })
+		.setProtectedHeader({ alg: "ES256", kid: TEST_KID })
+		.setIssuer(`${supabaseUrl}/auth/v1`)
+		.setAudience("authenticated")
+		.setSubject(sub)
+		.setIssuedAt()
+		.setExpirationTime("10m")
+		.sign(material.privateKey);
+	t.after(async () => {
+		await context.relay.close();
+		await new Promise((resolve) => jwksServer.close(resolve));
+	});
+	return context;
+}
+
+const HOST_SUB = "11111111-1111-4111-8111-111111111111";
+const GUEST_SUB = "22222222-2222-4222-8222-222222222222";
+const OTHER_SUB = "33333333-3333-4333-8333-333333333333";
+
 test("anfitriao cria sala e convidado entra pelo codigo", async (t) => {
 	const context = await startRelay();
 	t.after(() => context.relay.close());
@@ -242,16 +300,135 @@ test("username duplicado nao entra na mesma sala", async (t) => {
 		username: "alice",
 	});
 	const error = await duplicated.next("error");
-	assert.match(error.msg, /username diferente/i);
+	assert.match(error.msg, /username ou a conta/i);
 	assert.equal(host.messages.filter((m) => m.t === "match_found").length, 0);
 
 	const secondDuplicate = await connectClient(context.url);
 	secondDuplicate.send({ t: "find_match", username: "ALICE" });
-	assert.match((await secondDuplicate.next("error")).msg, /username diferente/i);
+	assert.match((await secondDuplicate.next("error")).msg, /username ou a conta/i);
 
 	await host.close();
 	await duplicated.close();
 	await secondDuplicate.close();
+});
+
+test("token valido grava o sub como identidade do assento", async (t) => {
+	const context = await startAuthContext(t);
+	const token = await context.sign(HOST_SUB);
+
+	const host = await connectClient(context.url);
+	await host.next("hello");
+	host.send({ t: "create_room", username: "Alice", token });
+	const waiting = await host.next("waiting");
+
+	const room = context.relay.rooms.get(waiting.room_id);
+	assert.equal(room.userIds.H, HOST_SUB);
+	assert.equal(room.usernames.H, "Alice");
+
+	const health = await getJson(context.port, "/healthz");
+	assert.equal(health.body.auth, true);
+
+	await host.close();
+});
+
+test("token invalido mantem a identidade por username", async (t) => {
+	const context = await startAuthContext(t);
+
+	const host = await connectClient(context.url);
+	await host.next("hello");
+	host.send({
+		t: "create_room",
+		username: "Alice",
+		token: "nao-e-um-jwt",
+	});
+	const waiting = await host.next("waiting");
+
+	const room = context.relay.rooms.get(waiting.room_id);
+	assert.equal(room.userIds.H, "");
+	assert.equal(room.usernames.H, "Alice");
+
+	await host.close();
+});
+
+test("a mesma conta nao ocupa os dois assentos", async (t) => {
+	const context = await startAuthContext(t);
+	const token = await context.sign(HOST_SUB);
+
+	const host = await connectClient(context.url);
+	await host.next("hello");
+	host.send({ t: "create_room", username: "Alice", token });
+	const waiting = await host.next("waiting");
+
+	const guest = await connectClient(context.url);
+	guest.send({
+		t: "join_room",
+		code: waiting.room_id,
+		username: "Alice2",
+		token,
+	});
+	assert.match((await guest.next("error")).msg, /conta/i);
+	assert.equal(host.messages.filter((m) => m.t === "match_found").length, 0);
+
+	await host.close();
+	await guest.close();
+});
+
+test("reconectar usa o sub mesmo com username novo", async (t) => {
+	const context = await startAuthContext(t);
+	const hostToken = await context.sign(HOST_SUB);
+	const guestToken = await context.sign(GUEST_SUB);
+
+	const host = await connectClient(context.url);
+	await host.next("hello");
+	host.send({ t: "create_room", username: "Alice", token: hostToken });
+	const waiting = await host.next("waiting");
+
+	const guest = await connectClient(context.url);
+	guest.send({
+		t: "join_room",
+		code: waiting.room_id,
+		username: "Bob",
+		token: guestToken,
+	});
+	const [hostMatch, guestMatch] = await Promise.all([
+		host.next("match_found"),
+		guest.next("match_found"),
+	]);
+	const roomId = guestMatch.room_id;
+	assert.equal(hostMatch.room_id, roomId);
+	await guest.close();
+	await host.next("opponent_disconnected");
+
+	// Outra conta nao assume o assento apenas repetindo o username.
+	const intruderToken = await context.sign(OTHER_SUB);
+	const intruder = await connectClient(context.url);
+	intruder.send({
+		t: "rejoin_room",
+		room_id: roomId,
+		username: "Bob",
+		token: intruderToken,
+	});
+	assert.match((await intruder.next("rejoin_failed")).msg, /assento/i);
+
+	const reconnected = await connectClient(context.url);
+	reconnected.send({
+		t: "rejoin_room",
+		room_id: roomId,
+		username: "Roberto",
+		token: guestToken,
+	});
+	const rejoined = await reconnected.next("rejoin_ok");
+	assert.equal(rejoined.role, "C");
+	assert.equal(rejoined.room_id, roomId);
+	assert.equal(context.relay.rooms.get(roomId).usernames.C, "Roberto");
+	assert.equal(context.relay.rooms.get(roomId).userIds.C, GUEST_SUB);
+
+	const notice = await host.next("opponent_reconnected");
+	assert.equal(notice.username, "Roberto");
+
+	await host.close();
+	await intruder.close();
+	await reconnected.close();
 });
 
 test("mensagens sao encaminhadas apenas para o oponente", async (t) => {
@@ -596,6 +773,7 @@ test("healthz responde com status e contagens", async (t) => {
 	assert.equal(health.body.protocol, PROTOCOL_VERSION);
 	assert.equal(health.body.rooms, 0);
 	assert.equal(health.body.clients, 0);
+	assert.equal(health.body.auth, false);
 
 	const missing = await getJson(context.port, "/desconhecido");
 	assert.equal(missing.status, 404);

@@ -64,8 +64,14 @@
   externo.
 - **Relay online em Node.js (`relay/`):** mesmo protocolo JSON, `join_room` por
   código, `hello`/`protocol_version`, `/healthz`, `/rooms`, limites por
-  IP/conexão, heartbeat e allowlist de `Origin`; 21 testes com clientes `ws`
+  IP/conexão, heartbeat e allowlist de `Origin`; 25 testes com clientes `ws`
   reais.
+- **JWT do Supabase no relay (2026-11-02):** as mensagens de controle aceitam
+  `token`; o relay valida pelo JWKS (`iss`/`aud`, ES256/RS256) e usa o `sub`
+  como identidade. A mesma conta não ocupa os dois assentos e a reconexão
+  procura o assento pelo `sub` antes do username. Sem token válido a partida
+  segue anônima, como antes; `SUPABASE_URL` vazio desliga a validação. Publicado
+  na VM Oracle em 02/11/2026; o `/healthz` mostra `auth: true`.
 - **Produção do relay:** S20 FE + túnel Cloudflare em 30/10/2026; desde
   01/11/2026 roda na VM Always Free da Oracle em Frankfurt, com IP público
   reservado `129.159.222.25`, TLS do Caddy em `129-159-222-25.sslip.io` e
@@ -84,6 +90,30 @@
   (deploy `6ae4f75944d360a9d0f5f8f3`, `index.pck` de 7,8 MB), deploy manual da
   CLI, projeto público com previews protegidos; `/api/salas` e `/api/relay`
   no ar; Blob `relay/address` vazio e `RELAY_URL` como fonte do endereço.
+
+## 📈 Analytics e login (2026-11-02)
+
+- **GA4 enxuto (`online/site/analytics.js`):** consent mode v2, banner com
+  Aceitar/Recusar e link **Cookies**, gtag só depois do aceite, fila de eventos
+  antes da escolha e `user_id` restrito ao UUID do Supabase. O autoload
+  `Analytics.gd` envia `game_open` uma vez com `canvas_w/h`, `window_w/h`, `dpr`
+  e `mode`. Enquanto `MEASUREMENT_ID` estiver vazio, tudo fica inerte.
+- **Login Google opcional (`online/site/auth.js` + `Auth.gd`):** PKCE via
+  Supabase Auth no lobby, sessão enxuta em `bs_auth_session`, refresh silencioso
+  ao voltar com a cópia vencida e logout local. O jogo lê token/UUID pelo
+  `JavaScriptBridge` e envia o token nas mensagens de controle. Sem sessão, solo
+  e multiplayer continuam por username.
+- **Ativado no console (04/11/2026):** GA4 `G-Z4YHVSLCRL` preenchido em
+  `analytics.js`; projeto Supabase **battle-scenes** (`ulchgvwidctalaaxugeg`,
+  São Paulo) criado só para Auth, com provedor Google habilitado, Site URL e
+  Redirect URLs (`netlify.app`, `localhost:8080`, `localhost:8888`); OAuth Client
+  `Battle Scenes Login` em Google Cloud com o callback do projeto. Validado no
+  navegador: login → `bs_auth_session` com UUID → `user_id` do GA4 igual ao UUID
+  → relay local aceita o JWT e rejeita token forjado. Falta só o próximo export
+  web para o `head_include` chegar ao jogo e o deploy de `online/site`.
+- **Dois Supabases convivem:** o projeto novo é só Auth/login; os dados de deck
+  do editor (`BSDBDeckImportDialog.gd`) continuam no projeto antigo
+  (`xtdqcfchdqmqlbmkvdit`), que não tem acesso pela conta atual.
 
 ## 🧭 Fase 5 — layout autoral do tabuleiro
 

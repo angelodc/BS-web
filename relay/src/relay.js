@@ -6,6 +6,7 @@
 // WebSocket em texto claro na porta interna.
 import { randomBytes, randomUUID } from "node:crypto";
 import http from "node:http";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { WebSocket, WebSocketServer } from "ws";
 
 export const PROTOCOL_VERSION = 1;
@@ -16,6 +17,10 @@ export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export const DEFAULT_MAX_FRAME_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_ROOM_GRACE_MS = 120 * 1000;
+const MAX_TOKEN_LENGTH = 4096;
+// Os projetos novos do Supabase assinam com chave assimetrica (ES256); RS256
+// fica aceito para quem ainda usa chave RSA no JWKS.
+const AUTH_ALGORITHMS = ["ES256", "RS256"];
 
 const CONTROL_MESSAGES = new Set([
 	"find_match",
@@ -45,6 +50,7 @@ const DEFAULTS = {
 	messageBurst: 120,
 	allowedOrigins: [],
 	trustProxy: false,
+	supabaseUrl: "",
 	logLevel: "info",
 };
 
@@ -56,6 +62,18 @@ export function createRelay(overrides = {}) {
 	const waitingQueue = [];
 	const resumeWaiting = new Map();
 	const startedAt = Date.now();
+	const supabaseBase = String(config.supabaseUrl || "").replace(/\/+$/, "");
+	// Sem SUPABASE_URL o relay fica anonimo e aceita apenas username, como antes.
+	let jwks = null;
+	if (supabaseBase) {
+		try {
+			jwks = createRemoteJWKSet(
+				new URL(`${supabaseBase}/auth/v1/.well-known/jwks.json`),
+			);
+		} catch (error) {
+			log("auth_config_error", { error: String(error) });
+		}
+	}
 
 	const httpServer = http.createServer(handleHttpRequest);
 	const wss = new WebSocketServer({
@@ -211,7 +229,13 @@ export function createRelay(overrides = {}) {
 			return;
 		}
 		if (!data || typeof data !== "object" || Array.isArray(data)) return;
-		routeMessage(ws, state, data);
+		// A verificacao do JWT e assincrona; a fila preserva a ordem em que o
+		// jogador mandou as mensagens de controle.
+		state.chain = state.chain
+			.then(() => routeMessage(ws, state, data))
+			.catch((error) => {
+				log("message_error", { error: String(error) });
+			});
 	}
 
 	function consumeToken(state) {
@@ -245,6 +269,33 @@ export function createRelay(overrides = {}) {
 		}
 	}
 
+	// Verifica o access_token enviado junto da mensagem de controle. Token
+	// ausente ou invalido mantem a identidade por username, como antes.
+	async function authenticate(state, rawToken) {
+		if (!jwks) return;
+		if (typeof rawToken !== "string" || rawToken.length === 0) return;
+		if (rawToken.length > MAX_TOKEN_LENGTH) {
+			state.authToken = "";
+			state.userId = "";
+			return;
+		}
+		if (state.authToken === rawToken) return;
+		state.authToken = rawToken;
+		state.userId = "";
+		try {
+			const { payload } = await jwtVerify(rawToken, jwks, {
+				issuer: `${supabaseBase}/auth/v1`,
+				audience: "authenticated",
+				algorithms: AUTH_ALGORITHMS,
+			});
+			if (typeof payload.sub === "string" && payload.sub) {
+				state.userId = payload.sub;
+			}
+		} catch (error) {
+			log("auth_invalid", { error: error?.code || String(error) });
+		}
+	}
+
 	// ------------------------------------------------------------------
 	// HTTP
 	// ------------------------------------------------------------------
@@ -265,6 +316,7 @@ export function createRelay(overrides = {}) {
 				rooms: rooms.size,
 				clients: clients.size,
 				grace_seconds: Math.round(config.roomGraceMs / 1000),
+				auth: Boolean(jwks),
 			}));
 			return;
 		}
@@ -351,9 +403,16 @@ export function createRelay(overrides = {}) {
 		if (hostState.username.toLowerCase() === guestState.username.toLowerCase()) {
 			return false;
 		}
+		// A mesma conta nao pode ocupar os dois assentos, mesmo com usernames
+		// diferentes.
+		if (hostState.userId && guestState.userId
+				&& hostState.userId === guestState.userId) {
+			return false;
+		}
 
 		room.slots.C = guest;
 		room.usernames.C = guestState.username;
+		room.userIds.C = guestState.userId || "";
 		room.vacantSince.C = null;
 		room.active = true;
 		openRooms.delete(room.code);
@@ -437,6 +496,7 @@ export function createRelay(overrides = {}) {
 			participants: [],
 			slots: { H: ws, C: null },
 			usernames: { H: username, C: "" },
+			userIds: { H: state.userId, C: "" },
 			vacantSince: { H: null, C: null },
 			active: false,
 			createdAt: Date.now(),
@@ -476,7 +536,10 @@ export function createRelay(overrides = {}) {
 				candidateState.queued = false;
 				candidateState.isHost = false;
 			}
-			sendError(guest, "Use um username diferente do anfitriao para entrar.");
+			sendError(
+				guest,
+				"Nao foi possivel entrar: o username ou a conta coincide com o anfitriao.",
+			);
 		}
 
 		sendWaiting(ws, "Sala criada. Aguardando o outro jogador...", {
@@ -507,7 +570,10 @@ export function createRelay(overrides = {}) {
 		if (room) {
 			if (pairRoom(room, ws)) return;
 			state.queued = false;
-			sendError(ws, "Use um username diferente do anfitriao para entrar.");
+			sendError(
+				ws,
+				"Nao foi possivel entrar: o username ou a conta coincide com o anfitriao.",
+			);
 			return;
 		}
 		if (!waitingQueue.includes(ws)) waitingQueue.push(ws);
@@ -557,7 +623,10 @@ export function createRelay(overrides = {}) {
 		state.isHost = false;
 		if (!pairRoom(room, ws)) {
 			state.queued = false;
-			sendError(ws, "Use um username diferente do anfitriao para entrar.");
+			sendError(
+				ws,
+				"Nao foi possivel entrar: o username ou a conta coincide com o anfitriao.",
+			);
 			return;
 		}
 		log("room_joined", { room: code });
@@ -608,6 +677,7 @@ export function createRelay(overrides = {}) {
 			participants,
 			slots: { H: ws, C: null },
 			usernames: { H: username, C: "" },
+			userIds: { H: state.userId, C: "" },
 			vacantSince: { H: null, C: null },
 			active: false,
 			createdAt: Date.now(),
@@ -748,10 +818,19 @@ export function createRelay(overrides = {}) {
 		}
 		let role = "";
 		for (const candidate of ["H", "C"]) {
+			if (room.slots[candidate] !== null) continue;
+			const expectedUser = room.userIds[candidate] || "";
+			// Com conta verificada dos dois lados, o assento e do mesmo sub,
+			// mesmo que o username tenha mudado. Caso contrario, o username
+			// continua identificando o jogador, como antes do login.
+			if (state.userId && expectedUser) {
+				if (state.userId !== expectedUser) continue;
+				role = candidate;
+				break;
+			}
 			const expected = room.usernames[candidate] || "";
 			if (expected
-					&& expected.toLowerCase() === username.toLowerCase()
-					&& room.slots[candidate] === null) {
+					&& expected.toLowerCase() === username.toLowerCase()) {
 				role = candidate;
 				break;
 			}
@@ -759,13 +838,14 @@ export function createRelay(overrides = {}) {
 		if (!role) {
 			sendJson(ws, {
 				t: "rejoin_failed",
-				msg: "Nao ha vaga para este username nesta sala.",
+				msg: "Nao ha assento livre para este jogador nesta sala.",
 			});
 			return;
 		}
 
 		room.slots[role] = ws;
 		room.usernames[role] = username;
+		if (state.userId) room.userIds[role] = state.userId;
 		room.vacantSince[role] = null;
 		const opponentRole = role === "H" ? "C" : "H";
 		const opponent = room.slots[opponentRole];
@@ -820,8 +900,13 @@ export function createRelay(overrides = {}) {
 		log("room_left", { room: roomId });
 	}
 
-	function routeMessage(ws, state, data) {
+	async function routeMessage(ws, state, data) {
 		const kind = typeof data.t === "string" ? data.t : "";
+		if (CONTROL_MESSAGES.has(kind)) {
+			await authenticate(state, data.token);
+		}
+		// O socket pode ter fechado durante a verificacao do token.
+		if (!clients.has(ws)) return;
 		switch (kind) {
 			case "create_room":
 				createRoom(ws, state, data.username);
@@ -1027,6 +1112,13 @@ function newClientState(ip) {
 		alive: true,
 		tokens: 0,
 		tokensUpdatedAt: 0,
+		// Identidade da conta (sub do JWT) e o ultimo token verificado. Sem
+		// token valido o relay segue apenas com o username.
+		userId: "",
+		authToken: "",
+		// A verificacao do token e assincrona; a fila mantem a ordem das
+		// mensagens de controle desta conexao.
+		chain: Promise.resolve(),
 		// Deixa de processar mensagens depois de um rate limit ou de um
 		// protocolo incompatível, enquanto o socket termina de fechar.
 		blocked: false,

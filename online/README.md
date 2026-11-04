@@ -66,6 +66,46 @@ PWA. O menu do jogo mostra o botão **Instalar app** só na versão web
 (`MainMenu.gd`); no iPhone/iPad ele explica o caminho manual (Compartilhar →
 Adicionar à Tela de Início).
 
+### Analytics e login (opcionais)
+
+| Arquivo | Papel |
+| --- | --- |
+| `site/analytics.js` | GA4 enxuto com consent mode v2, banner e `window.bsTrack`/`bsSetUserId` |
+| `site/auth.js` | login Google via Supabase Auth no lobby; o jogo só lê a sessão |
+| `src/core/Analytics.gd` | autoload que envia `game_open` uma vez com a resolução real do canvas |
+| `src/core/Auth.gd` | autoload que lê `bsAuthToken`/`bsAuthUserId` pelo `JavaScriptBridge` |
+
+O GA4 está ativo com `MEASUREMENT_ID = G-Z4YHVSLCRL` em `analytics.js`. Antes
+do aceite do banner nenhum script do Google é carregado e `bsTrack` devolve
+`false`; o arquivo é servido com `must-revalidate`, então trocar o ID não exige
+reexportar o jogo. O `game_open` leva `canvas_w/h`, `window_w/h`, `dpr` e
+`mode`, e o `user_id` só aceita o UUID do Supabase — nunca e-mail ou nome. O
+link **Cookies** reabre o banner para mudar a escolha.
+
+O login é opcional: sem sessão, solo e multiplayer continuam funcionando pelo
+username. Com sessão, o lobby guarda `bs_auth_session` (token, UUID e validade)
+e o jogo envia o token nas mensagens de controle; o relay valida pelo JWKS do
+Supabase e usa o `sub` como identidade. A chave `sb_publishable_...` é pública
+por design; `service_role` e o client secret do Google ficam só no Supabase.
+
+Console já configurado (04/11/2026), no projeto Supabase **battle-scenes**
+(`ulchgvwidctalaaxugeg`, região São Paulo), que serve só de Auth — os dados de
+deck do editor continuam no projeto antigo (`xtdqcfchdqmqlbmkvdit`):
+
+- provedor **Google** habilitado com o Client ID e o secret do OAuth Client
+  `Battle Scenes Login` (`703823413358-sjoao5hc6b7hvc619bv9j49p6qtce242`);
+- Site URL `https://battle-scenes.netlify.app` e Redirect URLs
+  `https://battle-scenes.netlify.app/**`, `http://localhost:8080/**` e
+  `http://localhost:8888/**`;
+- o mesmo OAuth Client autoriza as três origens e o redirect
+  `https://ulchgvwidctalaaxugeg.supabase.co/auth/v1/callback`.
+
+O relay lê `SUPABASE_URL` (padrão: `https://ulchgvwidctalaaxugeg.supabase.co`).
+A VM ainda tem a URL antiga no `.env` do `bs-relay`; trocar é mudança de
+produção e pede reinício do serviço. O app OAuth está em modo **Testing**, então
+só contas de teste entram; publicar a tela de consentimento depende das páginas
+de termos e privacidade.
+
 ## Testar localmente
 
 1. Suba o relay em outro terminal:

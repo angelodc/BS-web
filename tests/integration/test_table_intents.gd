@@ -341,6 +341,135 @@ func test_move_refuses_a_hand_slot_beyond_the_last():
 
 
 # -----------------------------------------------------------------------------
+# Materializar
+# -----------------------------------------------------------------------------
+
+func _materialize(card, life := 3) -> Dictionary:
+	return actions.apply({"op": "materializar", "card": _id(card), "life": life})
+
+
+func test_materialize_takes_the_hand_card_to_the_field_with_life():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	var card_id := _id(cards[0])
+	var deck_before := int(actions.state.zone_counts(1)["deck"])
+	var life := [
+		actions.state.card_at("p1:deck:1"),
+		actions.state.card_at("p1:deck:2"),
+		actions.state.card_at("p1:deck:3"),
+	]
+
+	var result = _materialize(cards[0])
+
+	assert_true(_ok(result), str(result))
+	assert_eq(actions.state.address_of(card_id), "p1:campo:frente:2")
+	assert_eq(cards[0].get_parent(), board)
+	assert_eq(int(actions.state.zone_counts(1)["deck"]), deck_before - 3)
+	assert_eq(actions.state.cards[card_id]["attachments"], life)
+	for index in range(life.size()):
+		assert_eq(actions.state.address_of(life[index]),
+				"anexo:p1:p1:campo:frente:2:" + str(index + 1))
+	assert_eq(cards[0].attachments.size(), 3)
+	for attachment in cards[0].attachments:
+		assert_true(attachment.is_faceup, attachment.canonical_name)
+	assert_eq(actions.history.size(), 1)
+	assert_true(str(actions.history[0]["text"]).contains("materializou"))
+
+
+func test_materialize_uses_the_card_energy_as_life():
+	var cards = draw_test_cards(1)
+	cards[0].properties["ENERGIA"] = "5"
+	actions.sync(1)
+	var deck_before := int(actions.state.zone_counts(1)["deck"])
+
+	var result = actions.apply({"op": "materializar", "card": _id(cards[0])})
+
+	assert_true(_ok(result), str(result))
+	assert_eq(cards[0].attachments.size(), 5)
+	assert_eq(int(actions.state.zone_counts(1)["deck"]), deck_before - 5)
+
+
+func test_materialize_refuses_a_card_outside_the_hand():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	assert_true(_ok(actions.apply({"op": "jogar", "card": _id(cards[0])})))
+
+	var result = _materialize(cards[0])
+
+	assert_false(_ok(result), str(result))
+	assert_eq(_error(result), "fora_da_mão")
+	assert_eq(cards[0].get_parent(), board)
+
+
+func test_materialize_refuses_a_card_that_is_not_character_or_support():
+	var token = cfc.instance_card("Spawn Card")
+	hand.add_child(token)
+	token.state = Card.CardState.IN_HAND
+	actions.sync(1)
+
+	var result = _materialize(token)
+
+	assert_false(_ok(result), str(result))
+	assert_eq(_error(result), "tipo_invalido")
+	assert_eq(token.get_parent(), hand)
+
+
+func test_materialize_refuses_a_deck_without_enough_life():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	# Leave a single card in the deck: less than the three life cards.
+	for _index in range(int(actions.state.zone_counts(1)["deck"]) - 1):
+		assert_true(_ok(actions.apply({"op": "comprar"})))
+
+	var result = _materialize(cards[0])
+
+	assert_false(_ok(result), str(result))
+	assert_eq(_error(result), "deck_insuficiente")
+	assert_eq(cards[0].get_parent(), hand)
+
+
+func test_materialize_ignores_the_resource_pile():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	var rules = Rules.new()
+	var base = {
+		"active": false,
+		"solo": false,
+		"my_slot": 1,
+		"my_phase": true,
+		"undo_entry": {},
+	}
+	var enforced = base.duplicate(true)
+	enforced["enforce_cost"] = true
+
+	var allowed = rules.validate(actions.state, {
+		"op": "materializar",
+		"card": _id(cards[0]),
+	}, enforced)
+
+	assert_eq(actions.state.resource_count(1), 0)
+	assert_true(_ok(allowed), str(allowed))
+
+
+func test_undo_of_materialize_returns_the_card_and_the_life():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	var card_id := _id(cards[0])
+	var top = actions.state.top_of_deck(1)
+	var deck_before := int(actions.state.zone_counts(1)["deck"])
+	assert_true(_ok(_materialize(cards[0])))
+
+	var undone = actions.undo()
+
+	assert_true(_ok(undone), str(undone))
+	assert_eq(actions.state.address_of(card_id), "p1:mão:1")
+	assert_eq(actions.state.top_of_deck(1), top)
+	assert_eq(int(actions.state.zone_counts(1)["deck"]), deck_before)
+	assert_eq(cards[0].attachments.size(), 0)
+	assert_eq(actions.state.cards[card_id]["attachments"], [])
+
+
+# -----------------------------------------------------------------------------
 # Card state
 # -----------------------------------------------------------------------------
 

@@ -59,3 +59,14 @@
   for = "/pwa.js"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# O ID do GA4 fica neste arquivo e muda sem trocar o build do jogo.
+[[headers]]
+  for = "/analytics.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/auth.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

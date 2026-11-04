@@ -85,6 +85,20 @@ branch; o que falta depende de UI e da máquina de estados.
 
 ## 📱 Web e distribuição
 
+- [ ] **Levar analytics/login ao build publicado:** o `head_include` com
+  `analytics.js`/`auth.js` só entra no próximo export web, e o build no ar ainda
+  é o de 30/10 (Godot 3.4.4). O jogo só lê a sessão depois desse export e do
+  deploy de `online/site`.
+- [ ] **Apontar o relay da VM para o projeto de Auth novo:** o `.env` do
+  `bs-relay` ainda tem `SUPABASE_URL` do projeto antigo, então o JWT emitido
+  pelo projeto `ulchgvwidctalaaxugeg` não valida em produção. Trocar a variável
+  e reiniciar o serviço é mudança de produção (mexe no ar).
+- [ ] **Validar o resto do login:** rejoin depois que o token expira e logout
+  com o jogo aberto. O fluxo de entrada, a sessão em `bs_auth_session`, o
+  `user_id` do GA4 e a validação do JWT pelo relay já passaram localmente.
+- [ ] **Publicar a tela de consentimento do Google:** o app OAuth está em modo
+  **Testing** e só aceita contas de teste. Publicar exige as páginas de termos e
+  privacidade no ar, que ainda não existem.
 - [ ] **Validar e publicar a PWA:** implementada em 2026-11-02 (manifest,
   service worker, ponte `pwa.js`, ícones e botão **Instalar app** no menu web).
   Falta validar no Chrome/Edge/Android e no iPhone (instalação manual), publicar
@@ -135,6 +149,8 @@ publicada sem reexportar o HTML5.
 
 | Mudança pendente | Onde mora | Sobe no Netlify? | Estado |
 | :--- | :--- | :---: | :--- |
+| Analytics + login Google | site + cliente | sim (site agora; cliente no próximo export) | ativado no console em 04/11/2026, falta exportar e publicar |
+| JWT do Supabase no relay | relay | não (VM Oracle) | publicado na VM em 02/11/2026 |
 | PWA: manifest, service worker, ponte e botão no menu | site + cliente | sim (site agora; botão no próximo export) | implementada, falta validar |
 | Export web no Godot 4.7.2 | cliente | sim (export + `site/`) | não iniciado |
 | Tirar DeckBuilder/CardLibrary/screenshots do pacote (−1,4 MB) | cliente | sim, **e é o gatilho que paga um upload** | não iniciado |

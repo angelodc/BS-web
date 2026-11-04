@@ -33,6 +33,11 @@ var _match_recorder = null
 # printed energy.
 const PRIZE_ENERGY_WIN := 15
 
+# Only these two verbs take from the deck, so only they can run it out.
+const DECK_CONSUMING_OPS := ["comprar", "mandar_topo_para_recursos"]
+# The two ways the table says the deck could not pay for a demand.
+const DECK_SHORTFALL_ERRORS := ["deck_insuficiente", "deck_vazio"]
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	super._ready()
@@ -292,7 +297,18 @@ func prize_owner_name(slot: int) -> String:
 	return display
 
 
-func _build_victory_overlay(slot: int) -> void:
+# A deck that ran out hands the win to the other side (AUTOTURNO.md §3.5,
+# decisão 10c). The prize overlay is reused, with the reason as the detail line.
+func report_empty_deck_victory(slot: int, reason: String) -> void:
+	if slot < 1 or slot > 2 or _victory_slot != 0:
+		return
+	_victory_slot = slot
+	GameEvents.record_system(reason)
+	if not cfc.ut:
+		_build_victory_overlay(slot, reason)
+
+
+func _build_victory_overlay(slot: int, reason: String = "") -> void:
 	var area := size
 	if area.x <= 0.0 or area.y <= 0.0:
 		area = get_viewport().get_visible_rect().size
@@ -314,7 +330,9 @@ func _build_victory_overlay(slot: int) -> void:
 	title.size = Vector2(area.x, 40)
 	overlay.add_child(title)
 	var detail := Label.new()
-	detail.text = str(PRIZE_ENERGY_WIN) + " de energia nos Prêmios"
+	# The prizes win states its target; the deck loss states what happened.
+	detail.text = reason if not reason.is_empty() \
+			else str(PRIZE_ENERGY_WIN) + " de energia nos Prêmios"
 	detail.align = HORIZONTAL_ALIGNMENT_CENTER
 	detail.position = Vector2(0, area.y * 0.32 + 42)
 	detail.size = Vector2(area.x, 24)
@@ -401,7 +419,16 @@ func _address_of(id: String) -> String:
 # Runs one validated intent on behalf of the UI. A refused intent changes
 # nothing and returns `ok = false` with a message.
 func apply_intent(intent : Dictionary) -> Dictionary:
-	return table_actions().apply(intent)
+	var actions = table_actions()
+	var result : Dictionary = actions.apply(intent)
+	if not bool(result.get("ok", false)) \
+			and str(intent.get("op", "")) in DECK_CONSUMING_OPS \
+			and str(result.get("error", "")) in DECK_SHORTFALL_ERRORS:
+		# A demand the deck cannot pay for ends the match on the spot, whoever
+		# the actor was (AUTOTURNO.md §3.5, decisão 10c).
+		var seat := int(intent.get("seat", actions.get_seat()))
+		Multiplayer.declare_empty_deck_loss(seat, int(intent.get("quantity", 1)))
+	return result
 
 
 # Rewrites the scene from the current state, which is what a script uses after

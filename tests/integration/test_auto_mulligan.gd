@@ -161,12 +161,21 @@ func test_manual_mulligan_walks_the_planned_table():
 	await _start(_deck(60, 0), _deck(60, 0))
 
 	# AUTOTURNO.md §3.2: hand 8, 6, 4, 2, 0 and resources 2, 4, 6, 8, 10.
-	var expected := [[8, 2], [6, 4], [4, 6], [2, 8], [0, 10]]
+	var expected := [[8, 2], [6, 4], [4, 6], [2, 8]]
 	for step in expected:
 		assert_true(Multiplayer.manual_mulligan_local(), "The mulligan ran")
 		assert_eq(_hand_cards().size(), int(step[0]), "Hand after the mulligan")
 		assert_eq(cfc.NMAP.discard.get_all_cards().size(), int(step[1]),
 				"Resources after the mulligan")
+
+	# The fifth one empties the hand, which the seat keeps at once, and the
+	# hotseat hands the table to the other seat. Bring the empty seat back.
+	assert_true(Multiplayer.manual_mulligan_local(), "The last mulligan ran")
+	Multiplayer.swap_solo_seat()
+	await yield_for(0.3)
+	assert_eq(_hand_cards().size(), 0, "Hand after the mulligan")
+	assert_eq(cfc.NMAP.discard.get_all_cards().size(), 10,
+			"Resources after the mulligan")
 
 	assert_false(Multiplayer.manual_mulligan_local(),
 			"An empty hand cannot be mulliganed again")
@@ -191,3 +200,97 @@ func test_manual_mulligan_keeps_resources_out_of_the_shuffle():
 		if first_resources.has(str(card.network_id)):
 			still_there += 1
 	assert_eq(still_there, 2, "The older resources stay put")
+
+
+# --- The mulligan window (AUTOTURNO.md §3.2, decision 12) ---------------
+
+func test_the_window_holds_the_first_phase():
+	await _start(_deck(60, 0), _deck(60, 0))
+
+	assert_true(Multiplayer.is_mulligan_open(), "The deal opens the window")
+	assert_false(Multiplayer.advance_phase(), "No phase runs during the mulligan")
+
+	assert_true(Multiplayer.accept_local_hand(), "The visible seat keeps its hand")
+	assert_true(Multiplayer.is_mulligan_open(), "The other seat still has to answer")
+
+	# The hotseat already handed the table to the seat that owes the answer.
+	await yield_for(0.3)
+	assert_true(Multiplayer.is_mulligan_open(), "The new seat has its own decision")
+	assert_true(Multiplayer.accept_local_hand(), "The second seat keeps its hand")
+
+	assert_false(Multiplayer.is_mulligan_open(), "Both seats answered")
+	assert_true(Multiplayer.is_prep_game_open(), "The preparation window opens")
+	assert_false(Multiplayer.advance_phase(), "The preparation holds the first turn")
+
+	assert_true(Multiplayer.ready_local_prep_game(), "The visible seat is ready")
+	await yield_for(0.3)
+	assert_true(Multiplayer.ready_local_prep_game(), "The second seat is ready")
+
+	assert_false(Multiplayer.is_prep_game_open(), "Both seats answered")
+	assert_true(Multiplayer.advance_phase(), "The first turn is open")
+
+
+# The hotseat hands the table to the seat that still owes an answer, so the
+# player never has to press "Controlar P2" to reach the second panel.
+func test_the_hotseat_hands_the_mulligan_to_the_other_seat():
+	await _start(_deck(60, 0), _deck(60, 0))
+
+	var first := Multiplayer.my_slot
+	assert_true(Multiplayer.accept_local_hand(), "The visible seat keeps its hand")
+	assert_eq(Multiplayer.my_slot, 3 - first, "The table passed to the other seat")
+	assert_false(bool(Multiplayer.get_mulligan_info()["waiting_for_opponent"]),
+			"The other seat has its own answer left")
+
+
+func test_empty_hand_keeps_itself_and_waits():
+	await _start(_deck(60, 0), _deck(60, 0))
+
+	# Decision 6b: the fifth mulligan leaves an empty hand, which is kept at once.
+	for _step in range(TurnRules.manual_mulligan_sequence().size()):
+		assert_true(Multiplayer.manual_mulligan_local(), "The mulligan ran")
+
+	# The keep already moved the hotseat to the other seat, which still owes its
+	# answer, so the empty seat has to be brought back to be inspected.
+	Multiplayer.swap_solo_seat()
+	await yield_for(0.3)
+	var info := Multiplayer.get_mulligan_info()
+	assert_eq(int(info["hand_size"]), 0, "The hand went all the way down")
+	assert_true(bool(info["waiting_for_opponent"]), "The empty hand is already kept")
+	assert_false(Multiplayer.accept_local_hand(), "It answered only once")
+	assert_true(Multiplayer.is_mulligan_open(), "Still waiting for the other seat")
+
+
+func test_mulligan_counter_is_per_seat():
+	await _start(_deck(60, 0), _deck(60, 0))
+
+	Multiplayer.manual_mulligan_local()
+	var info := Multiplayer.get_mulligan_info()
+	assert_eq(int(info["repetition"]), 1, "The seat counted its mulligan")
+	assert_eq(int(info["max_repetitions"]), 5, "The counter shows the whole ladder")
+
+	Multiplayer.swap_solo_seat()
+	await yield_for(0.3)
+	var other := Multiplayer.get_mulligan_info()
+	assert_eq(int(other["repetition"]), 0, "The other seat starts its own count")
+	assert_eq(int(other["hand_size"]), TurnRules.HAND_SIZE,
+			"The seat that took the table has its own ten cards")
+
+
+# AUTOTURNO.md §4.1, item 5: a player that reconnects has to land on the same
+# rung of the ladder, so the per-seat counter travels in the public state.
+func test_the_mulligan_ladder_travels_in_the_public_state():
+	await _start(_deck(60, 0), _deck(60, 0))
+
+	Multiplayer.manual_mulligan_local()
+	var state := Multiplayer._build_public_state(Multiplayer.sequence)
+	var counts: Dictionary = state.get("mulligan_counts", {})
+	assert_eq(int(counts.get(str(Multiplayer.my_slot), 0)), 1,
+			"The seat's repetition is in the state the peers share")
+
+	Multiplayer._mulligan_counts = {}
+	assert_eq(int(Multiplayer.get_mulligan_info()["repetition"]), 0,
+			"The local count really went away")
+	Multiplayer._absorb_turn_state(state)
+	assert_eq(int(Multiplayer.get_mulligan_info()["repetition"]), 1,
+			"Absorbing the state puts the rung back")
+

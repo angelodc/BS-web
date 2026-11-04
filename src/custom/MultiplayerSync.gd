@@ -2455,6 +2455,71 @@ func _container_count(container) -> int:
 	return total
 
 
+# What the automatic turn phases (AUTOTURNO.md §3.4) read from the table. The
+# acting seat is measured on its real cards; the opponent only exists here as
+# mirrors, so its numbers come from the mirrored nodes.
+func get_turn_facts() -> Dictionary:
+	var scene_cards := []
+	var characters_in_play := 0
+	for card in get_tree().get_nodes_in_group("cards"):
+		if not (card is Card) or not is_instance_valid(card) \
+				or card.network_mirror or not card.is_inside_tree():
+			continue
+		if _zone_for_card(card) != "board" or card.current_host_card != null:
+			continue
+		var card_type := str(card.properties.get("_tipo", "")).strip_edges()
+		if not card_type in ["Personagem", "Suporte"]:
+			continue
+		if card_type == "Personagem":
+			characters_in_play += 1
+		var attached := _live_attachments(card)
+		scene_cards.append({
+			"card": card,
+			"name": str(card.canonical_name),
+			"attachments": attached,
+			"attached": attached.size(),
+			"energy": str(card.properties.get("ENERGIA", "0")).to_int(),
+		})
+	return {
+		"characters_in_play": characters_in_play,
+		"characters": scene_cards,
+		"opponent_characters": _mirror_count("board", "Personagem"),
+		"opponent_prizes": _mirror_zone_size("prizes"),
+	}
+
+
+# Mirrors are children of the same board node, so only the recorded zone tells
+# an opponent character apart from the energy attached under it.
+func _mirror_count(zone: String, card_type: String) -> int:
+	var total := 0
+	for net_id in _remote_cards:
+		var card = _remote_cards[net_id]
+		if not is_instance_valid(card):
+			continue
+		var meta = _remote_meta.get(net_id, {})
+		if typeof(meta) != TYPE_DICTIONARY or str(meta.get("zone", "")) != zone:
+			continue
+		if not str(meta.get("host", "")).is_empty():
+			continue
+		if card_type != "" \
+				and str(card.properties.get("_tipo", "")).strip_edges() != card_type:
+			continue
+		total += 1
+	return total
+
+
+func _mirror_zone_size(zone: String) -> int:
+	return _mirror_count(zone, "")
+
+
+func _live_attachments(card: Card) -> Array:
+	var alive := []
+	for attachment in card.attachments:
+		if is_instance_valid(attachment):
+			alive.append(attachment)
+	return alive
+
+
 func _dummy_card_name() -> String:
 	if cfc.card_definitions.has("Test Card 1"):
 		return "Test Card 1"

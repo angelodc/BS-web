@@ -263,3 +263,33 @@ Cada etapa termina com GUT verde e validação no F5. O commit entra na
 ## 8. Pendências fora deste plano
 
 - Validar visualmente a tabela 10→8→6→4→2→0 no F5 antes de publicar.
+
+---
+
+## 9. Estado da implementação
+
+Entregue na branch `autoTurno`, com testes automatizados verdes:
+
+| Item | Onde | Teste |
+| :--- | :--- | :--- |
+| Regra pura (mulligan, REG, DRAW, ADJ, deck) | `src/custom/TurnRules.gd` | `tests/unit/test_turn_rules.gd` — 24 testes |
+| Mulligan automático, local e assento oculto | `Multiplayer._resolve_auto_mulligan()` | `tests/integration/test_auto_mulligan.gd` |
+| Sequência do mulligan manual | `Multiplayer.manual_mulligan_local()` | idem — 7 testes |
+| Estado para a UI | `Multiplayer.get_mulligan_info()` | idem |
+
+Detalhes de implementação que divergem do rascunho acima:
+
+- O mulligan automático roda **localmente**, semeado por `seed + "|mulliganN"`,
+  sem mensagem nova: os dois clientes chegam à mesma mão porque partem do mesmo
+  seed. Só o mulligan **manual** é escolha do jogador.
+- O assento oculto do hotseat repete o mesmo laço sobre os nomes das cartas
+  (`_names_need_auto_mulligan`), com o RNG próprio daquele assento.
+- A guarda de 50 repetições está ativa e loga aviso ao ser atingida.
+
+Ainda não implementado (depende de UI e da máquina de estados):
+
+1. Overlay de dois botões do mulligan manual no `MatchHUD`.
+2. `PREP_GAME` (descarte livre simultâneo antes da rodada 1).
+3. `REG`, `DRAW` e `ADJ` automáticos fiados na sequência de fases.
+4. Derrota por deck vazio.
+5. Serialização/reconexão dos estados novos.

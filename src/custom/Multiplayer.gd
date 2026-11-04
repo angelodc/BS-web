@@ -83,6 +83,8 @@ var round_number := 1
 var step_index := 0
 var phase := ""
 var sequence := -1
+## How many manual mulligans the local seat has taken this match.
+var _mulligan_count := 0
 var waiting_message := ""
 var ended_message := ""
 var last_error := ""
@@ -1058,6 +1060,7 @@ func _build_local_start(seed_text: String) -> bool:
 	var hand: Hand = cfc.NMAP.hand
 	if not deck or not hand:
 		return false
+	_mulligan_count = 0
 	var names: Array = local_deck.get("cards", {}).keys()
 	names.sort()
 	var instance_count := 0
@@ -1077,7 +1080,17 @@ func _build_local_start(seed_text: String) -> bool:
 	cfc.set_seed(seed_text + "|deck")
 	deck.shuffle_cards(false)
 	deck.reorganize_stack()
-	for _i in range(START_HAND_SIZE):
+	if not _deal_to_hand(hand, deck, START_HAND_SIZE):
+		return false
+	hand.re_place()
+	hand.call_deferred("re_place")
+	_resolve_auto_mulligan(seed_text)
+	return true
+
+
+# Moves `count` cards from the top of the deck to the hand.
+func _deal_to_hand(hand: Hand, deck: Pile, count: int) -> bool:
+	for _i in range(count):
 		var card = deck.get_top_card()
 		if not card:
 			return false
@@ -1087,9 +1100,108 @@ func _build_local_start(seed_text: String) -> bool:
 		card.set_state(Card.CardState.IN_HAND)
 		card.position = card.recalculate_position()
 		ensure_card_id(card)
+	return true
+
+
+# Sends every card of the hand back to the deck, face down.
+func _return_hand_to_deck(hand: Hand, deck: Pile) -> void:
+	for card in hand.get_all_cards():
+		if not is_instance_valid(card):
+			continue
+		hand.remove_child(card)
+		deck.add_child(card)
+		card.set_is_faceup(false, true)
+		card.set_state(Card.CardState.IN_PILE)
+
+
+# A hand with one or no characters goes back to the deck and is dealt again
+# (AUTOTURNO.md §3.1). The shuffle is seeded from the match seed, so every
+# client reaches the same hand without exchanging messages.
+func _resolve_auto_mulligan(seed_text: String) -> void:
+	var deck: Pile = cfc.NMAP.get("deck", null)
+	var hand: Hand = cfc.NMAP.get("hand", null)
+	if not deck or not hand:
+		return
+	var attempts := 0
+	while TurnRules.needs_auto_mulligan(hand.get_all_cards()) \
+			and not TurnRules.auto_mulligan_limit_reached(attempts):
+		attempts += 1
+		_return_hand_to_deck(hand, deck)
+		cfc.set_seed(seed_text + "|mulligan" + str(attempts))
+		deck.shuffle_cards(false)
+		deck.reorganize_stack()
+		if not _deal_to_hand(hand, deck, START_HAND_SIZE):
+			return
+		hand.re_place()
+		_log("Mulligan automático " + str(attempts) + ": a mão tinha menos de "
+				+ "dois Personagens e foi trocada.")
+	if attempts > 0:
+		hand.call_deferred("re_place")
+	if TurnRules.auto_mulligan_limit_reached(attempts) \
+			and TurnRules.needs_auto_mulligan(hand.get_all_cards()):
+		_log("Mulligan automático: limite de proteção atingido; seguindo com "
+				+ "a mão atual.")
+
+
+# --- Manual mulligan (AUTOTURNO.md §3.2) -------------------------------
+
+## What the HUD needs to draw the mulligan overlay.
+func get_mulligan_info() -> Dictionary:
+	var hand: Hand = cfc.NMAP.get("hand", null)
+	var resources: Pile = cfc.NMAP.get("discard", null)
+	var hand_size := hand.get_all_cards().size() if hand else 0
+	return {
+		"hand_size": hand_size,
+		"resources": resources.get_all_cards().size() if resources else 0,
+		"cost": TurnRules.manual_mulligan_cost(hand_size),
+		"draw": TurnRules.manual_mulligan_draw(hand_size),
+		"repetition": _mulligan_count,
+		"can_mulligan": TurnRules.can_manual_mulligan(hand_size),
+	}
+
+
+## One manual mulligan: only the hand goes back to the deck, the cards already
+## in resources stay there, two cards from the top become resources and the
+## player draws two fewer cards than before. Returns false when there is
+## nothing left to shuffle back.
+func manual_mulligan_local() -> bool:
+	var deck: Pile = cfc.NMAP.get("deck", null)
+	var hand: Hand = cfc.NMAP.get("hand", null)
+	var resources: Pile = cfc.NMAP.get("discard", null)
+	if not deck or not hand or not resources:
+		return false
+	var hand_size := hand.get_all_cards().size()
+	if not TurnRules.can_manual_mulligan(hand_size):
+		return false
+	var cost := TurnRules.manual_mulligan_cost(hand_size)
+	var draw := TurnRules.manual_mulligan_draw(hand_size)
+	_mulligan_count += 1
+	_return_hand_to_deck(hand, deck)
+	deck.shuffle_cards(false)
+	deck.reorganize_stack()
+	for _i in range(cost):
+		var card = deck.get_top_card()
+		if not card:
+			break
+		deck.remove_child(card)
+		resources.add_child(card)
+		card.set_is_faceup(true, true)
+		card.set_state(Card.CardState.IN_PILE)
+		ensure_card_id(card)
+	if draw > 0 and not _deal_to_hand(hand, deck, draw):
+		return false
 	hand.re_place()
 	hand.call_deferred("re_place")
+	resources.reorganize_stack()
+	_log("Mulligan manual " + str(_mulligan_count) + ": " + str(cost)
+			+ " carta(s) para Recursos/Descarte, comprou " + str(draw) + ".")
+	emit_signal("display_changed")
 	return true
+
+
+## Counts and costs for the next repetition, so the HUD can label the buttons.
+func reset_mulligan_counter() -> void:
+	_mulligan_count = 0
 
 
 #-----------------------------------------------------------------------------
@@ -1126,11 +1238,17 @@ func _solo_hidden_payload(
 		return {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(seed_text + "|seat" + str(slot))
-	for index in range(pool.size() - 1, 0, -1):
-		var pick := rng.randi_range(0, index)
-		var held = pool[index]
-		pool[index] = pool[pick]
-		pool[pick] = held
+	# The hidden seat obeys the same automatic mulligan as the local one.
+	var attempts := 0
+	while true:
+		_shuffle_names(pool, rng)
+		if not _names_need_auto_mulligan(pool.slice(0, START_HAND_SIZE)) \
+				or TurnRules.auto_mulligan_limit_reached(attempts):
+			break
+		attempts += 1
+	if attempts > 0:
+		_log("Mulligan automático do assento " + str(slot) + ": "
+				+ str(attempts) + " troca(s) por falta de Personagens.")
 	var hand := []
 	var rest := []
 	for index in range(pool.size()):
@@ -1143,6 +1261,25 @@ func _solo_hidden_payload(
 		else:
 			rest.append(entry)
 	return {"hand": hand, "deck": rest, "definitions": {}}
+
+
+# Fisher-Yates over card names, driven by an explicit RNG so the hidden seat
+# stays reproducible from the match seed.
+func _shuffle_names(pool: Array, rng: RandomNumberGenerator) -> void:
+	for index in range(pool.size() - 1, 0, -1):
+		var pick := rng.randi_range(0, index)
+		var held = pool[index]
+		pool[index] = pool[pick]
+		pool[pick] = held
+
+
+# Same question as TurnRules.needs_auto_mulligan, answered from card names.
+func _names_need_auto_mulligan(names: Array) -> bool:
+	var cards := []
+	for card_name in names:
+		var definition: Dictionary = cfc.card_definitions.get(str(card_name), {})
+		cards.append({"_tipo": str(definition.get("_tipo", ""))})
+	return TurnRules.needs_auto_mulligan(cards)
 
 
 # Swapping seats rebuilds the table from the state that a checkpoint restore

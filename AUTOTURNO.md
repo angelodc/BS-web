@@ -150,9 +150,7 @@ adversário recebe a vitória e o motivo vai para o log.
 
 ### 4.1 Máquina de estados
 
-Hoje `PHASES` é um array fixo de 5 fases repetido duas vezes
-(`src/custom/Multiplayer.gd:45`) e `_advance_as_authority()`
-(`src/custom/Multiplayer.gd:1278`) só incrementa o índice. Proposta:
+Proposta:
 
 ```
 SETUP → MULLIGAN_AUTO → MULLIGAN_MANUAL → PREP_GAME
@@ -165,6 +163,39 @@ SETUP → MULLIGAN_AUTO → MULLIGAN_MANUAL → PREP_GAME
 - A fase vira **dado serializável** (`phase`, `step_index`, `turn_slot`,
   `first_turn`, `mulligan_count`), porque quem reconecta tem de cair no mesmo
   ponto. `CheckpointList.gd` mapeia os labels e precisa ganhar as fases novas.
+
+Como está hoje, depois da reestruturação:
+
+- O laço é `TURN_PHASES = ["REG", "DRAW", "PREP", "ADJ", "ANT", "ATK"]` e
+  `get_steps_per_round()` devolve `TURN_PHASES.size() * 2` — doze passos, a
+  segunda metade sendo o turno do outro jogador. `phase_for_step`, `turn_half`,
+  `get_turn_owner_slot` e `get_actor_slot` derivam tudo de `step_index`
+  (`ANT` é o passo do adversário do dono do turno).
+- O mulligan automático e a janela manual **não** são passos do laço: a partida
+  já começa no passo 0 com a bandeira `_mulligan_open`, e `advance_phase` se
+  recusa a andar enquanto ela estiver aberta. Isso é o que mantém o passo 0
+  (Contagem Regressiva) fiel à decisão 11a: a janela fecha e o primeiro passo é
+  pago em seguida.
+- `PREP_GAME` é a segunda bandeira (`_prep_game_open`), aberta no fechamento do
+  mulligan e fechada quando os dois assentos clicam em Pronto. Ela segura o mesmo
+  `advance_phase` e o mesmo `has_pending_phase_effect`, então a Contagem
+  Regressiva continua sendo paga pelo primeiro passo, agora por quem fecha a
+  preparação. Ficar "sem descartar nada" é o caminho padrão: a janela só exige a
+  resposta, nunca um descarte.
+- No hotseat a mesa segue quem age: o assento que ainda deve uma resposta
+  (`_hand_to_seat_that_owes_an_answer`) ou o ator do passo seguinte
+  (`_follow_turn_in_solo`, chamado antes de pagar o efeito automático para que a
+  compra saia da mão certa). O jogador não precisa de "Controlar P2" para as
+  janelas que já são dele.
+- Quem reconecta tem de cair no mesmo ponto: `phase`, `round`, `step`,
+  `starting_slot`, `mulligan_open`, `prep_game_open`, `mulligan_counts` e
+  `effects_applied` viajam no estado público, e `_absorb_turn_state()` é o único
+  lugar que os traz de volta — tanto em `mp_state` quanto no restore de checkpoint.
+  As duas bandeiras são **copiadas** (dono é a autoridade); os contadores de
+  mulligan e a marca de passos pagos são **fundidos**, porque cada cliente só
+  escreve as entradas do próprio assento e um jogador que volta não pode refazer
+  um passo que a mesa já pagou. `first_turn` continua derivado de `round`+`step`
+  (`is_first_turn_of_match`), não serializado.
 
 ### 4.2 Onde cada regra vive
 
@@ -193,6 +224,19 @@ difunde. A regra passa a ser testável em unidade, sem montar mesa.
 - `mp_phase_state` público passa a carregar `phase`, `turn_slot`,
   `mulligan_pending`, `first_turn` e `mulligan_count`.
 
+Como ficou, depois das entregas do §9:
+
+- O mulligan manual só precisa de `mp_mulligan_accept` (a decisão de um assento);
+  a mão resultante não viaja, porque o mulligan automático é local e determinista
+  pelo seed. A preparação usa `mp_prep_game_ready`, pelo mesmo molde.
+- Não há `mp_setup_discard_request`: o descarte da preparação é um intent
+  `descartar` comum, que já é validado, logado, desfeito e espelhado pelo
+  caminho de sempre.
+- O deck vazio é difundido por `mp_result` (assento que devia + quantidade), para
+  que o cliente cujo deck acabou declare a própria derrota sem esperar o host.
+- O estado público carrega `mulligan_open` e `prep_game_open`; `first_turn` é
+  derivado, não serializado.
+
 Regra de ouro: **só o anfitrião embaralha e compra**. O cliente recebe a mão
 resultante. Se cada lado embaralhar com a própria semente, a divergência aparece
 na primeira reconexão.
@@ -210,12 +254,18 @@ mesma mão.
 - **Overlay de mulligan:** botões **Ficar com a mão** / **Mulligan**, com
   contador de repetição e o texto do que vai acontecer (“2 cartas vão para os
   recursos, você compra 8”).
-- **Preparação do jogo:** botão **Preparação — descartar cartas da mão**, seleção
-  múltipla na mão e **Pronto** para liberar a fase.
+- **Preparação do jogo:** `PrepGamePanel` com mão/recursos do assento e o botão
+  **Pronto**. O descarte em si é o arrasto normal da mão para a banda de Recursos
+  (nada de seleção múltipla nova), e a janela não obriga descartar nada.
 - **Ajuste:** selo de alerta no personagem com excesso de anexos + linha no log.
 - **Fase:** `MatchHUD` mostra também `Mulligan`, `Descarte` e `Compra`, com as
   cores de `PHASE_COLORS`.
 - **Fim por deck vazio:** overlay de vitória reaproveitada, com o motivo.
+- **Hotseat:** a mesa acompanha sozinha o assento que precisa agir. Depois de
+  **Ficar com a mão** / **Mulligan**, depois de **Pronto** e a cada mudança de
+  passo, o assento que age assume a mesa — o P2 vê o próprio painel sem clicar em
+  "Controlar P2". No passo de Antecipação isso troca para o adversário e volta no
+  Ataque, porque é ele quem joga aquele passo.
 - Tudo **mouse-only**, como manda a diretriz do projeto.
 
 ---
@@ -286,10 +336,71 @@ Detalhes de implementação que divergem do rascunho acima:
   (`_names_need_auto_mulligan`), com o RNG próprio daquele assento.
 - A guarda de 50 repetições está ativa e loga aviso ao ser atingida.
 
-Ainda não implementado (depende de UI e da máquina de estados):
+Ainda não implementado:
 
-1. Overlay de dois botões do mulligan manual no `MatchHUD`.
-2. `PREP_GAME` (descarte livre simultâneo antes da rodada 1).
-3. `REG`, `DRAW` e `ADJ` automáticos fiados na sequência de fases.
-4. Derrota por deck vazio.
-5. Serialização/reconexão dos estados novos.
+nada. Os cinco itens do rascunho estão entregues; o que falta é validação manual
+no F5 (item 11 da lista de etapas) e o teste de reconexão com duas janelas.
+
+Entregues desde o rascunho acima:
+
+1. **Overlay do mulligan manual no `MatchHUD`** — dois botões ("Descartar" e
+   "Ficar com a mão") com o contador da tabela 10→8→6→4→2→0; o botão de
+   descartar some com a mão em 0 (decisão 6b). O assento local responde por si
+   (`accept_local_hand`), a janela fecha quando os dois aceitam (decisão 12) e o
+   estado espelhado vem de `get_mulligan_info()`.
+2. **`PREP_GAME`** — a janela de descarte livre entre o mulligan e a rodada 1. É
+   a segunda bandeira da sessão (`_prep_game_open`), de dono a autoridade: o
+   convidado só a espelha pelo estado público. Cada assento responde por si em
+   `ready_local_prep_game()`; no hotseat a troca de assento limpa a resposta, do
+   mesmo jeito que o mulligan. Descartar não pediu regra nova na mesa:
+   `_validate_discard` já aceita mão → Recursos sem limite, e a janela é um portão
+   da sessão, não uma restrição da tabela. O `PrepGamePanel` do `MatchHUD` mostra
+   mão/recursos e o botão "Pronto" por `get_prep_game_info()`. A mensagem
+   `mp_prep_game_ready` leva a resposta do convidado à autoridade, que fecha a
+   janela e paga a Contagem Regressiva devendida. Dentro da janela a mesa só
+   aceita `descartar`, `reordenar_mão` e `desfazer` (`SETUP_ALLOWED_VERBS`,
+   alimentado por `setup_only_discard` no contexto): sem isso o titular do turno
+   poderia colocar um Personagem em cena antes da Contagem Regressiva e mudar a
+   própria conta. Testes:
+   `tests/integration/test_prep_game.gd` — 13 testes.
+3. **`REG`, `DRAW` e `ADJ` automáticos** — `TURN_PHASES` ganhou `DRAW` e o laço
+   passou a ter 12 passos por rodada. Quem paga o passo é o cliente dono das
+   cartas (`run_phase_effects`), marcado por `round:step` para nunca repetir;
+   os gatilhos são o avanço de passo, a troca de assento no hotseat, o fechamento
+   da janela de mulligan e a recepção do estado público. As operações vêm de
+   `TurnRules.operations_for_phase` (puro) e cada movimento é um intent
+   (`mandar_topo_para_recursos`, `comprar`, `descartar`), então tudo é validado,
+   logado, desfeito e espelhado como numa jogada manual. O `Ajuste` descarrega o
+   excesso (regra oficial: é obrigatório) em vez de só alertar.
+   Testes: `tests/integration/test_turn_phases.gd` e `test_phase_effects.gd`.
+4. **Derrota por deck vazio** — a mesa avisa `Multiplayer.declare_empty_deck_loss`
+   quando um `comprar`/`mandar_topo_para_recursos` falha por `deck_insuficiente`
+   ou `deck_vazio`. O assento que devia as cartas perde na hora, o adversário
+   recebe a vitória no mesmo overlay usado pelos Prêmios (com o motivo na linha
+   de baixo) e a partida termina nos dois clientes pela mensagem `mp_result`.
+   Como `apply_intent` é o funil de clique, de fase automática e de script, a
+   regra vale "a qualquer momento" (§3.5). Testes:
+   `tests/integration/test_empty_deck.gd`.
+5. **Serialização dos estados novos** — `mulligan_open`, `prep_game_open`,
+   `mulligan_counts` e `effects_applied` entraram no estado público, e
+   `_absorb_turn_state()` aplica tudo nos dois caminhos que devolvem um jogador à
+   partida: o `mp_state` ao vivo e o restore de checkpoint. As bandeiras são
+   copiadas (a autoridade é dona delas); contadores e marcas de passo são fundidos
+   chave a chave, porque o cliente do outro assento é quem escreve as suas. Isso
+   fecha o buraco de o passo automático ser pago duas vezes depois de uma
+   reconexão. Testes: `tests/integration/test_prep_game.gd`
+   (`test_a_resumed_seat_does_not_replay_a_paid_step`,
+   `test_the_windows_travel_in_the_public_state`) e
+   `test_auto_mulligan.gd` (`test_the_mulligan_ladder_travels_in_the_public_state`).
+6. **Hotseat acompanha o assento que age** — `_hand_to_seat_that_owes_an_answer()`
+   roda no fim de `accept_local_hand()` e `ready_local_prep_game()` e passa a mesa
+   ao assento que ainda deve resposta; era o que faltava para o P2 ver o painel
+   de mulligan/preparação sem apertar "Controlar P2". `_follow_turn_in_solo()`
+   roda em `_advance_as_authority()` e `_record_prep_game_ready()` e passa a mesa
+   ao ator do passo seguinte antes de pagar o efeito automático, então a compra e
+   a contagem saem da mão certa. `swap_solo_seat()` deriva a resposta do assento
+   (`_mulligan_accepts`/`_prep_game_accepts`) em vez de zerá-la, para um assento
+   não responder duas vezes. Antecipação alterna duas vezes por turno, como manda
+   a regra. Testes: `test_auto_mulligan.gd`
+   (`test_the_hotseat_hands_the_mulligan_to_the_other_seat`) e
+   `test_turn_phases.gd` (o passeio dos doze passos confere `my_slot` = ator).

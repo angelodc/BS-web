@@ -214,6 +214,11 @@ const TARGET_HOVER_COLOUR := Color(0, 0.4, 1) * 1.3
 #
 # You can change the colour to something else if  you want however
 const TARGETTING_ARROW_COLOUR := TARGET_HOVER_COLOUR
+# The colour used while the Materializar mode is armed: every card in the hand
+# glows green until one is picked or the mode is cancelled. It is deliberately
+# different from every CostsState colour, because set_focus() only clears a
+# highlight whose colour is one of those.
+const MATERIALIZE_HOVER_COLOUR := Color(0.2, 1, 0.35) * 1.5
 # The below const defines what string to put between these elements.
 # Returns a color code to be used to mark the state of cost to pay for a card
 # * IMPOSSIBLE: The cost of the card cannot be paid.

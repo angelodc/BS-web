@@ -25,6 +25,10 @@ var pending_resource_host: Card
 var pending_resource_swap_card: Card
 var pending_resource_count := 0
 var pending_resource_swap_active := false
+# Materializar: the button right of the hand arms the mode and the next click on
+# a hand card sends it to the scene with life from the top of the deck.
+var materialize_mode := false
+var _resource_message_serial := 0
 var _resource_selection_completed := false
 var _table_actions = null
 var _match_recorder = null
@@ -70,6 +74,11 @@ func _ready() -> void:
 	$DeckBuilderPopup.popup_hide.connect(_on_DeckBuilder_hide)
 	# warning-ignore:return_value_discarded
 	cfc.NMAP.discard.popup_closed.connect(_on_resource_popup_closed)
+	var materialize_button := get_node_or_null("Materializar") as Button
+	if materialize_button:
+		# warning-ignore:return_value_discarded
+		materialize_button.pressed.connect(_on_Materializar_pressed)
+		_update_materialize_button()
 	_update_prize_energy()
 	if not cfc.ut:
 		var hud := preload("res://src/custom/MatchHUD.tscn").instantiate()
@@ -503,9 +512,29 @@ func get_available_resource_count() -> int:
 
 
 func show_resource_message(message: String) -> void:
-	if cfc.ut:
+	var label: Label = get_node_or_null("ResourceSelectionLabel")
+	if not label:
 		return
-	$ResourceSelectionLabel.text = message
+	# A newer message cancels the auto-clear of the older one.
+	_resource_message_serial += 1
+	label.text = message
+
+
+# Shows a message that clears itself. `seconds` 0 keeps it until the next
+# message; the serial makes an older timer give up when a newer line appears.
+func show_transient_resource_message(message: String, seconds := 3.0) -> void:
+	var label: Label = get_node_or_null("ResourceSelectionLabel")
+	if not label:
+		return
+	_resource_message_serial += 1
+	var serial: int = _resource_message_serial
+	label.text = message
+	if seconds <= 0.0:
+		return
+	await get_tree().create_timer(seconds).timeout
+	if not is_instance_valid(self) or serial != _resource_message_serial:
+		return
+	label.text = ""
 
 
 # The resource popup is drawn over the field, so the card under the pointer is a
@@ -658,6 +687,103 @@ func swap_attached_resource(resource: Card) -> bool:
 	cfc.NMAP.discard.card_count_label.text = \
 			str(get_available_resource_count())
 	return true
+
+
+# -----------------------------------------------------------------------------
+# Materializar
+# -----------------------------------------------------------------------------
+
+# The button right of the hand arms the mode: every hand card glows green and
+# the next left click on one of them materializes it. Cancelling is the button
+# again or Esc.
+func start_materialize() -> void:
+	if materialize_mode:
+		return
+	materialize_mode = true
+	_set_materialize_highlight(true)
+	_update_materialize_button()
+	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
+	show_transient_resource_message(
+			"Materializar: clique numa carta da mão.", 0)
+
+
+func stop_materialize() -> void:
+	if not materialize_mode:
+		return
+	materialize_mode = false
+	_set_materialize_highlight(false)
+	_update_materialize_button()
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	show_resource_message("")
+
+
+func _on_Materializar_pressed() -> void:
+	if materialize_mode:
+		stop_materialize()
+	else:
+		start_materialize()
+
+
+func _unhandled_input(event : InputEvent) -> void:
+	if not materialize_mode:
+		return
+	if event.is_action_pressed("ui_cancel"):
+		stop_materialize()
+		get_viewport().set_input_as_handled()
+
+
+func _update_materialize_button() -> void:
+	var button := get_node_or_null("Materializar") as Button
+	if not button:
+		return
+	button.set_pressed_no_signal(materialize_mode)
+	button.text = "Cancelar" if materialize_mode else "Materializar"
+	button.tooltip_text = "Escolha uma carta da mão ou cancele" \
+			if materialize_mode else "Materializa uma carta da mão com vida do topo do deck"
+
+
+# The green is not one of the CostsState colours on purpose: set_focus() only
+# clears a highlight painted in those, so hovering a card does not wipe the
+# mode colour and unhovering does not either. The mode has to clear it itself.
+func _set_materialize_highlight(enabled : bool) -> void:
+	var hand = cfc.NMAP.get("hand", null)
+	if not is_instance_valid(hand):
+		return
+	for card in hand.get_all_cards():
+		if not is_instance_valid(card):
+			continue
+		var control: Control = card.get_node_or_null("Control")
+		if control:
+			control.set_default_cursor_shape(
+					Control.CURSOR_POINTING_HAND if enabled
+					else Control.CURSOR_ARROW)
+		if enabled:
+			card.highlight.set_highlight(true,
+					CFConst.MATERIALIZE_HOVER_COLOUR)
+		else:
+			var focused: bool = card.state == Card.CardState.FOCUSED_IN_HAND
+			card.highlight.set_highlight(focused, CFConst.FOCUS_HOVER_COLOUR)
+
+
+# Called by the card when a hand card is clicked while the mode is armed. A
+# card the table refuses stays in the hand and the mode stays armed, so another
+# one can be picked; the warning clears itself.
+func materialize_hand_card(card: Card) -> Dictionary:
+	if not materialize_mode or not is_instance_valid(card):
+		return {"ok": false, "error": "modo_inativo", "message": ""}
+	var result := apply_intent({"op": "materializar", "card": card})
+	if bool(result.get("ok", false)):
+		# The card left the hand still glowing; from here the board owns it.
+		card.highlight.set_highlight(false)
+		stop_materialize()
+		return result
+	var error := str(result.get("error", ""))
+	if error == "tipo_invalido":
+		show_transient_resource_message(str(result.get("message", "")), 3.0)
+		return result
+	stop_materialize()
+	report_intent(result)
+	return result
 
 
 func _on_resource_popup_closed() -> void:

@@ -9,7 +9,8 @@
 # the table has.
 #
 # Intent shape (all keys except `op` are optional depending on the verb):
-#   {op, seat, card, to, host, quantity, amount, degree, from, to_slot, pile}
+#   {op, seat, card, to, host, quantity, amount, degree, from, to_slot, pile,
+#    life}
 #
 # `card` and `host` accept a card id (the one in `TableSnapshot`) or a Card
 # node; the node is resolved here so a script can use either.
@@ -367,6 +368,8 @@ func _dispatch(intent : Dictionary) -> Dictionary:
 			return _do_mill(intent)
 		"jogar":
 			return _do_play(intent)
+		"materializar":
+			return _do_materialize(intent)
 		"anexar":
 			return _do_attach(intent)
 		"mover":
@@ -448,6 +451,35 @@ func _do_play(intent : Dictionary) -> Dictionary:
 			_release_board_slot(previous)
 			previous.move_to(resources)
 	return _move_to_address(str(intent["card"]), str(intent["to"]))
+
+
+# The card goes to the chosen field slot and the life arrives with it: the top
+# cards of the deck are attached under the card in the same intent, so the table
+# never shows a character without its energy.
+func _do_materialize(intent : Dictionary) -> Dictionary:
+	var deck = _deck()
+	if not is_instance_valid(deck):
+		return _fail("deck_indisponivel", "O deck não está na mesa.")
+	var moved := _move_to_address(str(intent["card"]), str(intent["to"]),
+			["Materializar"])
+	if not moved.get("ok", false):
+		return moved
+	var card = _node(str(intent["card"]))
+	if not is_instance_valid(card):
+		return _fail("carta_ausente", "A carta não está na mesa.")
+	var attached := []
+	for _index in range(int(intent.get("life", 0))):
+		var top: Card = deck.get_top_card()
+		if not top:
+			break
+		var result := _attach_at(top, card, -1)
+		if not result.get("ok", false):
+			return result
+		# The deck keeps its cards face-down; the life under the character is
+		# meant to be read, so show the faces as the resource payment does.
+		top.set_is_faceup(true)
+		attached.append(_Snapshot.id_of(top))
+	return {"ok": true, "error": "", "message": "", "attachments": attached}
 
 
 func _do_attach(intent : Dictionary) -> Dictionary:
@@ -623,7 +655,8 @@ func _do_swap(_intent : Dictionary) -> Dictionary:
 
 # Applies an address to a card node. Every zone the model knows has a way back
 # into the scene here, so undo and scripts do not need a second set of rules.
-func _move_to_address(id : String, address : String) -> Dictionary:
+func _move_to_address(id : String, address : String,
+		tags := ["Manual"]) -> Dictionary:
 	var node = _node(id)
 	if not is_instance_valid(node):
 		return _fail("carta_ausente", "A carta " + id + " não está na mesa.")
@@ -635,6 +668,7 @@ func _move_to_address(id : String, address : String) -> Dictionary:
 	# card in two zones.
 	if kind in ["hand", "resources", "prizes", "deck"]:
 		_release_board_slot(node)
+		_detach_from_host(node)
 	match kind:
 		"hand":
 			return _move_to_hand(node, int(parsed.get("slot", 1)))
@@ -643,7 +677,7 @@ func _move_to_address(id : String, address : String) -> Dictionary:
 					int(parsed.get("column", 1)))
 			if not is_instance_valid(slot):
 				return _fail("campo_indisponivel", "O campo não está na mesa.")
-			node.move_to(board, -1, slot)
+			node.move_to(board, -1, slot, tags)
 			return _ok_result()
 		"resources":
 			var resources = _resources_pile()
@@ -671,7 +705,7 @@ func _move_to_address(id : String, address : String) -> Dictionary:
 			if not is_instance_valid(slot):
 				return _fail("cenario_indisponivel",
 						"O slot do cenário não está na mesa.")
-			node.move_to(board, -1, slot)
+			node.move_to(board, -1, slot, tags)
 			return _ok_result()
 		"attachment":
 			var host_id = state.card_at(str(parsed.get("host_address", "")))
@@ -691,6 +725,18 @@ func _release_board_slot(node) -> void:
 	if is_instance_valid(slot) and slot.occupying_card == node:
 		slot.occupying_card = null
 	node._placement_slot = null
+
+
+# A card that leaves its host is a plain card again. The host list and the card
+# reference are cleared before the move, or the host keeps an attachment that is
+# no longer under it and arranges it on the board.
+func _detach_from_host(node) -> void:
+	if not is_instance_valid(node) or not is_instance_valid(node.current_host_card):
+		return
+	var host: Card = node.current_host_card
+	host.attachments.erase(node)
+	node.current_host_card = null
+	host._organize_attachments()
 
 
 func _move_to_hand(node : Card, slot : int) -> Dictionary:
@@ -966,6 +1012,9 @@ func _describe_entry(intent : Dictionary, entry : Dictionary,
 		"jogar":
 			text = who + " jogou " + name + " (" + str(entry["from"]) \
 					+ " → " + str(entry["to"]) + ")"
+		"materializar":
+			text = who + " materializou " + name + " em " + str(entry["to"]) \
+					+ " com " + str(intent.get("life", 0)) + " de vida"
 		"anexar":
 			text = who + " anexou " + name + " a " + host_name
 		"mover":

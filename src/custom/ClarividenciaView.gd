@@ -25,7 +25,7 @@ const HEADER_HEIGHT := 64.0
 const HEADER_MIN_WIDTH := 620.0
 const HEADER_GAP := 10.0
 const ROW_LIFT := 0.06
-const HINT := "Clique numa carta para reordenar · clique na mão para comprar"
+const HINT := "Clique na carta, depois em outra para reordenar ou na mão para comprar"
 
 var _deck: Pile = null
 var _board: Control = null

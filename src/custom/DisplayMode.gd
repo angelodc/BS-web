@@ -1,11 +1,13 @@
 extends Node
 
+const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 const WINDOWED_ENV := "BS_WINDOWED"
 const WINDOWED_SIZE := Vector2i(960, 540)
 const WINDOWED_POSITION := Vector2i(220, 140)
-# With stretch mode 2D the UI keeps its 1280x720 design coordinates while
-# rendering at the window's native resolution, so a larger window stays sharp.
-const DESKTOP_WINDOW_SIZE := Vector2i(1280, 720)
+# With stretch mode canvas_items the UI keeps its 1280x720 design coordinates
+# while rendering at the window's native resolution, so a larger window stays
+# sharp. The desktop also picks the board raster density in the menu; the
+# window follows it so the table is shown 1:1.
 const TITLE_BAR_ALLOWANCE := 30.0
 
 
@@ -16,22 +18,38 @@ func _ready() -> void:
 		_apply_desktop_window()
 
 
+# Called by the menu when the board render size changes. The table reads the
+# setting when a match starts; here we only match the window to the choice.
+func apply_render_choice() -> void:
+	if OS.get_environment(WINDOWED_ENV) == "1":
+		_apply_windowed()
+		return
+	_apply_desktop_window()
+
+
+func _desktop_window_size() -> Vector2i:
+	if OS.has_feature("web"):
+		return RenderResolution.DESIGN_SIZE
+	return RenderResolution.window_size()
+
+
 func _apply_desktop_window() -> void:
 	get_window().mode = Window.MODE_EXCLUSIVE_FULLSCREEN if (false) else Window.MODE_WINDOWED
+	var target_size := _desktop_window_size()
 	if DisplayServer.get_screen_count() == 0:
 		get_window().borderless = true
-		get_window().size = DESKTOP_WINDOW_SIZE
+		get_window().size = target_size
 		return
 	var screen := _primary_screen()
 	var screen_position := DisplayServer.screen_get_position(screen)
 	var screen_size := DisplayServer.screen_get_size(screen)
 	# A window tall enough to touch the screen edges only fits without a title
 	# bar and taskbar, so it takes over the monitor as a borderless window.
-	var borderless := DESKTOP_WINDOW_SIZE.y + TITLE_BAR_ALLOWANCE > screen_size.y
+	var borderless := target_size.y + TITLE_BAR_ALLOWANCE > screen_size.y
 	get_window().borderless = borderless
 	var window_size := Vector2i(
-			min(DESKTOP_WINDOW_SIZE.x, screen_size.x),
-			min(DESKTOP_WINDOW_SIZE.y, screen_size.y))
+			min(target_size.x, screen_size.x),
+			min(target_size.y, screen_size.y))
 	if not borderless:
 		window_size = Vector2i(
 				min(window_size.x, screen_size.x - 40),

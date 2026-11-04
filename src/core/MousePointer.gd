@@ -38,6 +38,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_drop_settled_kept_focus()
 	if current_focused_card:
 		# After a card has been dragged, it generally clears its
 		# focused state. This check ensures that if the mouse hovers over
@@ -102,9 +103,114 @@ func _on_MousePointer_area_exited(area: Area2D) -> void:
 			area.highlight.set_highlight(false)
 		elif area.get_parent() as BoardPlacementSlot:
 			area.get_parent().set_highlight(false)
+		# A focused hand card that is still growing does not cover the pointer
+		# for the whole trip: mid-animation its area is smaller than the one it
+		# is heading for, so the pointer can leave it while still being inside
+		# the area it will end up covering. Dropping the hover there hands it to
+		# whatever card is drawn beyond, skipping the neighbour.
+		if _keeps_focus_while_growing(area):
+			overlaps.erase(area)
+			return
+		var hand_exit_side := _get_focused_hand_exit_side(area)
 		overlaps.erase(area)
 		#print("exit:",area.name)
 		_discover_focus()
+		# Discover focus clears the hover when the pointer leaves the focused
+		# card and no other card is under it. In the hand that happens when the
+		# pointer crosses sideways from a focused card into the space under the
+		# next one: the fan is an arc, so the neighbour sits higher and the
+		# pointer passes below its area. Without this handoff the card only gets
+		# the hover once the pointer reaches it, skipping the neighbour.
+		if hand_exit_side != 0 and current_focused_card == null:
+			_focus_adjacent_hand_card(area, hand_exit_side)
+
+
+# A hover kept through the focus animation (see _keeps_focus_while_growing) is
+# dropped once the card has settled and the pointer is no longer over it.
+# Without this the focus would stay on a card the pointer already left without
+# ever getting an area_exited for it.
+func _drop_settled_kept_focus() -> void:
+	var card := current_focused_card
+	if card == null or cfc.card_drag_ongoing:
+		return
+	if card.state != Card.CardState.FOCUSED_IN_HAND:
+		return
+	var parent := card.get_parent()
+	if parent == null or not parent.is_in_group("hands"):
+		return
+	if card.tokens.are_hovered() and card.tokens.is_drawer_open:
+		return
+	if card._tween.is_active():
+		return
+	var mouse := determine_global_mouse_pos()
+	var rect := Rect2(card.global_position, card.card_size * card.scale)
+	if rect.has_point(mouse) or card.get_focus_target_rect().has_point(mouse):
+		return
+	card._on_Card_mouse_exited()
+	current_focused_card = null
+
+
+# True while the focused hand card is still animating towards its focus slot
+# and the pointer is inside the area that animation is going to cover.
+func _keeps_focus_while_growing(area: Area2D) -> bool:
+	var card := area as Card
+	if card == null or card != current_focused_card:
+		return false
+	if card.state != Card.CardState.FOCUSED_IN_HAND:
+		return false
+	var parent := card.get_parent()
+	if parent == null or not parent.is_in_group("hands"):
+		return false
+	if not card._tween.is_active():
+		return false
+	return card.get_focus_target_rect().has_point(determine_global_mouse_pos())
+
+
+# Returns -1 or 1 when the pointer left a focused hand card through its left or
+# right side, or 0 when it left through the top/bottom (or was not focused).
+#
+# Only a settled card qualifies: a growing one is handled by
+# _keeps_focus_while_growing().
+func _get_focused_hand_exit_side(area: Area2D) -> int:
+	if cfc.card_drag_ongoing:
+		return 0
+	var card := area as Card
+	if card == null or card != current_focused_card:
+		return 0
+	if card.state != Card.CardState.FOCUSED_IN_HAND:
+		return 0
+	var parent := card.get_parent()
+	if parent == null or not parent.is_in_group("hands"):
+		return 0
+	if card._tween.is_active():
+		return 0
+	var mouse := determine_global_mouse_pos()
+	# The card grows from its top-left corner, so its area spans the whole
+	# scaled card size from its global position.
+	var rect := Rect2(card.global_position, card.card_size * card.scale)
+	var dx_left := rect.position.x - mouse.x
+	var dx_right := mouse.x - rect.end.x
+	var dy := maxf(rect.position.y - mouse.y, mouse.y - rect.end.y)
+	var dx := maxf(dx_left, dx_right)
+	# The larger overflow tells which side the pointer left through. A corner
+	# exit is ambiguous enough that it is left to the normal focus handling.
+	if dx <= 0 or dx <= dy:
+		return 0
+	return 1 if dx_right > dx_left else -1
+
+
+# Hands the hover to the neighbour in the direction the pointer left. The
+# neighbour grows over the pointer, so the hover is not lost in the fan gap.
+func _focus_adjacent_hand_card(card: Card, side: int) -> void:
+	var parent := card.get_parent()
+	var index: int = card.get_my_card_index() + side
+	if index < 0 or index >= parent.get_card_count():
+		return
+	var next_card: Card = parent.get_card(index)
+	if current_focused_card:
+		current_focused_card._on_Card_mouse_exited()
+	next_card._on_Card_mouse_entered()
+	current_focused_card = next_card
 
 
 # We're using this helper function, to allow our mouse-position relevant code
@@ -114,20 +220,14 @@ func _on_MousePointer_area_exited(area: Area2D) -> void:
 func determine_global_mouse_pos() -> Vector2:
 	if cfc.ut and cfc.NMAP.get("board"):
 		return cfc.NMAP.board._UT_mouse_position
-	var current_scene = get_tree().current_scene
-	if not current_scene:
+	# The board lives in a SubViewport, so the only position that matches its
+	# GUI hit-testing is the one that viewport received. The Godot 3 offset and
+	# camera-zoom workaround for godotengine/godot#30215 stopped being needed
+	# in 4.0 and only shifted the answer away from the card under the cursor.
+	var viewport := get_viewport()
+	if viewport == null:
 		return global_position
-	var zoom = Vector2(1,1)
-	# We have to do the below offset hack due to godotengine/godot#30215
-	# This is caused because we're using a viewport node and
-	# scaling the game in full-creen.
-	if get_viewport() and get_viewport().has_node("Camera2D"):
-		zoom = get_viewport().get_node("Camera2D").zoom
-	var offset_mouse_position = current_scene.get_global_mouse_position() \
-			- get_viewport_transform().origin
-	offset_mouse_position *= zoom
-	#var scaling_offset = get_tree().get_root().get_node('Main').get_viewport().get_size_override() * OS.window_size
-	return offset_mouse_position
+	return viewport.get_mouse_position()
 
 
 # Disables the mouse from interacting with the board
@@ -218,10 +318,9 @@ func _discover_focus() -> void:
 	elif not potential_cards.is_empty():
 		if cfc.card_drag_ongoing:
 			cfc.card_drag_ongoing.potential_container = null
-		# We sort the potential cards by their index on the board
-		potential_cards.sort_custom(Callable(CFUtils, "sort_index_ascending"))
-		# The candidate always has the highest index as it's drawn on top of
-		# others.
+		# We sort the potential cards by the order they are actually drawn in
+		potential_cards.sort_custom(Callable(CFUtils, "sort_draw_order_ascending"))
+		# The candidate is drawn last, so it's on top of the others.
 		var card : Card = potential_cards.back()
 		# if this card was not already focused...
 		if current_focused_card != card:

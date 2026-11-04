@@ -4,6 +4,8 @@
 class_name ViewportCardFocus
 extends Node2D
 
+const RenderResolution = preload("res://src/custom/RenderResolution.gd")
+
 @export var board_scene: PackedScene
 @export var info_panel_scene: PackedScene
 # This array holds all the previously focused cards.
@@ -13,6 +15,7 @@ var _current_focus_source : Card = null
 
 @onready var card_focus := $VBC/Focus
 @onready var focus_info := $VBC/FocusInfo
+@onready var _board_viewport := $SubViewportContainer/SubViewport
 @onready var _focus_viewport := $VBC/Focus/SubViewport
 @onready var world_environemt : WorldEnvironment = $WorldEnvironment
 @onready var _focus_tween := LegacyTween.new(self)
@@ -22,6 +25,7 @@ var _current_focus_source : Card = null
 func _ready():
 	cfc.map_node(self)
 	world_environemt.environment.glow_enabled = cfc.game_settings.get('glow_enabled', true)
+	_apply_render_density()
 	# We use the below while to wait until all the nodes we need have been mapped
 	# "hand" should be one of them.
 	$SubViewportContainer/SubViewport.add_child(board_scene.instantiate())
@@ -34,6 +38,20 @@ func _ready():
 		container.re_place()
 	focus_info.info_panel_scene = info_panel_scene
 	focus_info.setup()
+
+
+# The board and the preview are stretched over fixed design rectangles, so the
+# raster density can grow with the window without moving a single authored
+# offset. `size_2d_override` keeps both viewports at their design coordinates
+# (1280x720 and 300x450), which also keeps the mouse mapping and the playmat
+# fit working exactly as before.
+func _apply_render_density() -> void:
+	_board_viewport.size = RenderResolution.board_pixels()
+	_board_viewport.size_2d_override = RenderResolution.DESIGN_SIZE
+	_board_viewport.size_2d_override_stretch = true
+	_focus_viewport.size = RenderResolution.focus_pixels()
+	_focus_viewport.size_2d_override = RenderResolution.FOCUS_DESIGN_SIZE
+	_focus_viewport.size_2d_override_stretch = true
 
 
 func _process(_delta) -> void:

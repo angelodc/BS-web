@@ -4,6 +4,7 @@ extends Pile
 signal draw_card(deck)
 
 const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
+const CLARIVIDENCIA_VIEW = preload("res://src/custom/ClarividenciaView.gd")
 
 # The deck lies sideways in the bottom-left corner inside a box with a fixed
 # size, so the pile no longer grows with the card count. The cards are stacked
@@ -35,6 +36,9 @@ var _peek_menu: PopupMenu
 var _custom_peek_dialog: ConfirmationDialog
 var _custom_peek_count: SpinBox
 var _deck_action_in_progress := false
+# The open peek, while one is on screen. The deck refuses other actions until
+# the player closes it.
+var _clarividencia = null
 var _label_count := -1
 var _mill_divider: ColorRect
 
@@ -191,7 +195,7 @@ func get_top_cards(amount: int) -> Array:
 
 
 func _on_clarividencia_pressed() -> void:
-	if cfc.game_paused or get_card_count() == 0:
+	if cfc.game_paused or _deck_action_in_progress or get_card_count() == 0:
 		return
 	_custom_peek_count.max_value = max(4, get_card_count())
 	_custom_peek_count.value = min(4, get_card_count())
@@ -232,34 +236,27 @@ func _on_custom_peek_confirmed() -> void:
 	_show_top_cards(int(_custom_peek_count.value))
 
 
+# The peek stays on screen until the player closes it: the view owns the row so
+# the cards can be reordered and one of them drawn to the hand.
 func _show_top_cards(amount: int) -> void:
+	if _deck_action_in_progress or is_instance_valid(_clarividencia):
+		return
 	var cards := get_top_cards(amount)
 	if cards.is_empty():
 		return
-	var reveal = await _reveal_top_cards(cards)
-
-
-func _reveal_top_cards(cards: Array) -> void:
-	if _deck_action_in_progress:
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board):
 		return
 	_deck_action_in_progress = true
-	var revealed_cards := []
-	for card in cards:
-		if not is_instance_valid(card) or card.get_parent() != self:
-			continue
-		card.set_is_faceup(true, true)
-		var move_to_board = await card.move_to(
-				cfc.NMAP.board,
-				-1,
-				_get_reveal_position(revealed_cards.size(), cards.size()),
-				["Clarividência"])
-		revealed_cards.append(card)
-	await get_tree().create_timer(3.0).timeout
-	revealed_cards.reverse()
-	for card in revealed_cards:
-		if not is_instance_valid(card) or card.get_parent() != cfc.NMAP.board:
-			continue
-		var return_to_deck = await card.move_to(self, -1, null, ["Clarividência"])
+	_clarividencia = CLARIVIDENCIA_VIEW.new()
+	board.add_child(_clarividencia)
+	_clarividencia.start(self, cards)
+
+
+func finish_clarividencia(view) -> void:
+	if view != _clarividencia:
+		return
+	_clarividencia = null
 	_deck_action_in_progress = false
 
 

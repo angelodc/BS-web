@@ -18,6 +18,7 @@ const CONSOLE_HELP := "Comandos: mesa · log · ajuda\n" \
 		+ "Digite teclas para ver o mapa de atalhos."
 const MENU_SAVE := 0
 const MENU_LEAVE := 1
+const MENU_RECORD := 2
 const CARD_LINK_COLOR := "#ffd479"
 const ACTIVE_SEAT_COLOR := Color(1.0, 0.85, 0.45)
 const IDLE_SEAT_COLOR := Color(0.82, 0.86, 0.92)
@@ -91,8 +92,10 @@ func _ready() -> void:
 	var match_popup := _match_menu.get_popup()
 	match_popup.clear()
 	match_popup.add_item("Salvar jogo", MENU_SAVE)
+	match_popup.add_check_item("Gravar partida (JSONL)", MENU_RECORD)
 	match_popup.add_item("Voltar ao menu", MENU_LEAVE)
 	match_popup.id_pressed.connect(_on_match_menu_pressed)
+	match_popup.about_to_popup.connect(_sync_record_menu_state)
 	_link_deck_button.pressed.connect(_on_link_deck_pressed)
 	_playmat_options.item_selected.connect(_on_playmat_selected)
 	_playmat_upload.pressed.connect(_on_playmat_upload_pressed)
@@ -105,6 +108,9 @@ func _ready() -> void:
 	_leave_button.pressed.connect(_on_leave_pressed)
 	_link_dialog = LinkDeckScene.instantiate()
 	add_child(_link_dialog)
+	# A Window shows itself as soon as it enters the tree; this one belongs to
+	# the preparation panel and must wait for the LinkDeck button.
+	_link_dialog.hide()
 	_link_dialog.deck_loaded.connect(_on_link_deck_loaded)
 	Multiplayer.session_changed.connect(_refresh)
 	Multiplayer.prep_changed.connect(_on_prep_changed)
@@ -521,8 +527,55 @@ func _on_swap_seat_pressed() -> void:
 func _on_match_menu_pressed(id: int) -> void:
 	if id == MENU_SAVE:
 		_append_log(str(Multiplayer.save_current_game().get("message", "")))
+	elif id == MENU_RECORD:
+		_toggle_match_recording()
 	elif id == MENU_LEAVE:
 		_on_leave_pressed()
+
+
+# The recorder lives on the board so every intent passes through it, including
+# the ones typed in the console.
+func _toggle_match_recording() -> void:
+	var board = _recorder_board()
+	if board == null:
+		_set_record_menu_state(false)
+		_append_log("A mesa ainda não está pronta para gravar.")
+		return
+	var recorder = board.match_recorder()
+	if recorder.is_recording():
+		recorder.stop("menu")
+		_set_record_menu_state(false)
+		_append_log("Gravação encerrada.")
+		return
+	var started: Dictionary = recorder.start()
+	if not bool(started.get("ok", false)):
+		_set_record_menu_state(false)
+		_append_log("Não foi possível gravar: "
+				+ str(started.get("reason", "erro desconhecido")))
+		return
+	_set_record_menu_state(true)
+	_append_log("Gravando a partida em "
+			+ ProjectSettings.globalize_path(str(started.get("path", ""))))
+
+
+func _sync_record_menu_state() -> void:
+	var board = _recorder_board()
+	var recording: bool = board != null and board.match_recorder().is_recording()
+	_set_record_menu_state(recording)
+
+
+func _set_record_menu_state(recording: bool) -> void:
+	var popup := _match_menu.get_popup()
+	var index := popup.get_item_index(MENU_RECORD)
+	if index >= 0:
+		popup.set_item_checked(index, recording)
+
+
+func _recorder_board():
+	var board = cfc.NMAP.get("board", null)
+	if is_instance_valid(board) and board.has_method("match_recorder"):
+		return board
+	return null
 
 
 func _on_checkpoint_saved(checkpoint_sequence, _path) -> void:
@@ -603,6 +656,10 @@ func _refresh() -> void:
 	_top_bar.visible = active and not Multiplayer.is_preparing() \
 			and not Multiplayer.is_starting()
 	_prepare_panel.visible = Multiplayer.is_preparing()
+	# The deck link window belongs to the preparation panel; a match that starts
+	# while it is open must not keep it over the table.
+	if not _prepare_panel.visible and is_instance_valid(_link_dialog):
+		_link_dialog.hide()
 	_overlay.visible = Multiplayer.is_frozen()
 	_advance_button.visible = Multiplayer.is_playing() \
 			and Multiplayer.is_my_phase()

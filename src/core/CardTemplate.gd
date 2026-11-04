@@ -218,6 +218,9 @@ var definitions_key := ""
 var network_id := ""
 # Remote copies of the opponent's cards must not accept input or fire scripts.
 var network_mirror := false
+# A mouse release can reach both _input and the card's GUI. The flag keeps the
+# same release from dropping the card twice.
+var _drop_release_handled := false
 # When true, the mirrored card still accepts pointer input so the local player
 # can drag it. The drop is handled by MultiplayerSync and sent to its owner.
 var remote_draggable := false
@@ -474,7 +477,13 @@ func _input(event) -> void:
 			# because the click depress will not trigger on the card for some reason
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 			$Control.set_default_cursor_shape(Control.CURSOR_ARROW)
+			# The card's own GUI release is not delivered while it is dragged,
+			# so the drop is resolved here, where the release always arrives.
+			var was_dragged: bool = state == CardState.DRAGGED and not network_mirror
 			cfc.card_drag_ongoing = null
+			if was_dragged:
+				_drop_release_handled = true
+				_drop_dragged_card()
 
 
 # A signal for whenever the player clicks on a card
@@ -482,16 +491,13 @@ func _on_Card_gui_input(event) -> void:
 	if network_mirror:
 		return
 	if event is InputEventMouseButton and cfc.NMAP.has("board"):
-		# because of https://github.com/godotengine/godot/issues/44138
-		# we need to double check that the card which is receiving the
-		# gui input, is actually the one with the highest index.
-		# We use our mouse pointer which is tracking this info.
-		if cfc.NMAP.board.mouse_pointer.current_focused_card \
-				and self != cfc.NMAP.board.mouse_pointer.current_focused_card:
-			cfc.NMAP.board.mouse_pointer.current_focused_card._on_Card_gui_input(event)
+		# The card that receives the click is the one drawn under the pointer.
+		# Echoing the event to the previously focused card (a Godot 3-era
+		# workaround for godotengine/godot#44138) made a click on a neighbour
+		# start dragging that other card instead of the one the player pressed.
 		# If the player left clicks, we need to see if it's a double-click
 		# or a long click
-		elif event.is_pressed() \
+		if event.is_pressed() \
 				and event.get_button_index() == 1 \
 				and not buttons.are_hovered() \
 				and not tokens.are_hovered():
@@ -545,27 +551,38 @@ func _on_Card_gui_input(event) -> void:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 			$Control.set_default_cursor_shape(Control.CURSOR_ARROW)
 			cfc.card_drag_ongoing = null
-			match state:
-				CardState.DRAGGED:
-					# if the card was being dragged, it's index is very high
-					# to always draw above other objects
-					# We need to reset it to the default of 0
-					z_index = 0
-					for attachment in self.attachments:
-						attachment.z_index = 0
-
-					var destination = cfc.NMAP.board
-					if potential_container:
-						destination = potential_container
-						potential_container.highlight.set_highlight(false)
-					# A project can take the drop over and run it as its own
-					# table action; it returns true when the move is already
-					# handled, applied or refused.
-					if not common_pre_drop_scripts(destination):
-						move_to(destination)
-					_focus_completed = false
+			if state == CardState.DRAGGED and not _drop_release_handled:
+				_drop_release_handled = true
+				_drop_dragged_card()
 		else:
 			_process_more_card_inputs(event)
+
+
+# Resolves the drop of a card that is being dragged. Called from _input, where
+# the release always arrives, and from the GUI release as a fallback.
+func _drop_dragged_card() -> void:
+	# if the card was being dragged, it's index is very high
+	# to always draw above other objects
+	# We need to reset it to the default of 0
+	z_index = 0
+	for attachment in _live_attachments():
+		attachment.z_index = 0
+
+	var destination = cfc.NMAP.board
+	if potential_container:
+		destination = potential_container
+		potential_container.highlight.set_highlight(false)
+	# A project can take the drop over and run it as its own
+	# table action; it returns true when the move is already
+	# handled, applied or refused.
+	if not common_pre_drop_scripts(destination):
+		# The legacy path must still show up in a recorded match,
+		# so the board is told about the drop before it happens.
+		var table = cfc.NMAP.get("board", null)
+		if is_instance_valid(table) and table.has_method("note_drop"):
+			table.note_drop(self, destination)
+		move_to(destination)
+	_focus_completed = false
 
 
 # Overridable function to allow games to extend the _on_Card_gui_input() functionality
@@ -595,6 +612,12 @@ func _on_Card_mouse_exited() -> void:
 					# This will also set the state to IN_HAND afterwards
 					c.reorganize_self()
 		CardState.FOCUSED_ON_BOARD:
+			# A focused attachment lifted its host and siblings too; dropping
+			# only this card would leave the pile floating over the hand.
+			if is_instance_valid(current_host_card):
+				current_host_card.z_index = 0
+				for attachment in current_host_card._live_attachments():
+					attachment.z_index = 0
 			set_state(CardState.ON_PLAY_BOARD)
 		CardState.FOCUSED_IN_POPUP:
 			set_state(CardState.IN_POPUP)
@@ -933,7 +956,12 @@ func set_card_size(value: Vector2, ignore_area = false) -> void:
 		node.call_deferred('set_size', node.custom_minimum_size)
 	highlight.position = Vector2(-3, -3)
 	if not ignore_area:
-		$CollisionShape2D.shape.size = value
+		# Preview dupes share this shape with their source card, so resizing it
+		# in place would inflate the source's hitbox as well. Resize a private
+		# copy instead.
+		if $CollisionShape2D.shape:
+			$CollisionShape2D.shape = $CollisionShape2D.shape.duplicate()
+			$CollisionShape2D.shape.size = value
 		$CollisionShape2D.position = value / 2
 
 
@@ -1761,7 +1789,7 @@ func attach_to_host(
 		#print(current_host_card.attachments)
 		# We make existing attachments reattach to the new host directly
 		# Otherwise it becomes too complex to handle attachment indexes
-		for card in attachments:
+		for card in _live_attachments():
 			card.attach_to_host(host,true)
 		attachments.clear()
 		# The position below the host is based on how many other attachments it has
@@ -1846,6 +1874,10 @@ func set_focus(requestedFocus: bool, colour := CFConst.FOCUS_HOVER_COLOUR) -> vo
 			if cfc.curr_scale < 0.8\
 					or cfc.game_settings.focus_style == CFInt.FocusStyle.BOTH_INFO_PANELS_ONLY:
 				show_preview = false
+			# The hand card already grows under the cursor, so the enlarged
+			# copy in the corner is redundant and crowds the table view.
+			if get_parent() and get_parent().is_in_group("hands"):
+				show_preview = false
 			cfc.NMAP.main.focus_card(self, show_preview)
 		else:
 			cfc.NMAP.main.unfocus(self)
@@ -1883,6 +1915,15 @@ func get_focus() -> bool:
 		CardState.FOCUSED_IN_HAND, CardState.FOCUSED_ON_BOARD:
 			focusState = true
 	return(focusState)
+
+
+# The area the card will cover once its focus animation finishes.
+#
+# The hover follows the card while it grows, instead of being lost in the
+# smaller area it still has mid-animation.
+func get_focus_target_rect() -> Rect2:
+	return Rect2(get_parent().to_global(_target_position),
+			card_size * CFConst.FOCUSED_SCALE)
 
 
 # Returns the Card's index position among other card objects
@@ -2109,6 +2150,16 @@ func _attachment_offset_vector() -> Vector2:
 	return offset
 
 
+# Attachments can be freed without their host being told (scene teardown, a
+# rebuilt table while the other player takes control). Forget those references
+# before iterating so a freed card is never read from or written to.
+func _live_attachments() -> Array:
+	for idx in range(attachments.size() - 1, -1, -1):
+		if not is_instance_valid(attachments[idx]):
+			attachments.remove_at(idx)
+	return attachments
+
+
 # Rebuilds the pile's drawing order from scratch: the host on top and the
 # attachments right behind it, the nearest one drawn last so every card keeps
 # its strip visible. Dropping a card appends it after its host and
@@ -2139,7 +2190,7 @@ func arrange_attachment_stack() -> void:
 func _organize_attachments() -> void:
 	# We only do this if the parent is still on the board
 	if get_parent() == cfc.NMAP.board:
-		for card in attachments:
+		for card in _live_attachments():
 			# We use the index of the attachment among other attachments
 			# to figure out its index and placement
 			var attach_index = attachments.find(card)
@@ -2169,7 +2220,13 @@ func _organize_attachments() -> void:
 #
 # Returns the adjusted global_mouse_position
 func _determine_board_position_from_mouse() -> Vector2:
-	var targetpos: Vector2 = cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos() - (_drag_offset * scale)
+	var mouse: Vector2 = \
+			cfc.NMAP.board.mouse_pointer.determine_global_mouse_pos()
+	# The anchor is stored in the card's own space, so it follows the Control's
+	# rotation and the scale the drag tween applies.
+	var grab: Vector2 = \
+			$Control.get_global_transform_with_canvas().basis_xform(_drag_offset)
+	var targetpos: Vector2 = mouse - grab
 	if targetpos.x + card_size.x * scale.x >= get_viewport().get_visible_rect().size.x:
 		targetpos.x = get_viewport().get_visible_rect().size.x - card_size.x * scale.x
 	if targetpos.x < 0:
@@ -2210,10 +2267,12 @@ func _pushAside(targetpos: Vector2, target_rotation: float) -> void:
 
 # Pick up a card to drag around with the mouse.
 func _start_dragging(drag_offset: Vector2) -> void:
+	# The offset is in this card's own GUI space. Since the card that receives
+	# the click is the one under the pointer, it is never another card's.
 	_drag_offset = drag_offset
 	# When dragging we want the dragged card and attachments to always be drawn above all else
 	z_index = 99
-	for attachment in self.attachments:
+	for attachment in _live_attachments():
 		attachment.z_index = 99
 	# We have use parent viewport to calculate global_position
 	# due to godotengine/godot#30215
@@ -2229,6 +2288,7 @@ func _start_dragging(drag_offset: Vector2) -> void:
 #		else:
 #			get_viewport().warp_mouse(global_position + _drag_anchor)
 	set_state(CardState.DRAGGED)
+	_drop_release_handled = false
 	# We check if the card was already overlapping with other card
 	# before we started dragging. If so, we activate the code
 	# which checks for potential hosts, on all these cards to make sure
@@ -2285,7 +2345,7 @@ func _clear_attachment_status(tags := ["Manual"]) -> void:
 		current_host_card = null
 		# The remaining attachments close the gap left behind by this card.
 		previous_host._organize_attachments()
-	for card in attachments:
+	for card in _live_attachments():
 		card.current_host_card = null
 		# Attachments typically follow their parents to the same container
 		card.move_to(get_parent())
@@ -2506,33 +2566,65 @@ func _process_card_state() -> void:
 					cfc.game_settings.focus_style != CFInt.FocusStyle.VIEWPORT:
 				var expected_position: Vector2 = recalculate_position()
 				var expected_rotation: float = _recalculate_rotation()
-				# We figure out our neighbours by their index
 				var neighbours := []
-				for neighbour_index_diff in [-2,-1,1,2]:
-					var hand_size: int = get_parent().get_card_count()
-					var neighbour_index: int = \
-							get_my_card_index() + neighbour_index_diff
-					if neighbour_index >= 0 and neighbour_index <= hand_size - 1:
-						var neighbour_card: Card = get_parent().get_card(neighbour_index)
-						# Neighbouring cards are pushed to the side to allow
-						# the focused card to not be overlapped
-						# The amount they're pushed is relevant to
-						# how close neighbours they are.
-						# Closest neighbours (1 card away) are pushed more
-						# than further neighbours.
-						neighbour_card._pushAside(
-								neighbour_card.recalculate_position(
-									neighbour_index_diff),
-								neighbour_card._recalculate_rotation(
-									neighbour_index_diff))
-						neighbours.append(neighbour_card)
+				var hand_size: int = get_parent().get_card_count()
+				var my_index: int = get_my_card_index()
+				var resting_width: float = card_size.x * _get_hand_display_scale()
+				# The side blocks must overlap the enlarged card instead of
+				# leaving a gap. A gap becomes a dead zone: crossing it drops the
+				# hover, the fan collapses and the neighbour slides back behind
+				# the mouse, so the pointer lands on the second card. The blocks
+				# tuck under the enlarged card, which is drawn on top of them.
+				var margin: float = -12.0
+				# The card grows from its top-left corner, so centring it over the
+				# resting slot means offsetting it by half of the extra width.
+				var focus_offset: float = \
+						-(card_size.x * CFConst.FOCUSED_SCALE - resting_width) * 0.5
+				var focused_size: float = card_size.x * CFConst.FOCUSED_SCALE
+				var focused_left: float = expected_position.x + focus_offset
+				var focused_right: float = focused_left + focused_size
+				# Both sides move, each as a rigid block, so the resting fan
+				# order and gaps are preserved. The amount is what the neighbour
+				# closest to the focused card needs to touch it: positive pushes
+				# outward, negative tucks the block in when the resting fan is
+				# already wide enough.
+				var left_clearance := 0.0
+				var right_clearance := 0.0
+				if my_index > 0:
+					var left_neighbour: Card = get_parent().get_card(my_index - 1)
+					left_clearance = left_neighbour.recalculate_position().x \
+							+ resting_width + margin - focused_left
+				if my_index < hand_size - 1:
+					var right_neighbour: Card = get_parent().get_card(my_index + 1)
+					right_clearance = focused_right + margin \
+							- right_neighbour.recalculate_position().x
+				# A crowded hand may not have room to push the block outward, so
+				# the push is capped at the hand edge. The tuck has no lower
+				# bound: the block moves as a rigid piece, so pulling it inward
+				# until it touches never makes the side cards overlap each other.
+				var hand_width: float = get_parent().get_node("Control").size.x
+				var first_card: Card = get_parent().get_card(0)
+				var last_card: Card = get_parent().get_card(hand_size - 1)
+				left_clearance = min(left_clearance,
+						max(first_card.recalculate_position().x, 0.0))
+				right_clearance = min(right_clearance,
+						max(hand_width - last_card.recalculate_position().x
+						- resting_width, 0.0))
+				for neighbour_index in range(0, hand_size):
+					if neighbour_index == my_index:
+						continue
+					var neighbour_card: Card = get_parent().get_card(neighbour_index)
+					var shift := Vector2(right_clearance if neighbour_index > my_index
+							else -left_clearance, 0)
+					neighbour_card._pushAside(
+							neighbour_card.recalculate_position() + shift,
+							neighbour_card._recalculate_rotation())
+					neighbours.append(neighbour_card)
 				for c in get_parent().get_all_cards():
 					if not c in neighbours and c != self:
 						c.interruptTweening()
 						c.reorganize_self()
-				_target_position = expected_position \
-						- Vector2(card_size.x * _get_hand_display_scale() \
-						* 0.25,0)
+				_target_position = expected_position + Vector2(focus_offset, 0)
 				# Enough with the fancy calculations. I'm just brute-forcing
 				# The card to stay at the fully within the viewport.
 				if get_parent().placement == get_parent().Anchors.CONTROL:
@@ -2722,6 +2814,9 @@ func _process_card_state() -> void:
 				return
 			# Used when the card is idle on the board
 			z_index = 0
+			# The focus lift is transient; its attachments share the layer.
+			for attachment in _live_attachments():
+				attachment.z_index = 0
 
 			# if this card is an attachment and it's host is being dragged
 			# then we want this card to be above everything like the host
@@ -2770,11 +2865,21 @@ func _process_card_state() -> void:
 				set_state(CardState.ON_PLAY_BOARD)
 
 		CardState.FOCUSED_ON_BOARD:
-			z_index = 0
+			# The rows overlap slightly and the card played last in the row
+			# behind can hide the one being read. The focus lifts the whole
+			# pile over the hand, with the host kept in front so a focused
+			# attachment never draws over its own host.
+			var stack_root: Card = \
+					current_host_card if is_instance_valid(current_host_card) else self
+			stack_root.z_index = CFConst.TABLE_FOCUS_Z
+			for attachment in stack_root._live_attachments():
+				attachment.z_index = CFConst.TABLE_FOCUS_Z
 			# Used when card is focused on by the mouse hovering over it while it is on the board.
 			set_focus(true)
 			set_control_mouse_filters(true)
-			buttons.set_active(true)
+			# Attachments are read through the preview; the manipulation menu
+			# belongs to the host.
+			buttons.set_active(current_host_card == null)
 			# We don't change state yet, only when the focus is removed from this card
 			_organize_attachments()
 
@@ -2949,11 +3054,11 @@ func _get_angle_by_index(index_diff = null) -> float:
 	# Angle between cards
 	var card_angle = max(min(60 / hand_size, card_angle_max), card_angle_min)
 	# When foucs hand, the card needs to be offset by a certain angle
-	# The current practice is just to find a suitable expression function, if there is a better function, please replace this function: - sign(index_diff) * (1.95-0.3*index_diff*index_diff) * min(card_angle,5)
+	# The current practice is just to find a suitable expression function, if there is a better function, please replace this function: - sign(index_diff) * (1.95-0.3*index_diff*index_diff) * min(card_angle,8)
 	if index_diff != null:
 		return 90 + (half - index) * card_angle \
 				- sign(index_diff) * (1.95 - 0.3 * index_diff * index_diff) \
-				* min(card_angle, 5)
+				* min(card_angle, 8)
 	else:
 		return 90 + (half - index) * card_angle
 

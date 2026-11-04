@@ -26,7 +26,7 @@
 
 - **Campo de três faixas:** oponente no topo, duas linhas do jogador no meio e
   Mão embaixo. Oponente espelhado, cartas públicas viradas 180°.
-- **Grade da Cena dinâmica:** 3 colunas × 2 linhas no tamanho atual (mínimo de
+- **Grade da Cena dinâmica:** 7 colunas × 2 linhas autoradas na cena (mínimo de
   2), com zonas espelhadas do oponente, botões **Ver** para Recursos e Prêmios
   remotos e arraste das cartas de Cena/Cenário do oponente.
 - **Cenário único ativo:** um novo Cenário envia o anterior a
@@ -124,6 +124,15 @@
   limpeza.
 - As ~165 linhas de layout de `CGFBoard.gd` viraram ~20; o deck continua
   deitado a 270° e mantém a área atual.
+- **Rota B (2026-11-02):** a cena passou a ser a fonte da verdade — grid 7×2,
+  cenário, legenda e giro do deck assados em `CGFBoard.tscn`; o runtime só
+  sincroniza o `OpponentScene` com o grid, chama `configure_width()` com a
+  largura autoral e refaz o leque da mão. F6 mostra o mesmo campo que o F5, e
+  alargar o grid no editor alarga o campo em jogo.
+- **Resolução (2026-11-02):** o tabuleiro e a prévia renderizam em **HD+
+  1600×900 na web**; no desktop o menu oferece **HD 1280×720** (padrão) e
+  **Full HD 1920×1080**. As coordenadas de design continuam 1280×720 via
+  `size_2d_override` (`src/custom/RenderResolution.gd` + `DisplayMode`).
 
 ## 🩹 Correções entregues
 

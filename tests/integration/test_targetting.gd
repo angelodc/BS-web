@@ -15,14 +15,17 @@ func before_each():
 
 
 # Moves the targeting arrow onto the target card, retrying because the hand
-# reorganizes while the virtual mouse crosses it.
+# reorganizes while the virtual mouse crosses it. The card's own hover also
+# turns its highlight on (white), so only the target colour means the arrow
+# actually reached it.
 func hover_target(source: Card, target: Card) -> void:
 	for _attempt in range(4):
 		var target_point: Vector2 = target.global_position + Vector2(10, 10)
 		board._UT_interpolate_mouse_move(target_point,
 				source.global_position if _attempt == 0 else board._UT_mouse_position, 3)
 		await yield_for(0.6)
-		if target.highlight.visible:
+		if target.highlight.visible \
+				and target.highlight.modulate == CFConst.TARGET_HOVER_COLOUR:
 			break
 
 

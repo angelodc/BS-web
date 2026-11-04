@@ -156,6 +156,50 @@ static func sort_index_ascending(c1, c2) -> bool:
 	return(false)
 
 
+# The z a canvas item actually draws at, including the layers of its ancestors
+static func effective_z_index(item: CanvasItem) -> int:
+	var z: int = item.z_index
+	if not item.z_as_relative:
+		return z
+	var ancestor: Node = item.get_parent()
+	while ancestor is CanvasItem:
+		z += ancestor.z_index
+		if not ancestor.z_as_relative:
+			break
+		ancestor = ancestor.get_parent()
+	return z
+
+
+static func _tree_path(item: Node) -> Array[int]:
+	var path: Array[int] = []
+	var current: Node = item
+	while current.get_parent() != null:
+		path.push_front(current.get_index())
+		current = current.get_parent()
+	return path
+
+
+# Used with sort_custom to order items the same way they are drawn:
+# by effective z first, then by tree order (the later one draws on top).
+#
+# Hover picking needs this because an overlap list from the physics server does
+# not know which node is drawn above the other.
+static func sort_draw_order_ascending(c1, c2) -> bool:
+	if not (c1 is CanvasItem) or not (c2 is CanvasItem):
+		return false
+	var z1: int = effective_z_index(c1)
+	var z2: int = effective_z_index(c2)
+	if z1 != z2:
+		return z1 < z2
+	var path1: Array[int] = _tree_path(c1)
+	var path2: Array[int] = _tree_path(c2)
+	for i in range(min(path1.size(), path2.size())):
+		if path1[i] != path2[i]:
+			return path1[i] < path2[i]
+	# A descendant draws over its ancestor, so the longer path is on top.
+	return path1.size() < path2.size()
+
+
 # Used with sort_custom to find the highest child index among multiple cards
 static func sort_card_containers(c1, c2) -> bool:
 	var ret: bool

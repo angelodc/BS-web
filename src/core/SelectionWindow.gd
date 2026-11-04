@@ -12,6 +12,11 @@ const _INFO_PANEL_SCENE_FILE = CFConst.PATH_CORE\
 		+ "CardViewer/CVInfoPanel.tscn"
 const _INFO_PANEL_SCENE = preload(_INFO_PANEL_SCENE_FILE)
 
+# The grid can hold dozens of choices, so its cards are drawn just above the
+# resource mini cards instead of at the full card-viewer thumbnail size.
+# The hover preview keeps its own scale.
+const SEARCH_CARD_SCALE := 0.55
+
 @export var grid_card_object_scene := _GRID_CARD_OBJECT_SCENE
 @export var info_panel_scene := _INFO_PANEL_SCENE
 
@@ -134,6 +139,7 @@ func initiate_selection(
 			dupe_selection.remove_from_group("cards")
 			dupe_selection.canonical_name = card.canonical_name
 			dupe_selection.properties = card.properties.duplicate()
+		dupe_selection.thumbnail_scale = SEARCH_CARD_SCALE
 		card_sample = dupe_selection
 		var card_grid_obj = grid_card_object_scene.instantiate()
 		_card_grid.add_child(card_grid_obj)

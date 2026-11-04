@@ -17,6 +17,7 @@ const VERBS := [
 	"comprar",
 	"mandar_topo_para_recursos",
 	"jogar",
+	"materializar",
 	"anexar",
 	"mover",
 	"descartar",
@@ -74,6 +75,8 @@ func validate(state, intent : Dictionary, context : Dictionary) -> Dictionary:
 			return _validate_mill(state, normalized)
 		"jogar":
 			return _validate_play(state, normalized, context)
+		"materializar":
+			return _validate_materialize(state, normalized, context)
 		"anexar":
 			return _validate_attach(state, normalized)
 		"mover":
@@ -186,6 +189,58 @@ func _validate_play(state, normalized : Dictionary,
 			return _fail("recursos_insuficientes",
 					"A carta custa " + str(cost) + " e há só "
 					+ str(available) + " recurso(s).")
+	normalized["to"] = to
+	return _ok(normalized)
+
+
+# Materializar puts a hand card straight on the scene, with cards from the top
+# of the deck as its life. It never looks at the resource pile: the deck cards
+# are the energy that arrives with the card, so there is no cost to check.
+func _validate_materialize(state, normalized : Dictionary,
+		_context : Dictionary) -> Dictionary:
+	var entry := _entry_of(state, normalized)
+	if entry.is_empty():
+		return _fail("carta_desconhecida", "A carta não está na mesa.")
+	if str(entry["zone"]) != "hand":
+		return _fail("fora_da_mão",
+				"Só uma carta da mão pode ser materializada.")
+	var seat := int(normalized["seat"])
+	if int(entry.get("seat", seat)) != seat:
+		return _fail("fora_do_seu_assento",
+				"A carta é do assento P" + str(entry.get("seat", 0)) + ".")
+	var card_type := str(entry.get("type", ""))
+	if not card_type in KNOCKOUT_TYPES:
+		return _fail("tipo_invalido",
+				"Só personagens e suportes podem ser materializados.")
+	# The life is the card's own energy: the deck cards that arrive with it are
+	# exactly what it can take. A call can still pass `life` to override it.
+	var life := int(normalized.get("life", entry.get("cost", 0)))
+	if life < 0:
+		return _fail("vida_invalida", "A vida não pode ser negativa.")
+	var available_cards: int = state.deck_count(seat)
+	if available_cards < life:
+		return _fail("deck_insuficiente",
+				"O deck não tem " + str(life) + " carta(s) para a vida.")
+	var to := str(normalized.get("to", ""))
+	if to.is_empty():
+		to = _next_field_address(state, seat, card_type == "Suporte")
+	var parsed := _Table.parse_address(to)
+	if str(parsed.get("kind", "")) != "field":
+		return _fail("destino_invalido",
+				"Destino inválido para materializar: " + to)
+	if int(parsed.get("seat", 0)) != seat:
+		return _fail("destino_de_outro_assento",
+				"O campo de destino é do assento P"
+				+ str(parsed.get("seat", 0)) + ".")
+	if not str(parsed.get("row", "")) in FIELD_ROWS:
+		return _fail("fileira_invalida",
+				"Fileira inválida: " + str(parsed.get("row", "")))
+	if int(parsed.get("column", 0)) < 1:
+		return _fail("coluna_invalida", "A coluna começa em 1.")
+	var occupant = state.card_at(to)
+	if not occupant.is_empty() and occupant != str(normalized["card"]):
+		return _fail("slot_ocupado", "O slot " + to + " já está ocupado.")
+	normalized["life"] = life
 	normalized["to"] = to
 	return _ok(normalized)
 

@@ -94,3 +94,72 @@ func test_a_refused_button_click_logs_nothing():
 
 	assert_eq(runner.history.size(), size_before)
 	assert_eq(int(card.card_rotation), 0)
+
+
+# -----------------------------------------------------------------------------
+# Materializar
+# -----------------------------------------------------------------------------
+
+func _materialize_button() -> Button:
+	return board.get_node("Materializar") as Button
+
+
+func _release_on(card: Card) -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = false
+	event.position = Vector2(10, 10)
+	card._on_Card_gui_input(event)
+
+
+func test_the_materialize_button_arms_the_mode_and_the_click_materializes():
+	var cards = draw_test_cards(1)
+	var card: Card = cards[0]
+	# The resting state the click sees in the game once the hand tween ends.
+	card.state = Card.CardState.IN_HAND
+	var button := _materialize_button()
+
+	board._on_Materializar_pressed()
+
+	assert_true(board.materialize_mode)
+	assert_eq(button.text, "Cancelar")
+	assert_true(button.button_pressed)
+	assert_true(card.highlight.visible)
+	assert_eq(card.highlight.modulate, CFConst.MATERIALIZE_HOVER_COLOUR)
+
+	_release_on(card)
+
+	assert_false(board.materialize_mode)
+	assert_false(button.button_pressed)
+	assert_eq(button.text, "Materializar")
+	assert_eq(card.get_parent(), board)
+	assert_eq(str(runner.state.address_of(Snapshot.id_of(card))),
+			"p1:campo:frente:2")
+	assert_eq(_last_op(), "materializar")
+
+
+func test_escape_cancels_the_materialize_mode():
+	var cards = draw_test_cards(1)
+	board._on_Materializar_pressed()
+	var event := InputEventAction.new()
+	event.action = "ui_cancel"
+	event.pressed = true
+
+	board._unhandled_input(event)
+
+	assert_false(board.materialize_mode)
+	assert_false(cards[0].highlight.visible)
+
+
+func test_a_card_the_table_refuses_keeps_the_mode_armed():
+	var token = cfc.instance_card("Spawn Card")
+	hand.add_child(token)
+	token.state = Card.CardState.IN_HAND
+	board._on_Materializar_pressed()
+
+	var result: Dictionary = board.materialize_hand_card(token)
+
+	assert_false(bool(result.get("ok", false)), str(result))
+	assert_eq(str(result.get("error", "")), "tipo_invalido")
+	assert_true(board.materialize_mode)
+	assert_eq(token.get_parent(), hand)

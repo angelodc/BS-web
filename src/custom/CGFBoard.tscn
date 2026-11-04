@@ -256,6 +256,15 @@ offset_right = 657.0
 offset_bottom = 621.0
 text = ""
 
+[node name="Materializar" type="Button" parent="."]
+offset_left = 960.0
+offset_top = 596.0
+offset_right = 1104.0
+offset_bottom = 626.0
+theme_override_fonts/font = SubResource( 2 )
+toggle_mode = true
+text = "Materializar"
+
 [node name="Counters" parent="." instance=ExtResource( 6 )]
 offset_top = 690.0
 offset_bottom = 704.0

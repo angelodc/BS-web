@@ -84,42 +84,48 @@ sobre o fundo padrão do projeto, não sobre a arte.
 
 ---
 
-## 3. Base de resolução — HD+ na web, HD e Full HD no desktop
+## 3. Base de resolução — HD+ na web, HD e Full HD no desktop — ✅ entregue em 2026-11-02
 
 **Decisão (2026-11-02):** a base de *renderização do tabuleiro* sobe para
 **HD+ 1600×900** na web. No desktop, o jogador escolhe entre **HD 1280×720** e
 **Full HD 1920×1080**. As coordenadas de design continuam 1280×720 — muda só a
 densidade do raster do `SubViewport`.
 
-**Plano**
+**O que foi entregue**
 
-1. `ViewportCardFocus._ready`: `SubViewport.size = <escolha>`,
-   `size_2d_override = Vector2i(1280, 720)`,
-   `size_2d_override_stretch = true`; o mesmo fator no SubViewport de foco
-   (300×450 → 375×563 na web, 450×675 em FHD) para a prévia de carta nítida.
-2. Resolução efetiva: web sempre 1600×900 (`OS.has_feature("web")`); desktop lê
-   `board_render_res` do `CGFSettings.json`, com seletor no menu visível só
-   fora do web.
-3. `DisplayMode.gd` aplica o tamanho da janela (HD/FHD) no boot e na troca; na
-   web nada muda — a política de canvas adaptativa do export continua mandando.
-4. Validar input (arrasto/hover) com o override ativo no F5 e no export web: o
-   mouse passa pelo `StretchTransform` do SubViewport.
+1. `src/custom/RenderResolution.gd` centraliza a escolha: web = HD+ sempre;
+   desktop lê `board_render_res` do `CGFSettings.json` (padrão Full HD). Expõe
+   o tamanho do board, da prévia (mesmo fator: 375×563 em HD+, 450×675 em FHD)
+   e da janela.
+2. `ViewportCardFocus._apply_render_density()` aplica `size = pixels`,
+   `size_2d_override = 1280×720` (e `300×450` na prévia) e
+   `size_2d_override_stretch = true` nos dois SubViewports antes de instanciar
+   o tabuleiro.
+3. `MainMenu` ganha a linha **Tabuleiro** com HD/Full HD, criada por código e
+   visível só fora do web; a escolha é persistida e a janela acompanha
+   (`DisplayMode.apply_render_choice()`), que usa o tamanho escolhido no boot e
+   na troca.
+4. F5 com arranque limpo (stderr vazio) em **Full HD**: janela de 1920×1080
+   confirmada e a linha **Tabuleiro** aparece no menu. Falta o teste manual do
+   arrasto/hover do tabuleiro com o override ativo e o build web em HD+.
 
 **Observações**
 
 - Menu e HUD já são nítidos em qualquer janela (`canvas_items` re-renderiza o
-  vetor por frame); o ganho é no tabuleiro e na prévia, hoje raster fixo
+  vetor por frame); o ganho é no tabuleiro e na prévia, antes raster fixo
   720p/300×450 esticado.
 - A arte não ganha detalhe além da textura de origem; o ganho é texto, moldura
   e ícones.
 - O workflow de captura do tabuleiro (prints por PID) precisa ser revisto,
   porque o viewport interno muda de tamanho.
+- No desktop o padrão é **Full HD**; HD fica para telas menores, onde a janela
+  1080p não caberia. HD+ segue só na web — se virar opção do desktop, basta
+  acrescentar a entrada em `RenderResolution`.
 - Alternativa descartada: re-autorar todas as cenas em 1600×900 (×1,25 em cada
-  offset/fonte). Custo alto, ganho pequeno — o stretch do canvas já escala o
-  design com nitidez.
+  offset/fonte). Custo alto, ganho pequeno — o `size_2d_override` já dá a
+  nitidez sem tocar nas coordenadas autorais.
 
-**Em aberto:** padrão no desktop (HD é o recomendado para telas menores) e se
-HD+ vira terceira opção do desktop depois.
+**Em aberto:** se o desktop ganha HD+ como terceira opção.
 
 ---
 

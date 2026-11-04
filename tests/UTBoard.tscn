@@ -125,6 +125,14 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
+[node name="Materializar" type="Button" parent="."]
+offset_left = 960.0
+offset_top = 596.0
+offset_right = 1104.0
+offset_bottom = 626.0
+toggle_mode = true
+text = "Materializar"
+
 [node name="BoardPlacementGrid" type="PanelContainer" parent="." groups=["placement_grid"]]
 visible = false
 self_modulate = Color( 1, 1, 1, 0.121569 )

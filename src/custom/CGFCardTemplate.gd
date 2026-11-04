@@ -142,7 +142,11 @@ func move_to(targetHost: Node,
 	play_area_scale = CFConst.PLAY_AREA_SCALE
 	var from_hand: bool = get_parent() == cfc.NMAP.hand
 	var required_resources := 0
+	# A materialized card brings its life from the deck, so the legacy payment
+	# popup must not open for it: closing that popup would send the card back to
+	# the hand and every attachment to the discard pile.
 	var needs_resources: bool = not cfc.ut \
+			and not "Materializar" in tags \
 			and targetHost == board \
 			and from_hand \
 			and (is_battle_scenes_character() \
@@ -274,6 +278,13 @@ func _on_Card_gui_input(event) -> void:
 		var left_half: bool = event.position.x < control.size.x * 0.5
 		cfc.card_drag_ongoing = null
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		# With the Materializar mode armed the whole click belongs to it: the
+		# half-click shortcut to Resources or to the scene is not used.
+		var board = cfc.NMAP.get("board", null)
+		if is_instance_valid(board) and board.get("materialize_mode") == true:
+			control.set_default_cursor_shape(Control.CURSOR_POINTING_HAND)
+			board.materialize_hand_card(self)
+			return
 		control.set_default_cursor_shape(Control.CURSOR_ARROW)
 		_handle_hand_half_click(left_half)
 		return

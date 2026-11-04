@@ -243,6 +243,8 @@ func test_main_menu_contains_matchmaking_fields():
 	assert_true(menu.has_node(
 			"MainMenu/VBox/Center/VButtons/ResumeGame"))
 	assert_true(menu.has_node("CheckpointList"))
+	assert_false(menu.get_node("CheckpointList").visible,
+			"The checkpoint list stays hidden until a saved game is resumed")
 	assert_true(menu.has_node("ActionError"))
 	menu.free()
 
@@ -315,6 +317,21 @@ func test_match_hud_exposes_preparation_controls():
 	assert_true(hud.has_node("PreparePanel/Margin/VBox/StartButton"))
 	assert_true(hud.has_node("Overlay/Center/VBox/Buttons/ReconnectButton"))
 	hud.free()
+
+
+func test_match_hud_link_dialog_starts_hidden():
+	var hud: Control = add_child_autofree(
+			load("res://src/custom/MatchHUD.tscn").instantiate())
+	await yield_for(0.1)
+	var dialog: Window = hud.get_node("DeckImportDialog")
+	assert_not_null(dialog, "The deck link window is created with the HUD")
+	assert_false(dialog.visible,
+			"The deck link window waits for the LinkDeck button")
+	hud._on_link_deck_pressed()
+	assert_true(dialog.visible, "LinkDeck opens the deck link window")
+	hud._refresh()
+	assert_false(dialog.visible,
+			"The window closes when the match leaves the preparation phase")
 
 
 func test_checkpoint_private_payload_round_trip():

@@ -44,6 +44,9 @@ var _excess_discard_pile : Pile = null
 func _ready() -> void:
 	super._ready()
 	add_to_group("hands")
+	# Cards played on the table are added to the board after the hand, so with
+	# the same z they would cover it. The hand keeps its own layer above them.
+	z_index = CFConst.TABLE_HAND_Z
 
 func prepare_excess_discard_pile() -> void:
 	if excess_discard_pile_name\

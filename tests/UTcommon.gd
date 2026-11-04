@@ -121,6 +121,16 @@ func drag_card(card: Card, target_position: Vector2, interpolation_speed := "fas
 		var retarget_tween = card._tween
 		if retarget_tween.is_active():
 			await yield_to(retarget_tween, "tween_all_completed", 1)
+	# The aim point can fall on a card drawn over the target (an attachment
+	# under its host, a card still animating). The test wants to drag this card,
+	# so focus it directly instead of aiming somewhere else. A paused game never
+	# focuses anything, so the fallback has to stay off there: focusing by hand
+	# would let a drag start while the game is paused.
+	if not cfc.game_paused and board.mouse_pointer.current_focused_card != card:
+		if board.mouse_pointer.current_focused_card:
+			board.mouse_pointer.current_focused_card._on_Card_mouse_exited()
+		card._on_Card_mouse_entered()
+		board.mouse_pointer.current_focused_card = card
 	click_card(card)
 	if interpolation_speed == "debug":
 		await yield_for(4) # Allow for review

@@ -659,12 +659,52 @@ func _set_remote_card_interactive(card: Card, zone: String) -> void:
 		control.gui_input.connect(_on_remote_card_gui_input.bind(card))
 
 
+# A mirror that sits under another card is reached by hovering the strip that
+# peeks out of it, and the preview alone would show it behind the cards the
+# pointer is over. The whole pile is lifted as a block, like a focused local
+# pile, so every card of the stack can be read while the hover walks down it.
+func _remote_stack_root(card: Card) -> Card:
+	if is_instance_valid(card.current_host_card):
+		return card.current_host_card
+	return card
+
+
+func _remote_stack_is_field(card: Card) -> bool:
+	var meta = _remote_meta.get(str(card.network_id), {})
+	if typeof(meta) != TYPE_DICTIONARY:
+		return false
+	return str(meta.get("zone", "")) in ["board", "scenario"]
+
+
+func _lift_remote_stack(card: Card) -> void:
+	var root := _remote_stack_root(card)
+	for stacked in [root] + root._live_attachments():
+		# A dragged mirror is already on top and belongs to the drag, not to
+		# the hover.
+		if not is_instance_valid(stacked) or stacked == _remote_drag_card:
+			continue
+		stacked.z_index = CFConst.TABLE_FOCUS_Z
+
+
+# The owner can move a hovered mirror (play it, discard it, send it to a pile)
+# and the zone is re-read before the hover is dropped, so this works off what
+# the sync still has lifted instead of the card's current zone.
+func _drop_remote_lifts() -> void:
+	for id in _remote_cards:
+		var stacked = _remote_cards[id]
+		if is_instance_valid(stacked) and stacked != _remote_drag_card \
+				and stacked.z_index == CFConst.TABLE_FOCUS_Z:
+			stacked.z_index = 0
+
+
 func _on_remote_card_hover_entered(card: Card) -> void:
 	if cfc.ut or not is_instance_valid(card) \
 			or not cfc.NMAP.has("main") or not cfc.NMAP.main:
 		return
 	card.preview_force_front = not card.is_faceup
 	card.preview_locked = true
+	if _remote_stack_is_field(card):
+		_lift_remote_stack(card)
 	cfc.NMAP.main.focus_card(card)
 
 
@@ -673,6 +713,7 @@ func _on_remote_card_hover_exited(card: Card) -> void:
 		return
 	card.preview_force_front = false
 	card.preview_locked = false
+	_drop_remote_lifts()
 	if cfc.NMAP.has("main") and cfc.NMAP.main:
 		cfc.NMAP.main.unfocus(card)
 

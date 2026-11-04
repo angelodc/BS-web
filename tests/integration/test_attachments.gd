@@ -441,3 +441,29 @@ class TestBattleScenesAttachmentStack:
 		assert_null(board.pending_resource_host,
 				"The pick finishes after the second card")
 		assert_false(discard.pile_popup.visible, "The popup closes")
+
+
+class TestFreedAttachment:
+	extends "res://tests/Attachment_common.gd"
+
+	# A rebuilt table can free an attachment without the host hearing about it
+	# (the other player takes control of the seat). Writing the focus layer to
+	# that stale reference crashed with "previously freed".
+	func test_focus_forgets_a_freed_attachment():
+		var host: Card = cards[0]
+		await table_move(host, Vector2(300, 300))
+		var attachment: Card = cards[1]
+		await table_move(attachment, Vector2(300, 400))
+		attachment.attach_to_host(host)
+		await yield_for(0.2)
+		assert_eq(host.attachments.front(), attachment,
+				"Card is listed as an attachment of its host")
+		attachment.queue_free()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		host.state = Card.CardState.FOCUSED_ON_BOARD
+		await yield_for(0.2)
+		assert_eq(0, host.attachments.size(),
+				"The host forgets the freed attachment")
+		assert_eq(CFConst.TABLE_FOCUS_Z, host.z_index,
+				"The host still takes the focus layer")

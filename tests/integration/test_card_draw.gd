@@ -296,16 +296,170 @@ func test_search_selection_closes_immediately_after_card_click():
 	selection_window.queue_free()
 
 
-func test_clairvoyance_reveals_top_cards_then_restores_the_deck():
-	var expected_top := deck.get_top_card()
-	var deck_count := deck.get_card_count()
-	var top_cards: Array = deck.get_top_cards(2)
-	await deck._reveal_top_cards(top_cards)
+# The deck search builds the same selection window and hovers its cards, which
+# shows the enlarged preview. That preview used to position itself through a
+# Viewport method that does not exist in Godot 4 and broke the search.
+func test_search_selection_preview_placement():
+	var card: Card = hand.draw_card()
+	var selection_window = load(
+			"res://src/core/SelectionWindow.tscn").instantiate()
+	board.add_child(selection_window)
+	selection_window.initiate_selection([card], 1, "max", true)
+	await yield_to(selection_window, "selection_window_opened", 2)
+	var grid_card_obj = selection_window.get_node("GridContainer").get_child(0)
+	var preview_popup = grid_card_obj.preview_popup
+	preview_popup.show_preview_card(card.canonical_name)
+	await yield_for(0.3)
 
-	assert_eq(deck.get_card_count(), deck_count)
-	assert_eq(deck.get_top_card(), expected_top)
-	for card in top_cards:
-		assert_eq(card.get_parent(), deck)
+	var placement = preview_popup.get_preview_placement()
+	assert_eq(typeof(placement), TYPE_VECTOR2,
+			"Preview placement is computed inside the selection window")
+	assert_true(placement.is_finite(), "Preview placement is a finite point")
+	assert_almost_eq(preview_popup.position, placement, Vector2(30,30),
+			"Preview follows its computed placement instead of the grid cell")
+	selection_window.queue_free()
+# Clarividência keeps the row on screen until the player closes it. The old
+# reveal closed itself three seconds after showing the cards, which never left
+# time to read the row, let alone reorder it.
+func test_clairvoyance_stays_open_until_finished():
+	var deck_count: int = deck.get_card_count()
+	var top_cards: Array = deck.get_top_cards(3)
+	deck._show_top_cards(3)
+	var view = deck._clarividencia
+	assert_not_null(view, "Clarividência opens a view over the board")
+	await wait_until(func(): return view._row_ready, 6)
+
+	assert_eq(view._cards.size(), 3, "The three top cards are in the row")
+	for index in range(3):
+		assert_eq(view._cards[index], top_cards[index],
+				"The row reads left to right from the top of the deck")
+		assert_eq(top_cards[index].get_parent(), board,
+				"The peeked card is shown on the table")
+		assert_true(top_cards[index].is_faceup,
+				"The peeked card is revealed")
+
+	# Past the old three second timeout.
+	await yield_for(3.4)
+	assert_true(view.is_inside_tree(), "The peek no longer closes on a timer")
+	assert_eq(view._cards.size(), 3, "The row is still complete")
+
+	view._finish()
+	await wait_until(func(): return deck._clarividencia == null, 4)
+
+	assert_eq(deck.get_card_count(), deck_count,
+			"Every card went back to the deck")
+	var restored: Array = deck.get_top_cards(3)
+	for index in range(3):
+		assert_eq(restored[index], top_cards[index],
+				"An untouched row keeps the deck order")
+
+
+func test_clairvoyance_header_stays_clear_of_the_row():
+	deck._show_top_cards(3)
+	var view = deck._clarividencia
+	await wait_until(func(): return view._row_ready, 6)
+
+	# The match HUD draws at z_index 110 over the board; the peek and its
+	# "Concluir" button must stay above it.
+	assert_gt(view.z_index, 110, "The peek draws above the match HUD")
+	var metrics: Dictionary = view._metrics()
+	var header: Rect2 = Rect2(view._header_panel.position,
+			view._header_panel.size)
+	var row: Rect2 = Rect2(metrics["x"], metrics["y"],
+			metrics["total"], metrics["card"].y)
+	assert_true(header.end.y <= row.position.y,
+			"The header sits above the card row")
+	var button: Rect2 = Rect2(view._finish_button.position,
+			view._finish_button.size)
+	assert_true(Rect2(Vector2.ZERO, view._header_panel.size).encloses(button),
+			"The Concluir button is inside the header panel")
+	view._finish()
+	await wait_until(func(): return deck._clarividencia == null, 4)
+
+
+func test_clairvoyance_reorder_is_kept_when_closing():
+	deck._show_top_cards(3)
+	var view = deck._clarividencia
+	await wait_until(func(): return view._row_ready, 6)
+	var first: Card = view._cards[0]
+	var second: Card = view._cards[1]
+	var third: Card = view._cards[2]
+
+	view._move_in_row(first, view._slot_rect(view._metrics(), 2).get_center())
+
+	assert_eq(view._cards, [second, third, first],
+			"The card moves to the slot it was dropped on")
+	view._finish()
+	await wait_until(func(): return deck._clarividencia == null, 4)
+
+	assert_eq(deck.get_top_cards(3), [second, third, first],
+			"The deck keeps the row order, leftmost on top")
+
+
+func test_clairvoyance_drags_one_card_to_the_hand():
+	deck._show_top_cards(3)
+	var view = deck._clarividencia
+	await wait_until(func(): return view._row_ready, 6)
+	var hand_count: int = hand.get_card_count()
+	var first: Card = view._cards[0]
+	var second: Card = view._cards[1]
+	var hand_shape: CollisionShape2D = hand.get_node("CollisionShape2D")
+	var hand_point: Vector2 = view.get_global_transform_with_canvas() \
+			.affine_inverse() * hand_shape.global_position
+
+	view._begin_drag(view._slot_rect(view._metrics(), 0).get_center())
+	assert_eq(first.state, Card.CardState.DRAGGED,
+			"The peeked card can be picked up")
+	view._end_drag(hand_point)
+
+	assert_eq(hand.get_card_count(), hand_count + 1,
+			"The dragged peeked card is drawn into the hand")
+	assert_eq(first.get_parent(), hand, "The card leaves the table")
+	assert_eq(view._cards.size(), 2, "The drawn card leaves the row")
+
+	await yield_for(0.4)
+	view._begin_drag(view._slot_rect(view._metrics(), 0).get_center())
+	view._end_drag(hand_point)
+
+	assert_eq(hand.get_card_count(), hand_count + 1,
+			"Only one peeked card goes to the hand")
+	assert_eq(second.get_parent(), board, "The refused card stays in the row")
+	assert_eq(view._cards.size(), 2, "The row keeps its cards")
+
+	view._finish()
+	await wait_until(func(): return deck._clarividencia == null, 4)
+	assert_eq(second.get_parent(), deck, "Closing returns the remaining card")
+
+
+# The tests above call the view directly; this one goes through the viewport, so
+# it also covers a card Control swallowing the press before the view sees it.
+func test_clairvoyance_drag_uses_real_mouse_events():
+	deck._show_top_cards(3)
+	var view = deck._clarividencia
+	await wait_until(func(): return view._row_ready, 6)
+	var viewport: Viewport = view.get_viewport()
+	var card: Card = view._cards[1]
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = view.get_global_transform_with_canvas() \
+			* view._slot_rect(view._metrics(), 1).get_center()
+	viewport.push_input(press)
+
+	assert_eq(card.state, Card.CardState.DRAGGED,
+			"A real mouse press on a peek card starts the drag")
+
+	var hand_shape: CollisionShape2D = hand.get_node("CollisionShape2D")
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = hand_shape.global_position
+	viewport.push_input(release)
+
+	assert_eq(card.get_parent(), hand,
+			"A real release over the hand draws the peeked card")
+	view._finish()
+	await wait_until(func(): return deck._clarividencia == null, 4)
 
 
 func test_searched_card_is_revealed_then_added_to_hand():

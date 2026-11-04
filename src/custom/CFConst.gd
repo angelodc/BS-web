@@ -129,7 +129,9 @@ const PATH_MOUSE_POINTER := PATH_CORE + "MousePointer.tscn"
 # The amount of distance neighboring cards are pushed during card focus
 #
 # It's based on the card width. Bigger percentage means larger push.
-const NEIGHBOUR_PUSH := 0.75
+# The focused hand card grows to 1.5x, so the neighbours need to clear that
+# extra width instead of only the resting card width.
+const NEIGHBOUR_PUSH := 1.0
 # The scale of a card while on the play area
 # You can adjust this for each different card type
 const PLAY_AREA_SCALE := 0.66
@@ -146,6 +148,11 @@ const PREVIEW_SCALE := 1.5
 # The scale of a card while it's shown focused on the top right.
 # You can adjust this for each different card type
 const FOCUSED_SCALE := 1.5
+# Draw order on the table. Table cards are reparented under the board as they
+# are played, so they end up after the hand in the tree; these layers keep the
+# hand over the table and lift the pile being read over the hand on hover.
+const TABLE_HAND_Z := 5
+const TABLE_FOCUS_Z := 6
 # The margin towards the bottom of the viewport on which to draw the cards.
 #
 # More than 0 and the card will appear hidden under the display area.
@@ -207,6 +214,11 @@ const TARGET_HOVER_COLOUR := Color(0, 0.4, 1) * 1.3
 #
 # You can change the colour to something else if  you want however
 const TARGETTING_ARROW_COLOUR := TARGET_HOVER_COLOUR
+# The colour used while the Materializar mode is armed: every card in the hand
+# glows green until one is picked or the mode is cancelled. It is deliberately
+# different from every CostsState colour, because set_focus() only clears a
+# highlight whose colour is one of those.
+const MATERIALIZE_HOVER_COLOUR := Color(0.2, 1, 0.35) * 1.5
 # The below const defines what string to put between these elements.
 # Returns a color code to be used to mark the state of cost to pay for a card
 # * IMPOSSIBLE: The cost of the card cannot be paid.

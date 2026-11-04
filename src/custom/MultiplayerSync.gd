@@ -1137,7 +1137,9 @@ func _contains_global(area: Control, point: Vector2) -> bool:
 
 func _place_lens() -> void:
 	var target := _lens_target()
-	if not target:
+	# `_ready` returns before `_build_lens` under the unit harness, so a missing
+	# lens is as good a reason to stop here as a missing target.
+	if not target or not is_instance_valid(_lens):
 		_hide_lens()
 		return
 	_lens.global_position = target.global_position - Vector2(4, 4)

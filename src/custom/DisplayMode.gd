@@ -12,10 +12,34 @@ const TITLE_BAR_ALLOWANCE := 30.0
 
 
 func _ready() -> void:
+	if OS.has_feature("web"):
+		_fit_web_canvas()
+		return
 	if OS.get_environment(WINDOWED_ENV) == "1":
 		call_deferred("_apply_windowed")
 	else:
 		_apply_desktop_window()
+
+
+# O engine arranca com a janela do projeto (1280x720) enquanto o canvas ja tem
+# o tamanho do navegador. A escala do conteudo nao acompanha esse ajuste, entao
+# a cena fica colada embaixo com faixa preta no topo (e a direita, em janelas
+# mais largas que 16:9) ate alguem redimensionar a janela. Mexer 1px no canvas
+# obriga o engine a recalcular a escala sem mudar o layout final.
+func _fit_web_canvas() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_nudge_web_canvas()
+	await get_tree().create_timer(1.0).timeout
+	_nudge_web_canvas()
+
+
+func _nudge_web_canvas() -> void:
+	JavaScriptBridge.eval(
+			"(() => { const c = document.getElementById('canvas');"
+			+ " if (!c) return; const h = c.style.height;"
+			+ " c.style.height = 'calc(100% - 1px)';"
+			+ " void c.offsetHeight; c.style.height = h; })();", true)
 
 
 # Called by the menu when the board render size changes. The table reads the

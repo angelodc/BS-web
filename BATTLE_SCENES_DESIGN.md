@@ -43,7 +43,7 @@ No Battle Scenes físico, as cartas inclinam para indicar uso. No jogo, a capaci
 
 ### 3. Deck e Mão
 *   Os controles de demonstração do topo para reunir cartas no Deck ou em Recursos/Descarte foram removidos. No Deck do jogador, os controles são **Embaralhar**, **Clarividência** e **Procurar**.
-*   **Clarividência** abre opções para espiar 1, 2, 3 ou outra quantidade de cartas do topo. As cartas reais aparecem viradas para cima no campo por alguns segundos e retornam ao topo do Deck na ordem original.
+*   **Clarividência** abre opções para espiar 1, 2, 3 ou outra quantidade de cartas do topo. As cartas reais aparecem viradas para cima no campo e a linha permanece aberta até o jogador pressionar **Concluir**; não há fechamento automático. As cartas podem ser arrastadas para reorganizar a ordem (a primeira à esquerda é o topo do Deck) e uma delas pode ser arrastada para a Mão durante a espiada. Ao concluir, as cartas restantes voltam ao topo do Deck na ordem exibida. Cada carta tem o número abaixo dela, com **1 · topo** na primeira.
 *   **Procurar** apresenta as cartas do Deck sem duplicar nomes. Ao escolher uma, a seleção fecha, a carta aparece virada para cima no campo por alguns segundos e depois vai para a Mão.
 *   A Mão não tem limite de cartas e seu contador mostra somente a quantidade. Na mão, o clique na metade esquerda da carta a envia para Recursos/Descarte; o clique na metade direita joga a carta conforme o tipo (Personagem/Suporte vão para a Cena, Cenário para o slot de Cenário e Habilidade para o descarte). O clique só age quando não houve arraste.
 *   O botão **Ver** em Recursos/Descarte abre a lista de cartas nessa pilha.

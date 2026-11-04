@@ -18,6 +18,8 @@ config/icon="res://icon.png"
 [autoload]
 
 cfc="*res://src/core/CFControl.gd"
+Auth="*res://src/core/Auth.gd"
+Analytics="*res://src/core/Analytics.gd"
 Rede="*res://src/custom/Rede.gd"
 Multiplayer="*res://src/custom/Multiplayer.gd"
 LocalRelay="*res://src/custom/LocalRelay.gd"
@@ -28,7 +30,7 @@ GameEvents="*res://src/custom/GameEvents.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
-window/stretch/mode="2d"
+window/stretch/mode="canvas_items"
 
 [input]
 

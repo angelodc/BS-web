@@ -13,8 +13,9 @@ no anfitrião (cliente Godot); ele não valida jogadas.
 
 - Implementado: salas em memória, código de 6 caracteres, `join_room`,
   handshake de protocolo, `/healthz`, `/rooms`, limite de frame/conexões/salas
-  por IP, rate limit, heartbeat, allowlist de Origin, expiração de 120 s e logs
-  estruturados. A suíte tem 21 testes com clientes `ws` reais.
+  por IP, rate limit, heartbeat, allowlist de Origin, expiração de 120 s, logs
+  estruturados e validação opcional do access_token do Supabase (JWKS, `sub`
+  como identidade). A suíte tem 25 testes com clientes `ws` reais.
 - Publicado em produção desde 01/11/2026 na VM Always Free da Oracle Cloud
   (Frankfurt, Ubuntu 24.04, `VM.Standard.E2.1.Micro`), com IP público
   **reservado** `129.159.222.25` e hostname `129-159-222-25.sslip.io`. Caddy
@@ -69,7 +70,7 @@ npm test
 A suíte usa clientes WebSocket reais e cobre criar sala, entrar por código,
 sala cheia, código inválido, terceiro jogador, encaminhamento de mensagens,
 reconexão, expiração, salas de retomada, protocolo incompatível, limites por IP,
-rate limit e allowlist de Origin.
+rate limit, allowlist de Origin e a validação de JWT contra um JWKS local.
 
 ## HTTP
 
@@ -85,9 +86,13 @@ As duas rotas são somente leitura e não expõem IP, token ou conteúdo de cart
   "uptime_seconds": 42,
   "rooms": 3,
   "clients": 4,
-  "grace_seconds": 120
+  "grace_seconds": 120,
+  "auth": true
 }
 ```
+
+`auth` informa se a validação de JWT está ativa (o `SUPABASE_URL` foi configurado
+e o JWKS foi criado).
 
 ### `GET /rooms`
 
@@ -134,7 +139,7 @@ Mensagens de controle:
 |---|---|---|
 | `create_room` | `username` | Cria sala e devolve `waiting` com `room_id` (o código). |
 | `find_match` | `username` | Entra na primeira sala aberta ou espera um anfitrião. |
-| `join_room` | `code`, `username` | Entra na sala do código. Erros: não encontrada, cheia, anfitrião ausente, username duplicado. |
+| `join_room` | `code`, `username` | Entra na sala do código. Erros: não encontrada, cheia, anfitrião ausente, username ou conta do anfitrião. |
 | `cancel_match` | — | Sai da fila/sala ainda não pareada; responde `search_cancelled`. |
 | `rejoin_room` | `room_id`, `username` | Reconecta em uma vaga da sala; responde `rejoin_ok` ou `rejoin_failed`. |
 | `create_resume_room` | `game_id`, `username`, `participants` | Abre a sala de retomada de um save. |
@@ -144,6 +149,21 @@ Mensagens de controle:
 Respostas e avisos: `waiting`, `match_found`, `error`, `search_cancelled`,
 `rejoin_ok`, `rejoin_failed`, `opponent_reconnected`, `opponent_left`,
 `opponent_disconnected` (com `reconnectable` e `grace_seconds`).
+
+### Token do Supabase (opcional)
+
+As mensagens de controle aceitam um campo extra `token` com o access_token do
+Supabase. Com `SUPABASE_URL` configurada, o relay busca o JWKS em
+`<SUPABASE_URL>/auth/v1/.well-known/jwks.json`, exige `iss`
+`<SUPABASE_URL>/auth/v1` e `aud` `authenticated` (ES256 ou RS256) e guarda o
+`sub` como identidade do jogador. O token é verificado uma vez por conexão e
+depois reaproveitado; token ausente ou inválido não impede a partida — nesse
+caso a identidade volta a ser o username. A mesma conta não pode ocupar os dois
+assentos, e a reconexão procura o assento pelo `sub` antes de tentar o username,
+permitindo voltar com um username novo.
+
+O JWT não é registrado nos logs; `auth_invalid` traz apenas o código do erro.
+Em produção desde 02/11/2026, com `auth: true` no `/healthz`.
 
 Qualquer mensagem que não seja de controle é encaminhada ao oponente com os
 campos `from` (`H`/`C`), `username` e `room_id`. O relay não interpreta o
@@ -162,6 +182,7 @@ identificador `resume_<game_id>` para preservar a reconexão por save.
 | `PORT` | `9080` | Porta HTTP/WebSocket interna. |
 | `HOST` | `0.0.0.0` | Endereço de escuta. |
 | `RELAY_VERSION` | `1.0.0` | Versão informada em `/healthz` e no `hello`. |
+| `SUPABASE_URL` | `https://ulchgvwidctalaaxugeg.supabase.co` | Projeto cujo JWKS valida o `token` das mensagens de controle. Vazio desliga a validação e todas as identidades voltam a ser por username. O projeto antigo (`xtdqcfchdqmqlbmkvdit`) continua apenas como fonte dos dados de deck do editor. |
 | `ALLOWED_ORIGINS` | vazio | Lista separada por vírgula de origens permitidas no upgrade. Vazio aceita qualquer origem (apenas para desenvolvimento). |
 | `TRUST_PROXY` | `0` | Confia em `X-Forwarded-For` para limites por IP. Ative atrás do proxy do provedor. |
 | `MAX_CONNECTIONS` | `500` | Conexões simultâneas. |
@@ -424,8 +445,10 @@ cabeçalho `Origin` continuam aceitos para LAN/relay próprio.
 - Estado só em memória: reiniciar o relay derruba as salas abertas.
 - A sala expira 120 s depois que **os dois** jogadores saíram; enquanto um
   estiver conectado ela é preservada para permitir retomada longa.
-- O username não é identidade: a reconexão casa username + vaga vazia. Tokens de
-  sessão por jogador ficam no roadmap da Fase 5.
+- O username sozinho não é identidade forte. Com login, a conta (`sub` do JWT)
+  manda nos assentos e na reconexão; sem login, a reconexão casa username + vaga
+  vazia, como antes. A renovação do token durante uma partida longa ainda não
+  existe: se o token expirar, a próxima reconexão cai no caminho por username.
 - O relay não valida jogadas. Enquanto o host for autoritativo, o modo online é
   recreativo.
 - Não registre mãos, decks ou conteúdo de mensagens; os logs atuais trazem só

@@ -1,154 +1,559 @@
-[gd_scene load_steps=6 format=2]
+[gd_scene format=3 uid="uid://vpkwif7nrsot"]
 
-[ext_resource path="res://themes/darktheme/darktheme.tres" type="Theme" id=1]
-[ext_resource path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" type="FontFile" id=2]
-[ext_resource path="res://src/custom/MainMenu.gd" type="Script" id=3]
-[ext_resource path="res://src/custom/CheckpointList.tscn" type="PackedScene" id=4]
+[ext_resource type="Theme" path="res://themes/darktheme/darktheme.tres" id="1"]
+[ext_resource type="FontFile" uid="uid://syb53br50mc0" path="res://themes/darktheme/fonts/Bangers/Bangers-Regular.ttf" id="2"]
+[ext_resource type="Script" uid="uid://bbs33oao8qn8d" path="res://src/custom/MainMenu.gd" id="3"]
+[ext_resource type="PackedScene" path="res://src/custom/CheckpointList.tscn" id="4"]
 
-[sub_resource type="FontFile" id=1]
-size = 107
-font_data = ExtResource( 2 )
+[sub_resource type="FontFile" id="1"]
+fallbacks = Array[Font]([ExtResource("2")])
+cache/0/variation_coordinates = {}
+cache/0/face_index = 0
+cache/0/embolden = 0.0
+cache/0/transform = Transform2D(1, 0, 0, 1, 0, 0)
+cache/0/spacing_top = 0
+cache/0/spacing_bottom = 0
+cache/0/spacing_space = 0
+cache/0/spacing_glyph = 0
+cache/0/baseline_offset = 0.0
+cache/0/16/0/ascent = 0.0
+cache/0/16/0/descent = 0.0
+cache/0/16/0/underline_position = 0.0
+cache/0/16/0/underline_thickness = 0.0
+cache/0/16/0/scale = 1.0
+cache/0/17/0/ascent = 0.0
+cache/0/17/0/descent = 0.0
+cache/0/17/0/underline_position = 0.0
+cache/0/17/0/underline_thickness = 0.0
+cache/0/17/0/scale = 1.0
+cache/0/18/0/ascent = 0.0
+cache/0/18/0/descent = 0.0
+cache/0/18/0/underline_position = 0.0
+cache/0/18/0/underline_thickness = 0.0
+cache/0/18/0/scale = 1.0
+cache/0/19/0/ascent = 0.0
+cache/0/19/0/descent = 0.0
+cache/0/19/0/underline_position = 0.0
+cache/0/19/0/underline_thickness = 0.0
+cache/0/19/0/scale = 1.0
+cache/0/20/0/ascent = 0.0
+cache/0/20/0/descent = 0.0
+cache/0/20/0/underline_position = 0.0
+cache/0/20/0/underline_thickness = 0.0
+cache/0/20/0/scale = 1.0
+cache/0/21/0/ascent = 0.0
+cache/0/21/0/descent = 0.0
+cache/0/21/0/underline_position = 0.0
+cache/0/21/0/underline_thickness = 0.0
+cache/0/21/0/scale = 1.0
+cache/0/22/0/ascent = 0.0
+cache/0/22/0/descent = 0.0
+cache/0/22/0/underline_position = 0.0
+cache/0/22/0/underline_thickness = 0.0
+cache/0/22/0/scale = 1.0
+cache/0/23/0/ascent = 0.0
+cache/0/23/0/descent = 0.0
+cache/0/23/0/underline_position = 0.0
+cache/0/23/0/underline_thickness = 0.0
+cache/0/23/0/scale = 1.0
+cache/0/24/0/ascent = 0.0
+cache/0/24/0/descent = 0.0
+cache/0/24/0/underline_position = 0.0
+cache/0/24/0/underline_thickness = 0.0
+cache/0/24/0/scale = 1.0
+cache/0/25/0/ascent = 0.0
+cache/0/25/0/descent = 0.0
+cache/0/25/0/underline_position = 0.0
+cache/0/25/0/underline_thickness = 0.0
+cache/0/25/0/scale = 1.0
+cache/0/26/0/ascent = 0.0
+cache/0/26/0/descent = 0.0
+cache/0/26/0/underline_position = 0.0
+cache/0/26/0/underline_thickness = 0.0
+cache/0/26/0/scale = 1.0
+cache/0/27/0/ascent = 0.0
+cache/0/27/0/descent = 0.0
+cache/0/27/0/underline_position = 0.0
+cache/0/27/0/underline_thickness = 0.0
+cache/0/27/0/scale = 1.0
+cache/0/28/0/ascent = 0.0
+cache/0/28/0/descent = 0.0
+cache/0/28/0/underline_position = 0.0
+cache/0/28/0/underline_thickness = 0.0
+cache/0/28/0/scale = 1.0
+cache/0/29/0/ascent = 0.0
+cache/0/29/0/descent = 0.0
+cache/0/29/0/underline_position = 0.0
+cache/0/29/0/underline_thickness = 0.0
+cache/0/29/0/scale = 1.0
+cache/0/30/0/ascent = 0.0
+cache/0/30/0/descent = 0.0
+cache/0/30/0/underline_position = 0.0
+cache/0/30/0/underline_thickness = 0.0
+cache/0/30/0/scale = 1.0
+cache/0/31/0/ascent = 0.0
+cache/0/31/0/descent = 0.0
+cache/0/31/0/underline_position = 0.0
+cache/0/31/0/underline_thickness = 0.0
+cache/0/31/0/scale = 1.0
+cache/0/32/0/ascent = 0.0
+cache/0/32/0/descent = 0.0
+cache/0/32/0/underline_position = 0.0
+cache/0/32/0/underline_thickness = 0.0
+cache/0/32/0/scale = 1.0
+cache/0/33/0/ascent = 0.0
+cache/0/33/0/descent = 0.0
+cache/0/33/0/underline_position = 0.0
+cache/0/33/0/underline_thickness = 0.0
+cache/0/33/0/scale = 1.0
+cache/0/34/0/ascent = 0.0
+cache/0/34/0/descent = 0.0
+cache/0/34/0/underline_position = 0.0
+cache/0/34/0/underline_thickness = 0.0
+cache/0/34/0/scale = 1.0
+cache/0/35/0/ascent = 0.0
+cache/0/35/0/descent = 0.0
+cache/0/35/0/underline_position = 0.0
+cache/0/35/0/underline_thickness = 0.0
+cache/0/35/0/scale = 1.0
+cache/0/36/0/ascent = 0.0
+cache/0/36/0/descent = 0.0
+cache/0/36/0/underline_position = 0.0
+cache/0/36/0/underline_thickness = 0.0
+cache/0/36/0/scale = 1.0
+cache/0/37/0/ascent = 0.0
+cache/0/37/0/descent = 0.0
+cache/0/37/0/underline_position = 0.0
+cache/0/37/0/underline_thickness = 0.0
+cache/0/37/0/scale = 1.0
+cache/0/38/0/ascent = 0.0
+cache/0/38/0/descent = 0.0
+cache/0/38/0/underline_position = 0.0
+cache/0/38/0/underline_thickness = 0.0
+cache/0/38/0/scale = 1.0
+cache/0/39/0/ascent = 0.0
+cache/0/39/0/descent = 0.0
+cache/0/39/0/underline_position = 0.0
+cache/0/39/0/underline_thickness = 0.0
+cache/0/39/0/scale = 1.0
+cache/0/40/0/ascent = 0.0
+cache/0/40/0/descent = 0.0
+cache/0/40/0/underline_position = 0.0
+cache/0/40/0/underline_thickness = 0.0
+cache/0/40/0/scale = 1.0
+cache/0/41/0/ascent = 0.0
+cache/0/41/0/descent = 0.0
+cache/0/41/0/underline_position = 0.0
+cache/0/41/0/underline_thickness = 0.0
+cache/0/41/0/scale = 1.0
+cache/0/42/0/ascent = 0.0
+cache/0/42/0/descent = 0.0
+cache/0/42/0/underline_position = 0.0
+cache/0/42/0/underline_thickness = 0.0
+cache/0/42/0/scale = 1.0
+cache/0/43/0/ascent = 0.0
+cache/0/43/0/descent = 0.0
+cache/0/43/0/underline_position = 0.0
+cache/0/43/0/underline_thickness = 0.0
+cache/0/43/0/scale = 1.0
+cache/0/44/0/ascent = 0.0
+cache/0/44/0/descent = 0.0
+cache/0/44/0/underline_position = 0.0
+cache/0/44/0/underline_thickness = 0.0
+cache/0/44/0/scale = 1.0
+cache/0/45/0/ascent = 0.0
+cache/0/45/0/descent = 0.0
+cache/0/45/0/underline_position = 0.0
+cache/0/45/0/underline_thickness = 0.0
+cache/0/45/0/scale = 1.0
+cache/0/46/0/ascent = 0.0
+cache/0/46/0/descent = 0.0
+cache/0/46/0/underline_position = 0.0
+cache/0/46/0/underline_thickness = 0.0
+cache/0/46/0/scale = 1.0
+cache/0/47/0/ascent = 0.0
+cache/0/47/0/descent = 0.0
+cache/0/47/0/underline_position = 0.0
+cache/0/47/0/underline_thickness = 0.0
+cache/0/47/0/scale = 1.0
+cache/0/48/0/ascent = 0.0
+cache/0/48/0/descent = 0.0
+cache/0/48/0/underline_position = 0.0
+cache/0/48/0/underline_thickness = 0.0
+cache/0/48/0/scale = 1.0
+cache/0/49/0/ascent = 0.0
+cache/0/49/0/descent = 0.0
+cache/0/49/0/underline_position = 0.0
+cache/0/49/0/underline_thickness = 0.0
+cache/0/49/0/scale = 1.0
+cache/0/50/0/ascent = 0.0
+cache/0/50/0/descent = 0.0
+cache/0/50/0/underline_position = 0.0
+cache/0/50/0/underline_thickness = 0.0
+cache/0/50/0/scale = 1.0
+cache/0/51/0/ascent = 0.0
+cache/0/51/0/descent = 0.0
+cache/0/51/0/underline_position = 0.0
+cache/0/51/0/underline_thickness = 0.0
+cache/0/51/0/scale = 1.0
+cache/0/52/0/ascent = 0.0
+cache/0/52/0/descent = 0.0
+cache/0/52/0/underline_position = 0.0
+cache/0/52/0/underline_thickness = 0.0
+cache/0/52/0/scale = 1.0
+cache/0/53/0/ascent = 0.0
+cache/0/53/0/descent = 0.0
+cache/0/53/0/underline_position = 0.0
+cache/0/53/0/underline_thickness = 0.0
+cache/0/53/0/scale = 1.0
+cache/0/54/0/ascent = 0.0
+cache/0/54/0/descent = 0.0
+cache/0/54/0/underline_position = 0.0
+cache/0/54/0/underline_thickness = 0.0
+cache/0/54/0/scale = 1.0
+cache/0/55/0/ascent = 0.0
+cache/0/55/0/descent = 0.0
+cache/0/55/0/underline_position = 0.0
+cache/0/55/0/underline_thickness = 0.0
+cache/0/55/0/scale = 1.0
+cache/0/56/0/ascent = 0.0
+cache/0/56/0/descent = 0.0
+cache/0/56/0/underline_position = 0.0
+cache/0/56/0/underline_thickness = 0.0
+cache/0/56/0/scale = 1.0
+cache/0/57/0/ascent = 0.0
+cache/0/57/0/descent = 0.0
+cache/0/57/0/underline_position = 0.0
+cache/0/57/0/underline_thickness = 0.0
+cache/0/57/0/scale = 1.0
+cache/0/58/0/ascent = 0.0
+cache/0/58/0/descent = 0.0
+cache/0/58/0/underline_position = 0.0
+cache/0/58/0/underline_thickness = 0.0
+cache/0/58/0/scale = 1.0
+cache/0/59/0/ascent = 0.0
+cache/0/59/0/descent = 0.0
+cache/0/59/0/underline_position = 0.0
+cache/0/59/0/underline_thickness = 0.0
+cache/0/59/0/scale = 1.0
+cache/0/60/0/ascent = 0.0
+cache/0/60/0/descent = 0.0
+cache/0/60/0/underline_position = 0.0
+cache/0/60/0/underline_thickness = 0.0
+cache/0/60/0/scale = 1.0
+cache/0/61/0/ascent = 0.0
+cache/0/61/0/descent = 0.0
+cache/0/61/0/underline_position = 0.0
+cache/0/61/0/underline_thickness = 0.0
+cache/0/61/0/scale = 1.0
+cache/0/62/0/ascent = 0.0
+cache/0/62/0/descent = 0.0
+cache/0/62/0/underline_position = 0.0
+cache/0/62/0/underline_thickness = 0.0
+cache/0/62/0/scale = 1.0
+cache/0/63/0/ascent = 0.0
+cache/0/63/0/descent = 0.0
+cache/0/63/0/underline_position = 0.0
+cache/0/63/0/underline_thickness = 0.0
+cache/0/63/0/scale = 1.0
+cache/0/64/0/ascent = 0.0
+cache/0/64/0/descent = 0.0
+cache/0/64/0/underline_position = 0.0
+cache/0/64/0/underline_thickness = 0.0
+cache/0/64/0/scale = 1.0
+cache/0/65/0/ascent = 0.0
+cache/0/65/0/descent = 0.0
+cache/0/65/0/underline_position = 0.0
+cache/0/65/0/underline_thickness = 0.0
+cache/0/65/0/scale = 1.0
+cache/0/66/0/ascent = 0.0
+cache/0/66/0/descent = 0.0
+cache/0/66/0/underline_position = 0.0
+cache/0/66/0/underline_thickness = 0.0
+cache/0/66/0/scale = 1.0
+cache/0/67/0/ascent = 0.0
+cache/0/67/0/descent = 0.0
+cache/0/67/0/underline_position = 0.0
+cache/0/67/0/underline_thickness = 0.0
+cache/0/67/0/scale = 1.0
+cache/0/68/0/ascent = 0.0
+cache/0/68/0/descent = 0.0
+cache/0/68/0/underline_position = 0.0
+cache/0/68/0/underline_thickness = 0.0
+cache/0/68/0/scale = 1.0
+cache/0/69/0/ascent = 0.0
+cache/0/69/0/descent = 0.0
+cache/0/69/0/underline_position = 0.0
+cache/0/69/0/underline_thickness = 0.0
+cache/0/69/0/scale = 1.0
+cache/0/70/0/ascent = 0.0
+cache/0/70/0/descent = 0.0
+cache/0/70/0/underline_position = 0.0
+cache/0/70/0/underline_thickness = 0.0
+cache/0/70/0/scale = 1.0
+cache/0/71/0/ascent = 0.0
+cache/0/71/0/descent = 0.0
+cache/0/71/0/underline_position = 0.0
+cache/0/71/0/underline_thickness = 0.0
+cache/0/71/0/scale = 1.0
+cache/0/72/0/ascent = 0.0
+cache/0/72/0/descent = 0.0
+cache/0/72/0/underline_position = 0.0
+cache/0/72/0/underline_thickness = 0.0
+cache/0/72/0/scale = 1.0
+cache/0/73/0/ascent = 0.0
+cache/0/73/0/descent = 0.0
+cache/0/73/0/underline_position = 0.0
+cache/0/73/0/underline_thickness = 0.0
+cache/0/73/0/scale = 1.0
+cache/0/74/0/ascent = 0.0
+cache/0/74/0/descent = 0.0
+cache/0/74/0/underline_position = 0.0
+cache/0/74/0/underline_thickness = 0.0
+cache/0/74/0/scale = 1.0
+cache/0/75/0/ascent = 0.0
+cache/0/75/0/descent = 0.0
+cache/0/75/0/underline_position = 0.0
+cache/0/75/0/underline_thickness = 0.0
+cache/0/75/0/scale = 1.0
+cache/0/76/0/ascent = 0.0
+cache/0/76/0/descent = 0.0
+cache/0/76/0/underline_position = 0.0
+cache/0/76/0/underline_thickness = 0.0
+cache/0/76/0/scale = 1.0
+cache/0/77/0/ascent = 0.0
+cache/0/77/0/descent = 0.0
+cache/0/77/0/underline_position = 0.0
+cache/0/77/0/underline_thickness = 0.0
+cache/0/77/0/scale = 1.0
+cache/0/78/0/ascent = 0.0
+cache/0/78/0/descent = 0.0
+cache/0/78/0/underline_position = 0.0
+cache/0/78/0/underline_thickness = 0.0
+cache/0/78/0/scale = 1.0
+cache/0/79/0/ascent = 0.0
+cache/0/79/0/descent = 0.0
+cache/0/79/0/underline_position = 0.0
+cache/0/79/0/underline_thickness = 0.0
+cache/0/79/0/scale = 1.0
+cache/0/80/0/ascent = 0.0
+cache/0/80/0/descent = 0.0
+cache/0/80/0/underline_position = 0.0
+cache/0/80/0/underline_thickness = 0.0
+cache/0/80/0/scale = 1.0
+cache/0/81/0/ascent = 0.0
+cache/0/81/0/descent = 0.0
+cache/0/81/0/underline_position = 0.0
+cache/0/81/0/underline_thickness = 0.0
+cache/0/81/0/scale = 1.0
+cache/0/82/0/ascent = 0.0
+cache/0/82/0/descent = 0.0
+cache/0/82/0/underline_position = 0.0
+cache/0/82/0/underline_thickness = 0.0
+cache/0/82/0/scale = 1.0
+cache/0/83/0/ascent = 0.0
+cache/0/83/0/descent = 0.0
+cache/0/83/0/underline_position = 0.0
+cache/0/83/0/underline_thickness = 0.0
+cache/0/83/0/scale = 1.0
+cache/0/84/0/ascent = 0.0
+cache/0/84/0/descent = 0.0
+cache/0/84/0/underline_position = 0.0
+cache/0/84/0/underline_thickness = 0.0
+cache/0/84/0/scale = 1.0
+cache/0/85/0/ascent = 0.0
+cache/0/85/0/descent = 0.0
+cache/0/85/0/underline_position = 0.0
+cache/0/85/0/underline_thickness = 0.0
+cache/0/85/0/scale = 1.0
+cache/0/86/0/ascent = 0.0
+cache/0/86/0/descent = 0.0
+cache/0/86/0/underline_position = 0.0
+cache/0/86/0/underline_thickness = 0.0
+cache/0/86/0/scale = 1.0
+cache/0/87/0/ascent = 0.0
+cache/0/87/0/descent = 0.0
+cache/0/87/0/underline_position = 0.0
+cache/0/87/0/underline_thickness = 0.0
+cache/0/87/0/scale = 1.0
+cache/0/88/0/ascent = 0.0
+cache/0/88/0/descent = 0.0
+cache/0/88/0/underline_position = 0.0
+cache/0/88/0/underline_thickness = 0.0
+cache/0/88/0/scale = 1.0
+cache/0/89/0/ascent = 0.0
+cache/0/89/0/descent = 0.0
+cache/0/89/0/underline_position = 0.0
+cache/0/89/0/underline_thickness = 0.0
+cache/0/89/0/scale = 1.0
+cache/0/90/0/ascent = 0.0
+cache/0/90/0/descent = 0.0
+cache/0/90/0/underline_position = 0.0
+cache/0/90/0/underline_thickness = 0.0
+cache/0/90/0/scale = 1.0
+cache/0/91/0/ascent = 0.0
+cache/0/91/0/descent = 0.0
+cache/0/91/0/underline_position = 0.0
+cache/0/91/0/underline_thickness = 0.0
+cache/0/91/0/scale = 1.0
+cache/0/92/0/ascent = 0.0
+cache/0/92/0/descent = 0.0
+cache/0/92/0/underline_position = 0.0
+cache/0/92/0/underline_thickness = 0.0
+cache/0/92/0/scale = 1.0
+cache/0/93/0/ascent = 0.0
+cache/0/93/0/descent = 0.0
+cache/0/93/0/underline_position = 0.0
+cache/0/93/0/underline_thickness = 0.0
+cache/0/93/0/scale = 1.0
+cache/0/94/0/ascent = 0.0
+cache/0/94/0/descent = 0.0
+cache/0/94/0/underline_position = 0.0
+cache/0/94/0/underline_thickness = 0.0
+cache/0/94/0/scale = 1.0
+cache/0/95/0/ascent = 0.0
+cache/0/95/0/descent = 0.0
+cache/0/95/0/underline_position = 0.0
+cache/0/95/0/underline_thickness = 0.0
+cache/0/95/0/scale = 1.0
+cache/0/96/0/ascent = 0.0
+cache/0/96/0/descent = 0.0
+cache/0/96/0/underline_position = 0.0
+cache/0/96/0/underline_thickness = 0.0
+cache/0/96/0/scale = 1.0
+cache/0/97/0/ascent = 0.0
+cache/0/97/0/descent = 0.0
+cache/0/97/0/underline_position = 0.0
+cache/0/97/0/underline_thickness = 0.0
+cache/0/97/0/scale = 1.0
+cache/0/98/0/ascent = 0.0
+cache/0/98/0/descent = 0.0
+cache/0/98/0/underline_position = 0.0
+cache/0/98/0/underline_thickness = 0.0
+cache/0/98/0/scale = 1.0
+cache/0/99/0/ascent = 0.0
+cache/0/99/0/descent = 0.0
+cache/0/99/0/underline_position = 0.0
+cache/0/99/0/underline_thickness = 0.0
+cache/0/99/0/scale = 1.0
+cache/0/100/0/ascent = 0.0
+cache/0/100/0/descent = 0.0
+cache/0/100/0/underline_position = 0.0
+cache/0/100/0/underline_thickness = 0.0
+cache/0/100/0/scale = 1.0
 
-[node name="Menu" type="Panel"]
+[node name="Menu" type="Panel" unique_id=1539470717]
 offset_right = 1280.0
 offset_bottom = 720.0
-theme = ExtResource( 1 )
-script = ExtResource( 3 )
+theme = ExtResource("1")
+script = ExtResource("3")
 
-[node name="CheckpointList" parent="." instance=ExtResource( 4 )]
+[node name="CheckpointList" parent="." unique_id=1054674273 instance=ExtResource("4")]
 
-[node name="ActionError" type="AcceptDialog" parent="."]
+[node name="ActionError" type="AcceptDialog" parent="." unique_id=682109442]
 title = "Aviso"
 dialog_text = "Mensagem"
 
-[node name="ServerProbe" type="HTTPRequest" parent="."]
+[node name="ServerProbe" type="HTTPRequest" parent="." unique_id=1018775211]
 
-[node name="MainMenu" type="MarginContainer" parent="."]
+[node name="VersionProbe" type="HTTPRequest" parent="." unique_id=1028034884]
+timeout = 5.0
+
+[node name="MainMenu" type="MarginContainer" parent="." unique_id=1708566286]
+layout_mode = 0
 anchor_right = 1.19
 anchor_bottom = 1.181
 offset_right = -242.2
 offset_bottom = -127.32
 
-[node name="Backdrop" type="TextureRect" parent="MainMenu"]
-offset_right = 1281.0
-offset_bottom = 723.0
+[node name="Backdrop" type="TextureRect" parent="MainMenu" unique_id=1095754296]
+layout_mode = 2
 mouse_filter = 2
-expand = true
+expand_mode = 1
 stretch_mode = 6
 
-[node name="ColorRect" type="ColorRect" parent="MainMenu"]
-offset_right = 1281.0
-offset_bottom = 723.0
+[node name="ColorRect" type="ColorRect" parent="MainMenu" unique_id=75688608]
+layout_mode = 2
 mouse_filter = 2
-color = Color( 0.043, 0.043, 0.051, 0.62 )
+color = Color(0.043, 0.043, 0.051, 0.62)
 
-[node name="VBox" type="VBoxContainer" parent="MainMenu"]
-offset_right = 1281.0
-offset_bottom = 723.0
+[node name="VBox" type="VBoxContainer" parent="MainMenu" unique_id=1491147231]
+layout_mode = 2
 
-[node name="Margin" type="MarginContainer" parent="MainMenu/VBox"]
-offset_right = 1281.0
-offset_bottom = 360.0
+[node name="Margin" type="MarginContainer" parent="MainMenu/VBox" unique_id=1166617592]
+layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/margin_top = 90
 
-[node name="Label" type="Label" parent="MainMenu/VBox/Margin"]
-offset_top = 167.0
-offset_right = 1281.0
-offset_bottom = 282.0
-theme_override_fonts/font = SubResource( 1 )
+[node name="Label" type="Label" parent="MainMenu/VBox/Margin" unique_id=421969649]
+layout_mode = 2
+theme_override_fonts/font = SubResource("1")
+theme_override_font_sizes/font_size = 100
 text = "BS WEB"
-align = 1
+horizontal_alignment = 1
 
-[node name="Center" type="CenterContainer" parent="MainMenu/VBox"]
-offset_top = 363.0
-offset_right = 1281.0
-offset_bottom = 723.0
+[node name="Center" type="CenterContainer" parent="MainMenu/VBox" unique_id=808467710]
+layout_mode = 2
 size_flags_vertical = 3
 
-[node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center"]
-offset_left = 500.0
-offset_top = 35.0
-offset_right = 780.0
-offset_bottom = 324.0
-custom_minimum_size = Vector2( 280, 0 )
+[node name="VButtons" type="VBoxContainer" parent="MainMenu/VBox/Center" unique_id=596461120]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
 theme_override_constants/separation = 3
 
-[node name="PlayerName" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
-offset_right = 280.0
-offset_bottom = 27.0
-max_length = 24
+[node name="PlayerName" type="LineEdit" parent="MainMenu/VBox/Center/VButtons" unique_id=1373485]
+layout_mode = 2
 placeholder_text = "Seu username"
+max_length = 24
 
-[node name="RelayAddress" type="LineEdit" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 30.0
-offset_right = 280.0
-offset_bottom = 57.0
+[node name="RelayAddress" type="LineEdit" parent="MainMenu/VBox/Center/VButtons" unique_id=883208535]
+layout_mode = 2
 text = "127.0.0.1:9080"
-max_length = 256
 placeholder_text = "IP do relay na rede local"
+max_length = 256
 
-[node name="ServerStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 60.0
-offset_right = 280.0
-offset_bottom = 83.0
+[node name="ServerStatus" type="Label" parent="MainMenu/VBox/Center/VButtons" unique_id=648049274]
+layout_mode = 2
 text = "Servidor: verificando..."
-align = 2
+horizontal_alignment = 2
 autowrap_mode = 3
 
-[node name="JoinRow" type="HBoxContainer" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 86.0
-offset_right = 280.0
-offset_bottom = 113.0
+[node name="JoinRow" type="HBoxContainer" parent="MainMenu/VBox/Center/VButtons" unique_id=1286224364]
+layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="RoomCode" type="LineEdit" parent="MainMenu/VBox/Center/VButtons/JoinRow"]
-offset_right = 223.0
-offset_bottom = 27.0
+[node name="RoomCode" type="LineEdit" parent="MainMenu/VBox/Center/VButtons/JoinRow" unique_id=1698315956]
+layout_mode = 2
 size_flags_horizontal = 3
-max_length = 12
 placeholder_text = "Codigo da sala (ex: ABC123)"
+max_length = 12
 
-[node name="JoinRoom" type="Button" parent="MainMenu/VBox/Center/VButtons/JoinRow"]
-offset_left = 227.0
-offset_right = 280.0
-offset_bottom = 27.0
+[node name="JoinRoom" type="Button" parent="MainMenu/VBox/Center/VButtons/JoinRow" unique_id=829277267]
+layout_mode = 2
 text = "Entrar"
 
-[node name="MatchStatus" type="Label" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 116.0
-offset_right = 280.0
-offset_bottom = 139.0
+[node name="MatchStatus" type="Label" parent="MainMenu/VBox/Center/VButtons" unique_id=83005358]
+layout_mode = 2
 text = "Desconectado"
 autowrap_mode = 3
 
-[node name="SoloMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 142.0
-offset_right = 280.0
-offset_bottom = 169.0
+[node name="SoloMatch" type="Button" parent="MainMenu/VBox/Center/VButtons" unique_id=206229158]
+layout_mode = 2
 text = "Partida Solo (P1 vs P2)"
 
-[node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 172.0
-offset_right = 280.0
-offset_bottom = 199.0
+[node name="CreateMatch" type="Button" parent="MainMenu/VBox/Center/VButtons" unique_id=1247068436]
+layout_mode = 2
 text = "Criar Sala"
 
-[node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 202.0
-offset_right = 280.0
-offset_bottom = 229.0
+[node name="Multiplayer" type="Button" parent="MainMenu/VBox/Center/VButtons" unique_id=847444005]
+layout_mode = 2
 text = "Procurar Partida"
 
-[node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 232.0
-offset_right = 280.0
-offset_bottom = 259.0
+[node name="ResumeGame" type="Button" parent="MainMenu/VBox/Center/VButtons" unique_id=1854290178]
+layout_mode = 2
 text = "Iniciar jogo salvo"
 
-[node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons"]
-offset_top = 262.0
-offset_right = 280.0
-offset_bottom = 289.0
+[node name="Exit" type="Button" parent="MainMenu/VBox/Center/VButtons" unique_id=1804868721]
+layout_mode = 2
 text = "Exit"

@@ -16,6 +16,7 @@ const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 @onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
 @onready var server_status := $MainMenu/VBox/Center/VButtons/ServerStatus
 @onready var server_probe := $ServerProbe
+@onready var version_probe := $VersionProbe
 @onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
 @onready var solo_match_button := $MainMenu/VBox/Center/VButtons/SoloMatch
 @onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
@@ -36,6 +37,7 @@ var _entering_game := false
 var _probe_elapsed := SERVER_PROBE_SECONDS
 var _probe_pending := false
 var _pwa_button: Button
+var _version_label: Label
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -49,6 +51,9 @@ func _ready() -> void:
 	_relay_setup()
 	room_code_input.text = _read_web_query("room").to_upper()
 	server_probe.request_completed.connect(_on_server_probe_done)
+	version_probe.request_completed.connect(_on_version_probe_done)
+	_setup_version_label()
+	_probe_version()
 	relay_address_input.text_changed.connect(_on_relay_address_changed)
 	Rede.status_changed.connect(_on_match_status_changed)
 	Rede.join_failed.connect(_on_join_failed)
@@ -306,6 +311,70 @@ func _show_server_state(online: bool, text: String) -> void:
 	server_status.text = text
 	server_status.modulate = Color(0.55, 0.9, 0.55) if online \
 			else Color(0.95, 0.55, 0.5)
+
+
+# O rotulo e criado por codigo, como o botao PWA: o editor nao tem como move-lo
+# para dentro de outro no ao salvar a cena.
+func _setup_version_label() -> void:
+	_version_label = Label.new()
+	_version_label.name = "VersionLabel"
+	_version_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_version_label.add_theme_font_size_override("font_size", 13)
+	_version_label.add_theme_color_override(
+			"font_color", Color(0.72, 0.74, 0.78, 0.85))
+	_version_label.text = Version.display_text()
+	add_child(_version_label)
+	_place_version_label()
+	get_viewport().size_changed.connect(_place_version_label)
+	# Os containers so fecham o layout no primeiro frame; o titulo ainda tem
+	# tamanho provisorio durante o _ready.
+	await get_tree().process_frame
+	_place_version_label()
+
+
+func _place_version_label() -> void:
+	if not is_instance_valid(_version_label):
+		return
+	var title := get_node_or_null("MainMenu/VBox/Margin/Label")
+	if title == null:
+		var area: Vector2 = get_viewport().get_visible_rect().size
+		_version_label.position = Vector2(area.x - 240.0, area.y - 32.0)
+		_version_label.size = Vector2(224.0, 22.0)
+		return
+	var rect: Rect2 = title.get_global_rect()
+	_version_label.position = Vector2(rect.position.x, rect.end.y + 4.0)
+	_version_label.size = Vector2(rect.size.x, 24.0)
+
+
+# A versao semantica vem no PCK; o commit so existe no deploy do site, entao a
+# sondagem roda apenas na web e uma falha deixa o rotulo so com "v0.1.0".
+func _probe_version() -> void:
+	if not OS.has_feature("web"):
+		return
+	var origin := _web_origin()
+	if origin.is_empty():
+		return
+	# warning-ignore:return_value_discarded
+	version_probe.request(origin + "/api/version")
+
+
+func _on_version_probe_done(
+		result: int,
+		response_code: int,
+		_headers: PackedStringArray,
+		body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		return
+	var json := JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		return
+	if typeof(json.data) != TYPE_DICTIONARY:
+		return
+	var data: Dictionary = json.data
+	var commit := str(data.get("game", "")).strip_edges()
+	if not commit.is_empty() and is_instance_valid(_version_label):
+		_version_label.text = Version.display_text(commit)
 
 
 func _on_relay_address_changed(_new_text: String) -> void:

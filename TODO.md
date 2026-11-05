@@ -19,6 +19,22 @@ Atualizado em 2026-11-04. Produção: build web de 2026-10-30 (Godot 3.4.4) em
 - [ ] **Confirmar o CI:** os workflows já baixam o Godot 4.7.2 e o GUT 9.7.1
   está instalado; rodar a suíte no GitHub Actions e corrigir qualquer teste
   legado que não tenha sido adaptado.
+  - [ ] **Investigar os 3 casos que só falham no Linux headless** (removidos em
+    2026-11-05 para o `Prepare New Release` voltar a gerar o build Web; passam
+    no Windows):
+    - `test_card_draw.gd::test_clairvoyance_drag_uses_real_mouse_events` — o
+      `push_input` com posição de `get_global_transform_with_canvas()` não
+      alcançava a carta no runner; o pressionado ficava `IDLE` em vez de
+      `DRAGGED`. Cobertura perdida: arrasto real da Clarividência.
+    - `test_scripting_engine_tasks.gd::TestModCounters.test_draw_more_cards_than_pile_max`
+      — derrubava o processo com sinal 11 dentro de
+      `ScriptingEngine.move_card_to_container` ao mover 50 cartas de uma vez.
+      Cobertura perdida: custo maior que o máximo do monte.
+    - `test_AskInteger_scene.gd` — erros de `_process` em `Pile.gd` quando
+      `cfc._setup_testing()` limpa o `NMAP` e a pilha da cena anterior ainda
+      roda um frame. Corrigido por guarda em `Pile._process`, mas a origem é o
+      ciclo de vida do harness: nenhuma pilha deveria continuar processando
+      depois do `NMAP = {}`.
 - [ ] **Enxugar o pacote (−1,4 MB):** remover `src/core/CardViewer/DeckBuilder/`,
   `src/core/CardViewer/CardLibrary/`, `src/custom/CGFDeckbuilder/` e os 4
   screenshots do README na raiz (`deckbuilder-*.png`, `card-library-*.png`).

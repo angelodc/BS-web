@@ -76,6 +76,10 @@ func _process(_delta) -> void:
 			obj.queue_free()
 	# We make sure to adjust our popup if cards were removed from it while it's open
 	$ViewPopup.reset_size()
+	# cfc._setup_testing() clears NMAP between suites while the previous scene's
+	# piles still tick a frame, so the board may be gone by the time we get here.
+	if not cfc.NMAP.has("board"):
+		return
 	if _has_cards and cfc.game_settings.focus_style:
 		var top_card = get_top_card()
 		if cfc.NMAP.board.mouse_pointer in get_overlapping_areas()\

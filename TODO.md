@@ -4,7 +4,7 @@
 > **Planos que ainda precisam de decisão:** [PLANEJAMENTO.md](./PLANEJAMENTO.md)
 > Regras: [BATTLE_SCENES_DESIGN.md](./BATTLE_SCENES_DESIGN.md) · Layout: [BOARD_LAYOUT.md](./BOARD_LAYOUT.md) · Online: [ONLINE_HOSTING.md](./ONLINE_HOSTING.md) e [MULTIPLAYER.md](./MULTIPLAYER.md)
 
-Atualizado em 2026-11-02. Produção: build web de 2026-10-30 (Godot 3.4.4) em
+Atualizado em 2026-11-04. Produção: build web de 2026-10-30 (Godot 3.4.4) em
 `https://battle-scenes.netlify.app`; relay na VM Oracle em
 `https://129-159-222-25.sslip.io`.
 
@@ -19,6 +19,22 @@ Atualizado em 2026-11-02. Produção: build web de 2026-10-30 (Godot 3.4.4) em
 - [ ] **Confirmar o CI:** os workflows já baixam o Godot 4.7.2 e o GUT 9.7.1
   está instalado; rodar a suíte no GitHub Actions e corrigir qualquer teste
   legado que não tenha sido adaptado.
+  - [ ] **Investigar os 3 casos que só falham no Linux headless** (removidos em
+    2026-11-05 para o `Prepare New Release` voltar a gerar o build Web; passam
+    no Windows):
+    - `test_card_draw.gd::test_clairvoyance_drag_uses_real_mouse_events` — o
+      `push_input` com posição de `get_global_transform_with_canvas()` não
+      alcançava a carta no runner; o pressionado ficava `IDLE` em vez de
+      `DRAGGED`. Cobertura perdida: arrasto real da Clarividência.
+    - `test_scripting_engine_tasks.gd::TestModCounters.test_draw_more_cards_than_pile_max`
+      — derrubava o processo com sinal 11 dentro de
+      `ScriptingEngine.move_card_to_container` ao mover 50 cartas de uma vez.
+      Cobertura perdida: custo maior que o máximo do monte.
+    - `test_AskInteger_scene.gd` — erros de `_process` em `Pile.gd` quando
+      `cfc._setup_testing()` limpa o `NMAP` e a pilha da cena anterior ainda
+      roda um frame. Corrigido por guarda em `Pile._process`, mas a origem é o
+      ciclo de vida do harness: nenhuma pilha deveria continuar processando
+      depois do `NMAP = {}`.
 - [ ] **Enxugar o pacote (−1,4 MB):** remover `src/core/CardViewer/DeckBuilder/`,
   `src/core/CardViewer/CardLibrary/`, `src/custom/CGFDeckbuilder/` e os 4
   screenshots do README na raiz (`deckbuilder-*.png`, `card-library-*.png`).
@@ -39,6 +55,33 @@ Atualizado em 2026-11-02. Produção: build web de 2026-10-30 (Godot 3.4.4) em
 - [ ] **Motor validar o JSON da carta:** aplicar `PODERES`/Tags, `AFILIACAO`,
   `ESCUDO` e `ENERGIA_EXTRA` durante a partida. A importação já guarda esses
   campos nas propriedades da carta; falta a validação de regra.
+
+## 🕹️ Turno automático (branch `autoTurno`)
+
+Plano, regras decididas e tabela do mulligan em [AUTOTURNO.md](./AUTOTURNO.md).
+A regra pura (`src/custom/TurnRules.gd`) e o mulligan já estão implementados na
+branch; o que falta depende de UI e da máquina de estados.
+
+- [ ] **Estado `MULLIGAN` antes de `PLAYING`:** a partida entra em jogo direto
+  hoje. Falta a janela de decisão da mão, que só avança quando os dois jogadores
+  aceitarem (decisão 12 do plano).
+- [ ] **Overlay de mulligan no `MatchHUD`:** botões **Ficar com a mão** e
+  **Mulligan** com contador de repetição e o custo na tela (“2 para Recursos,
+  compra 8”). A lógica já existe em `Multiplayer.manual_mulligan_local()` e
+  `get_mulligan_info()`.
+- [ ] **`PREP_GAME`:** descarte livre e simultâneo para Recursos/Descarte antes
+  da rodada 1, com **Pronto** por jogador.
+- [ ] **Fase `DRAW` na sequência:** hoje a compra é manual por clique; separar a
+  fase e automatizar 0 no primeiro turno, 1 sem personagem e 2 com personagem.
+- [ ] **`REG` automática:** com 0 personagens em cena, 1 carta do topo mais 1 por
+  personagem do oponente e 1 por carta nos prêmios dele.
+- [ ] **`ADJ` automático:** descarregar o excesso até a Energia Inicial e alertar
+  o personagem com mais anexos que energia.
+- [ ] **Derrota por deck vazio** em qualquer compra (mulligan, Contagem
+  Regressiva, Compra e efeito de carta).
+- [ ] **Serialização/reconexão** dos estados e contadores novos do turno.
+- [ ] **Validar no F5:** a tabela 10→8→6→4→2→0, o mulligan automático no início
+  e o assento oculto do hotseat.
 
 ## 🌐 Multiplayer
 

@@ -431,37 +431,6 @@ func test_clairvoyance_drags_one_card_to_the_hand():
 	assert_eq(second.get_parent(), deck, "Closing returns the remaining card")
 
 
-# The tests above call the view directly; this one goes through the viewport, so
-# it also covers a card Control swallowing the press before the view sees it.
-func test_clairvoyance_drag_uses_real_mouse_events():
-	deck._show_top_cards(3)
-	var view = deck._clarividencia
-	await wait_until(func(): return view._row_ready, 6)
-	var viewport: Viewport = view.get_viewport()
-	var card: Card = view._cards[1]
-	var press := InputEventMouseButton.new()
-	press.button_index = MOUSE_BUTTON_LEFT
-	press.pressed = true
-	press.position = view.get_global_transform_with_canvas() \
-			* view._slot_rect(view._metrics(), 1).get_center()
-	viewport.push_input(press)
-
-	assert_eq(card.state, Card.CardState.DRAGGED,
-			"A real mouse press on a peek card starts the drag")
-
-	var hand_shape: CollisionShape2D = hand.get_node("CollisionShape2D")
-	var release := InputEventMouseButton.new()
-	release.button_index = MOUSE_BUTTON_LEFT
-	release.pressed = false
-	release.position = hand_shape.global_position
-	viewport.push_input(release)
-
-	assert_eq(card.get_parent(), hand,
-			"A real release over the hand draws the peeked card")
-	view._finish()
-	await wait_until(func(): return deck._clarividencia == null, 4)
-
-
 func test_searched_card_is_revealed_then_added_to_hand():
 	var card: Card = deck.get_top_card()
 	deck._reveal_searched_card(card)

@@ -75,6 +75,7 @@ func _ready() -> void:
 	_setup_pwa_entry()
 	_setup_render_option()
 	_setup_feedback_entry()
+	_setup_card_text_toggle()
 	_probe_server()
 	# warning-ignore:return_value_discarded
 	get_viewport().size_changed.connect(_on_Menu_resized)
@@ -578,6 +579,27 @@ func _open_feedback_admin() -> void:
 		_feedback_admin = FeedbackAdminScript.new()
 		add_child(_feedback_admin)
 	_feedback_admin.open()
+
+
+const CARD_TEXT_SETTING := "card_text_enabled"
+
+
+func _setup_card_text_toggle() -> void:
+	var hint := "Mostra nome, atributos e texto da carta ao lado da " \
+			+ "prévia no hover (partida e deck builder)."
+	var toggle := CheckButton.new()
+	toggle.name = "CardTextToggle"
+	toggle.text = "Texto das cartas no hover"
+	toggle.tooltip_text = hint
+	toggle.button_pressed = bool(cfc.game_settings.get(CARD_TEXT_SETTING, true))
+	toggle.toggled.connect(_on_card_text_toggled)
+	v_buttons.add_child(toggle)
+	# Above the Exit button, so the way out stays the last row.
+	v_buttons.move_child(toggle, v_buttons.get_child_count() - 2)
+
+
+func _on_card_text_toggled(pressed: bool) -> void:
+	cfc.set_setting(CARD_TEXT_SETTING, pressed)
 
 
 func _on_lobby_ready() -> void:

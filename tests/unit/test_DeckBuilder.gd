@@ -153,6 +153,45 @@ func test_bsdb_card_data_mapping():
 	assert_eq(null_fields_card["Tags"], [])
 	assert_eq(null_fields_card["Abilities"], "")
 
+func test_bsdb_card_text_extras_mapping():
+	var importer = load(
+			"res://src/custom/BSDBDeckImportDialog.gd")
+	var card = importer.make_card_properties({
+		"nome": "Adam Warlock",
+		"tipo": "Personagem - EV",
+		"imagem": "/bsgo/BSGO_001.png",
+		"dados": {
+			"TIPO": "Personagem - EV",
+			"TEXTO": "Texto base.",
+			"TEXTO_EV": "Evolução: algo.",
+			"ERRATA": ["Primeiro parágrafo.", "Segundo parágrafo."],
+			"FAQ": ["Pergunta? R. Resposta."],
+			"ILUSTRADORES": "Artista",
+			"PODERES": [],
+		},
+	})
+	assert_eq(card["_tipo"], "Personagem",
+			"EV variant types normalize to Personagem")
+	assert_eq(card["Type"], "Blue")
+	assert_eq(card["Abilities"], "Texto base.\n\nEvolução: algo.",
+			"EV text is appended to the ability text")
+	assert_eq(card["_errata"], "Primeiro parágrafo.\n\nSegundo parágrafo.",
+			"Errata paragraphs are joined")
+	assert_eq(card["_faq"], "Pergunta? R. Resposta.")
+	assert_eq(card["_illustration"], "Artista")
+
+	var upper = importer.make_card_properties({
+		"nome": "Aparelho de Clonagem",
+		"tipo": "SUPORTE",
+		"imagem": "/bsxx/BSXX_001.png",
+		"dados": {"PODERES": [], "TIPO": "SUPORTE"},
+	})
+	assert_eq(upper["_tipo"], "Suporte",
+			"All-caps types normalize to the canonical casing")
+	assert_eq(upper["Type"], "Red")
+	assert_eq(upper["ENERGIA"], "",
+			"Suporte keeps the empty ENERGIA default")
+
 func test_bsdb_import_menu_scene_loads():
 	var scene = load("res://src/custom/MainMenu.tscn")
 	assert_not_null(scene, "The main menu scene includes the deck import dialog")

@@ -67,10 +67,21 @@ func test_card_back_focus():
 	assert_eq(2,main.card_focus.get_node('SubViewport').get_child_count(),
 			"Duplicate card object still remains")
 
-func test_viewed_card_in_pile():
+func test_deck_pile_hover_is_disabled():
+	# The deck pile only shows card backs, so hovering it must not preview.
 	var card : Card = deck.get_top_card()
 	card.is_viewed = true
 	await move_mouse(deck.global_position)
+	await yield_for(0.3)
+	assert_null(main._current_focus_source,
+			"Hovering the deck does not focus any card")
+
+func test_viewed_card_in_discard():
+	var card : Card = cards[0]
+	await drag_drop(card, cfc.NMAP.discard.position)
+	await yield_to(main._focus_tween, "tween_all_completed", 1)
+	await move_mouse(Vector2(0, 0), "slow")
+	await move_mouse(cfc.NMAP.discard.global_position)
 	await yield_to(main._focus_tween, "tween_all_completed", 1)
 	assert_eq(2,main.card_focus.get_node('SubViewport').get_child_count(),
 			"Duplicate card has been added for viewport focus")
@@ -106,10 +117,15 @@ func test_FocusInfoPanel():
 	await move_mouse(card.global_position)
 	await yield_to(main._focus_tween, "tween_all_completed", 1)
 	focus_dupe = main._previously_focused_cards[card]
-	assert_eq(main.focus_info.modulate.a, 0.0,
-			"FocusInfoPanel visible when illustration does not exist")
+	assert_eq(main.focus_info.modulate.a, 1.0,
+			"FocusInfoPanel visible through the card text panel")
 	assert_false(main.focus_info.existing_details['illustration'].visible,
 			"Illustration label invisible")
+	assert_true(main.focus_info.existing_details['card_text'].visible,
+			"Card text panel visible for cards with abilities")
+	assert_eq(main.focus_info.existing_details['card_text']\
+			.get_node("Header").text, card.canonical_name,
+			"Card text header shows the card name")
 	await move_mouse(Vector2(0,0), "slow")
 	await move_mouse(card3.global_position)
 	await yield_to(main._focus_tween, "tween_all_completed", 1)
@@ -126,6 +142,32 @@ func test_FocusInfoPanel():
 	if main.focus_info.existing_details.get("Clarification A"):
 		assert_true(main.focus_info.existing_details["Clarification A"].visible,
 				"Clarification visible")
+
+func test_card_text_panel_errata_replaces_ability():
+	var card : Card = cards[0]
+	card.properties["_errata"] = "Texto oficial da errata."
+	await move_mouse(card.global_position)
+	await yield_to(main._focus_tween, "tween_all_completed", 1)
+	var panel: Control = main.focus_info.existing_details['card_text']
+	assert_true(panel.visible, "Card text panel visible")
+	var details: RichTextLabel = panel.get_node("Details")
+	assert_eq(details.text, "[b]Errata:[/b] Texto oficial da errata.",
+			"Errata replaces the ability text and is flagged as errata")
+
+func test_preview_centers_on_screen():
+	var card: Card = cards[0]
+	hand.remove_child(card)
+	board.add_child(card)
+	card.network_mirror = true
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+	card.preview_locked = true
+	main.focus_card(card)
+	await yield_for(0.5)
+	var vbc: Control = main.get_node("VBC")
+	var expected: Vector2 = (main.get_viewport().get_visible_rect().size - vbc.size) / 2
+	assert_true(abs(vbc.position.x - expected.x) <= 2.0
+			and abs(vbc.position.y - expected.y) <= 2.0,
+			"The preview centers on the screen")
 
 # The mirrored cards of the opponent run the state machine every frame, and its
 # ON_PLAY_BOARD branch used to unfocus the closeup right after the hover showed

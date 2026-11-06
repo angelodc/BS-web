@@ -302,11 +302,27 @@ static func _template_for_category(category: String) -> String:
 	return ""
 
 
+# The BSDB has types outside the four canonical ones, like
+# "Personagem - EV" (an evolution variant of a character) or an all-caps
+# "SUPORTE". Normalize to the canonical spelling/casing so the cards stop
+# falling into the import validation dialog.
+static func _normalize_category(raw: String) -> String:
+	var category := raw.strip_edges()
+	var separator := category.find(" - ")
+	if separator != -1:
+		category = category.substr(0, separator).strip_edges()
+	for valid in VALID_CARD_TYPES:
+		if category.to_lower() == valid.to_lower():
+			return valid
+	return category
+
+
 static func make_card_properties(record: Dictionary) -> Dictionary:
 	var data = record.get("dados", {})
 	if typeof(data) != TYPE_DICTIONARY:
 		return {}
-	var category := str(record.get("tipo", data.get("TIPO", ""))).strip_edges()
+	var category := _normalize_category(
+			str(record.get("tipo", data.get("TIPO", ""))))
 	var template_type := _template_for_category(category)
 	if template_type.is_empty():
 		push_warning("BSDB card without a valid type: " + category)
@@ -324,6 +340,11 @@ static func make_card_properties(record: Dictionary) -> Dictionary:
 				if ability_text:
 					ability_text += "\n\n"
 				ability_text += action_text
+	var evolution_text := _string_or_default(data, "TEXTO_EV", "")
+	if evolution_text:
+		if ability_text:
+			ability_text += "\n\n"
+		ability_text += evolution_text
 	var image_path := str(record.get("imagem", data.get("IMAGEM", "")))
 	if not image_path.begins_with("/") \
 			or ".." in image_path \
@@ -349,7 +370,25 @@ static func make_card_properties(record: Dictionary) -> Dictionary:
 		"_bsdb_shield": _string_or_default(data, "ESCUDO", "0"),
 		"_bsdb_alignment": _string_or_default(data, "ALINHAMENTO", ""),
 		"_bsdb_extra_energy": _string_or_default(data, "ENERGIA_EXTRA", ""),
+		"_errata": _texts_or_default(data, "ERRATA"),
+		"_faq": _texts_or_default(data, "FAQ"),
+		"_illustration": _string_or_default(data, "ILUSTRADORES", ""),
 	}
+
+
+# ERRATA and FAQ arrive as arrays of paragraphs in the BSDB data.
+static func _texts_or_default(data: Dictionary, key: String) -> String:
+	var value = data.get(key, null)
+	if value == null:
+		return ""
+	if typeof(value) == TYPE_ARRAY:
+		var paragraphs: Array[String] = []
+		for item in value:
+			var text := str(item)
+			if not text.strip_edges().is_empty():
+				paragraphs.append(text)
+		return "\n\n".join(paragraphs)
+	return str(value)
 
 
 static func _string_or_default(data: Dictionary, key: String, default: String) -> String:

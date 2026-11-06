@@ -105,6 +105,30 @@ func test_a_finished_recording_is_closed_and_a_new_start_opens_another_file():
 	assert_true(FileAccess.file_exists(second))
 
 
+func test_discard_closes_and_deletes_a_running_recording():
+	assert_true(bool(_recorder.start("descartar").get("ok", false)))
+	var path: String = _recorder.path()
+	assert_true(FileAccess.file_exists(path))
+
+	_recorder.discard()
+
+	assert_false(_recorder.is_recording())
+	assert_eq(_recorder.path(), "")
+	assert_false(FileAccess.file_exists(path))
+
+
+func test_discard_after_stop_deletes_the_finished_file():
+	assert_true(bool(_recorder.start("descartar").get("ok", false)))
+	var path: String = _recorder.path()
+	_recorder.stop("fim")
+	assert_true(FileAccess.file_exists(path))
+
+	_recorder.discard()
+
+	assert_eq(_recorder.path(), "")
+	assert_false(FileAccess.file_exists(path))
+
+
 func test_recording_before_start_writes_nothing():
 	_recorder.record_intent({"op": "comprar"}, {"ok": true, "entry": {}}, null, 1)
 

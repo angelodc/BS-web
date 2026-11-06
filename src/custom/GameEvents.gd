@@ -158,6 +158,10 @@ func _push(slot: int, action: String, zone: String, card_name: String,
 	while entries.size() > MAX_ENTRIES:
 		entries.pop_front()
 	emit_signal("game_event", entry)
+	# Breadcrumbs survive a crash in user://reports/runtime.log; the automatic
+	# report on the next boot reads them.
+	if not cfc.ut:
+		Feedback.log_runtime(str(entry["text"]))
 
 
 # A identidade só é divulgada quando a carta já era pública na origem ou quando

@@ -44,8 +44,10 @@ func is_battle_scenes_scenario() -> bool:
 
 func _restore_after_invalid_board_drop(tags: Array) -> void:
 	var original_parent: Node = get_parent()
-	var original_position = _placement_slot \
-			if original_parent == cfc.NMAP.board else null
+	var original_position = null
+	if original_parent == cfc.NMAP.board:
+		original_position = _placement_slot if _placement_slot != null \
+				else _drag_origin_position
 	var movement = await super.move_to(original_parent, -1, original_position, tags)
 
 
@@ -62,6 +64,11 @@ func common_pre_drop_scripts(destination : Node) -> bool:
 	var table = cfc.NMAP.board
 	if not table.has_method("apply_intent"):
 		return false
+	# Soltar sobre o ícone de relato anexa a carta ao formulário em vez de
+	# jogá-la. A restauração é a mesma de um drop recusado pela mesa.
+	if Feedback.try_capture_drop(self):
+		call_deferred("_restore_after_invalid_board_drop", ["Feedback"])
+		return true
 	if is_instance_valid(potential_host):
 		return false
 	var parent = get_parent()

@@ -221,6 +221,9 @@ var network_mirror := false
 # A mouse release can reach both _input and the card's GUI. The flag keeps the
 # same release from dropping the card twice.
 var _drop_release_handled := false
+# Kept from the moment the drag starts so a drop that is cancelled outside the
+# table (the feedback icon) can put the card back where it was.
+var _drag_origin_position := Vector2.ZERO
 # When true, the mirrored card still accepts pointer input so the local player
 # can drag it. The drop is handled by MultiplayerSync and sent to its owner.
 var remote_draggable := false
@@ -2270,6 +2273,7 @@ func _start_dragging(drag_offset: Vector2) -> void:
 	# The offset is in this card's own GUI space. Since the card that receives
 	# the click is the one under the pointer, it is never another card's.
 	_drag_offset = drag_offset
+	_drag_origin_position = global_position
 	# When dragging we want the dragged card and attachments to always be drawn above all else
 	z_index = 99
 	for attachment in _live_attachments():

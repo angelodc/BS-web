@@ -3,8 +3,10 @@ extends Panel
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const RedeScript = preload("res://src/custom/Rede.gd")
 const RenderResolution = preload("res://src/custom/RenderResolution.gd")
+const FeedbackAdminScript = preload("res://src/custom/FeedbackAdmin.gd")
 
 @onready var v_buttons := $MainMenu/VBox/Center/VButtons
+@onready var title_label := $MainMenu/VBox/Margin/Label
 @onready var main_menu := $MainMenu
 @onready var backdrop := $MainMenu/Backdrop
 @onready var checkpoint_list := $CheckpointList
@@ -30,12 +32,18 @@ const SERVER_PROBE_SECONDS := 20.0
 const SERVER_PROBE_AFTER_TYPING := 2.0
 const PWA_BUTTON_SIZE := Vector2(160, 34)
 const PWA_BUTTON_MARGIN := 16.0
+# O leitor de relatos é escondido: sete cliques no título, sem atalho visível.
+const FEEDBACK_CLICKS := 7
+const FEEDBACK_CLICK_GAP_MS := 1500
 
 var _lobby_busy := false
 var _entering_game := false
 var _probe_elapsed := SERVER_PROBE_SECONDS
 var _probe_pending := false
 var _pwa_button: Button
+var _title_clicks := 0
+var _last_title_click := 0
+var _feedback_admin: Window = null
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -61,6 +69,7 @@ func _ready() -> void:
 	_update_lobby_controls()
 	_setup_pwa_entry()
 	_setup_render_option()
+	_setup_feedback_entry()
 	_probe_server()
 	# warning-ignore:return_value_discarded
 	get_viewport().size_changed.connect(_on_Menu_resized)
@@ -467,6 +476,39 @@ func _on_render_option_selected(index: int) -> void:
 	var choice := RenderResolution.FULL_HD if index == 1 else RenderResolution.HD
 	RenderResolution.set_choice(choice)
 	DisplayMode.apply_render_choice()
+
+
+# O leitor de relatos não aparece em nenhum botão: só sete cliques rápidos no
+# título. Um clique isolado não deixa rastro visual.
+func _setup_feedback_entry() -> void:
+	title_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	title_label.gui_input.connect(_on_title_gui_input)
+	var notice := Feedback.take_boot_notice()
+	if not notice.is_empty():
+		match_status.text = notice
+		match_status.modulate = Color(1.0, 0.85, 0.6)
+
+
+func _on_title_gui_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton) or not event.is_pressed() \
+			or event.get_button_index() != MOUSE_BUTTON_LEFT:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_title_click > FEEDBACK_CLICK_GAP_MS:
+		_title_clicks = 0
+	_last_title_click = now
+	_title_clicks += 1
+	if _title_clicks < FEEDBACK_CLICKS:
+		return
+	_title_clicks = 0
+	_open_feedback_admin()
+
+
+func _open_feedback_admin() -> void:
+	if not is_instance_valid(_feedback_admin):
+		_feedback_admin = FeedbackAdminScript.new()
+		add_child(_feedback_admin)
+	_feedback_admin.open()
 
 
 func _on_lobby_ready() -> void:

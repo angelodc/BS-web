@@ -2,6 +2,7 @@ extends Control
 
 const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
+const FeedbackButtonScript = preload("res://src/custom/FeedbackButton.gd")
 const LinkDeckScene = preload("res://src/custom/BSDBDeckImportDialog.tscn")
 const TableScriptScript = preload("res://src/core/table/TableScript.gd")
 const TableKeyboardScript = preload("res://src/core/table/TableKeyboard.gd")
@@ -134,6 +135,9 @@ func _ready() -> void:
 	else:
 		_append_log("Modo solo: cada ação sua é registrada aqui.")
 	_build_console()
+	var feedback_button: Control = FeedbackButtonScript.new()
+	feedback_button.name = "FeedbackButton"
+	add_child(feedback_button)
 	_refresh()
 	call_deferred("_apply_last_deck")
 

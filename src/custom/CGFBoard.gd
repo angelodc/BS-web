@@ -92,10 +92,12 @@ func _ready() -> void:
 			add_child(sync)
 			_setup_solo()
 		GameEvents.set_enabled(true)
+		Feedback.begin_match()
 
 
 func _exit_tree() -> void:
 	GameEvents.set_enabled(false)
+	Feedback.end_match("saiu_da_mesa")
 	if is_instance_valid(_match_recorder):
 		_match_recorder.stop("saiu_da_mesa")
 

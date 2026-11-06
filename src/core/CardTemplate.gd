@@ -3221,5 +3221,9 @@ func _on_Back_resized() -> void:
 
 # Ensures proper cleanup when a card is queue_free() for any reason
 func _on_tree_exiting():
+	# A card freed mid-drag would leave the global pointing at a freed
+	# instance, and every `is Card` check on it errors.
+	if cfc.card_drag_ongoing == self:
+		cfc.card_drag_ongoing = null
 	if cfc.NMAP.has("main"):
 		cfc.NMAP.main.unfocus(self)

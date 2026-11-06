@@ -670,6 +670,16 @@ func _on_reconnect_pressed() -> void:
 
 
 func _on_leave_pressed() -> void:
+	var board = _recorder_board()
+	# Leaving ends the match too, so the recording gets the same choice; the
+	# scene only changes after the player decides.
+	if board != null and board.has_method("offer_recording_choice") \
+			and board.offer_recording_choice("saiu_da_mesa", _leave_now):
+		return
+	_leave_now()
+
+
+func _leave_now() -> void:
 	Multiplayer.leave_session("Partida encerrada pelo jogador.")
 	cfc.quit_game()
 	# warning-ignore:return_value_discarded

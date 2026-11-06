@@ -97,6 +97,11 @@ func _ready() -> void:
 			add_child(sync)
 			_setup_solo()
 		GameEvents.set_enabled(true)
+		# The recording is part of the match from the start: a bug report can be
+		# written at any moment, and the end-of-match choice decides whether the
+		# file stays.
+		if not match_recorder().is_recording():
+			match_recorder().start("partida")
 		Feedback.begin_match()
 
 
@@ -299,6 +304,7 @@ func report_prize_energy(slot: int, total: int) -> void:
 			+ str(total) + " de energia nos Prêmios.")
 	if not cfc.ut:
 		_build_victory_overlay(slot)
+		offer_recording_choice("fim_de_jogo")
 
 
 func prize_owner_name(slot: int) -> String:
@@ -317,6 +323,7 @@ func report_empty_deck_victory(slot: int, reason: String) -> void:
 	GameEvents.record_system(reason)
 	if not cfc.ut:
 		_build_victory_overlay(slot, reason)
+		offer_recording_choice("fim_de_jogo")
 
 
 func _build_victory_overlay(slot: int, reason: String = "") -> void:
@@ -376,6 +383,58 @@ func match_recorder():
 		if is_instance_valid(_table_actions):
 			_table_actions.recorder = _match_recorder
 	return _match_recorder
+
+
+# The file is temporary until the player says otherwise: keeping it is what
+# allows attaching it to a report, deleting it avoids one file per match.
+# `after` runs once a choice is made, for callers that must wait (leaving).
+func offer_recording_choice(reason := "fim_de_jogo",
+		after := Callable()) -> bool:
+	if not is_instance_valid(_match_recorder) or not _match_recorder.is_recording():
+		return false
+	_match_recorder.stop(reason)
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Gravação da partida"
+	dialog.dialog_text = "Guardar a gravação JSONL desta partida?\n" \
+			+ "Salvar mantém o arquivo para anexar a relatos; apagar o remove."
+	dialog.ok_button_text = "Salvar"
+	dialog.get_cancel_button().text = "Apagar"
+	dialog.confirmed.connect(_keep_recording.bind(dialog, after))
+	dialog.canceled.connect(_discard_recording.bind(dialog, after))
+	add_child(dialog)
+	dialog.popup_centered()
+	return true
+
+
+func _keep_recording(dialog: Window, after: Callable) -> void:
+	if _recording_choice_done(dialog):
+		return
+	GameEvents.record_system("Gravação da partida guardada.")
+	if after.is_valid():
+		after.call()
+	if is_instance_valid(dialog):
+		dialog.queue_free()
+
+
+func _discard_recording(dialog: Window, after: Callable) -> void:
+	if _recording_choice_done(dialog):
+		return
+	if is_instance_valid(_match_recorder):
+		_match_recorder.discard()
+	GameEvents.record_system("Gravação da partida apagada.")
+	if after.is_valid():
+		after.call()
+	if is_instance_valid(dialog):
+		dialog.queue_free()
+
+
+func _recording_choice_done(dialog: Window) -> bool:
+	if not is_instance_valid(dialog):
+		return true
+	if bool(dialog.get_meta("choice_done", false)):
+		return true
+	dialog.set_meta("choice_done", true)
+	return false
 
 
 # A drop that took the legacy path (host targeting, popup piles, a table drop

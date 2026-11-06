@@ -290,14 +290,19 @@ func match_context() -> Dictionary:
 	}
 
 
+# The file belongs to the match, not only to the moment it is open: after the
+# end-of-match choice it is still there and can be attached to a report.
 func current_recording_path() -> String:
 	var board = cfc.NMAP.get("board", null)
 	if not is_instance_valid(board) or not board.has_method("match_recorder"):
 		return ""
 	var recorder = board.match_recorder()
-	if not is_instance_valid(recorder) or not recorder.is_recording():
+	if not is_instance_valid(recorder):
 		return ""
-	return str(recorder.path())
+	var path := str(recorder.path())
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return ""
+	return path
 
 
 func runtime_log_excerpt(max_lines := MAX_LOG_LINES) -> String:

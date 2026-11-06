@@ -73,6 +73,17 @@ func stop(reason := "") -> void:
 	_file = null
 
 
+# The player chose to throw the recording away; the file leaves no trace.
+func discard() -> void:
+	if is_recording():
+		stop("descartada")
+	if _path.is_empty():
+		return
+	if FileAccess.file_exists(_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_path))
+	_path = ""
+
+
 # Called by TableActions after every validated attempt. `intent` may be a
 # refused intent; `result` is the dictionary TableActions returns.
 func record_intent(intent: Dictionary, result: Dictionary, state = null,

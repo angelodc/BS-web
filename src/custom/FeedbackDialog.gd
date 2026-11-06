@@ -175,8 +175,8 @@ func _refresh_card() -> void:
 func _refresh_recording() -> void:
 	var path := Feedback.current_recording_path()
 	if path.is_empty():
-		_recording_check.text = "Incluir gravação JSONL (inicie pelo menu " \
-				+ "da partida)"
+		_recording_check.text = "Incluir gravação JSONL (sem gravação nesta " \
+				+ "partida)"
 		_recording_check.button_pressed = false
 		_recording_check.disabled = true
 		_recording_check.modulate = Color(1, 1, 1, 0.55)

@@ -76,7 +76,7 @@ func _process(_delta) -> void:
 			obj.queue_free()
 	# We make sure to adjust our popup if cards were removed from it while it's open
 	$ViewPopup.reset_size()
-	if _has_cards and cfc.game_settings.focus_style:
+	if _has_cards and cfc.game_settings.focus_style and not _is_deck_pile():
 		var top_card = get_top_card()
 		if cfc.NMAP.board.mouse_pointer in get_overlapping_areas()\
 				and not cfc.card_drag_ongoing:
@@ -84,6 +84,11 @@ func _process(_delta) -> void:
 				top_card.state = Card.CardState.VIEWED_IN_PILE
 		elif top_card and top_card.state == Card.CardState.VIEWED_IN_PILE:
 			top_card.state = Card.CardState.IN_PILE
+
+
+# The deck pile only shows card backs, so hovering it would preview a back.
+func _is_deck_pile() -> bool:
+	return self == cfc.NMAP.get("deck")
 
 
 # Populates the popup view window with all the cards in the deck

@@ -29,9 +29,10 @@ render_target_update_mode = 3
 anchor_mode = 0
 current = true
 
-[node name="VBC" type="VBoxContainer" parent="."]
+[node name="VBC" type="HBoxContainer" parent="."]
 offset_right = 300.0
 offset_bottom = 454.0
+alignment = 1
 mouse_filter = 2
 __meta__ = {
 "_edit_use_anchors_": false
@@ -58,15 +59,17 @@ render_target_update_mode = 3
 gui_disable_input = true
 
 [node name="Camera2D" type="Camera2D" parent="VBC/Focus/SubViewport"]
-anchor_mode = 0
+anchor_mode = 1
 current = true
-zoom = Vector2( 0.75, 0.8 )
+zoom = Vector2( 0.75, 0.75 )
 
 
 [node name="FocusInfo" type="GridContainer" parent="VBC"]
-offset_top = 454.0
-offset_right = 300.0
-offset_bottom = 454.0
+offset_left = 304.0
+offset_top = 227.0
+offset_right = 604.0
+offset_bottom = 227.0
+mouse_filter = 2
 theme_override_constants/v_separation = 10
 theme_override_constants/h_separation = 10
 script = ExtResource( 2 )

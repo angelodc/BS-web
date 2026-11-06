@@ -12,6 +12,9 @@ const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 var _previously_focused_cards := {}
 # This var hold the currently focused card duplicate.
 var _current_focus_source : Card = null
+# Hand previews keep following the cursor; every other hover centers on the
+# screen, no matter whether the closeup image is shown alongside the panels.
+var _current_is_hand := false
 
 @onready var card_focus := $VBC/Focus
 @onready var focus_info := $VBC/FocusInfo
@@ -67,29 +70,21 @@ func _process(_delta) -> void:
 #		card_focus.rect_size.y *= 1.25
 #		_focus_viewport.size = _current_focus_source.canonical_size * _current_focus_source.focused_scale * cfc.curr_scale
 #		focus_info.rect_size.x = _current_focus_source.canonical_size.x * _current_focus_source.focused_scale * cfc.curr_scale
-	# The below makes sure to display the closeup of the card, only on the side
-	# the player's mouse is not in.
-	if _current_focus_source and is_instance_valid(_current_focus_source)\
-			and _current_focus_source.get_state_exec() != "pile"\
-			and cfc.game_settings.focus_style == CFInt.FocusStyle.BOTH_INFO_PANELS_ONLY:
-		if get_global_mouse_position().y + focus_info.size.y/2 > get_viewport().get_visible_rect().size.y:
-			$VBC.position.y = get_viewport().get_visible_rect().size.y - focus_info.size.y
+	# The below positions the preview: hand previews keep following the
+	# cursor, everything else is centered on the screen.
+	if _current_focus_source and is_instance_valid(_current_focus_source):
+		if _current_is_hand:
+			if get_global_mouse_position().y + focus_info.size.y/2 > get_viewport().get_visible_rect().size.y:
+				$VBC.position.y = get_viewport().get_visible_rect().size.y - focus_info.size.y
+			else:
+				$VBC.position.y = get_global_mouse_position().y - focus_info.size.y / 2
+			if get_global_mouse_position().x + focus_info.size.x + 60 > get_viewport().get_visible_rect().size.x:
+				$VBC.position.x = get_viewport().get_visible_rect().size.x - focus_info.size.x
+				$VBC.position.y = get_global_mouse_position().y - 500
+			else:
+				$VBC.position.x = get_global_mouse_position().x + 60
 		else:
-			$VBC.position.y = get_global_mouse_position().y - focus_info.size.y / 2
-		if get_global_mouse_position().x + focus_info.size.x + 60 > get_viewport().get_visible_rect().size.x:
-			$VBC.position.x = get_viewport().get_visible_rect().size.x - focus_info.size.x
-			$VBC.position.y = get_global_mouse_position().y - 500
-		else:
-			$VBC.position.x = get_global_mouse_position().x + 60
-
-	elif _current_focus_source and is_instance_valid(_current_focus_source)\
-			and get_global_mouse_position().x > get_viewport().get_visible_rect().size.x - _current_focus_source.canonical_size.x*2.5\
-			and get_global_mouse_position().y < _current_focus_source.canonical_size.y*2:
-		$VBC.position.x = 0
-		$VBC.position.y = 0
-	elif _current_focus_source:
-		$VBC.position.x = get_viewport().get_visible_rect().size.x - $VBC.size.x
-		$VBC.position.y = 0
+			$VBC.position = (get_viewport().get_visible_rect().size - $VBC.size) / 2
 	# The below performs some garbage collection on previously focused cards.
 	for c in _previously_focused_cards:
 		if not is_instance_valid(_previously_focused_cards[c]):
@@ -116,6 +111,8 @@ func _preview_faceup(card: Card) -> bool:
 
 # Displays the card closeup in the Focus viewport
 func focus_card(card: Card, show_preview := true) -> void:
+	_current_is_hand = card.get_parent() and \
+			card.get_parent().is_in_group("hands")
 	# A different card taking over (for instance a hand card after hovering a
 	# pile miniature) releases the current focus, otherwise the preview would
 	# stay stuck on the previous card until the mouse leaves everything.
@@ -184,8 +181,10 @@ func focus_card(card: Card, show_preview := true) -> void:
 			focus_info.visible = true
 		# We have to copy these internal vars because they are reset
 		# see https://github.com/godotengine/godot/issues/3393
-		# We make the viewport camera focus on it
-		$VBC/Focus/SubViewport/Camera2D.position = dupe_focus.global_position
+		# We make the viewport camera focus on the card center, so the
+		# closeup sits centered in the focus area at a uniform zoom.
+		$VBC/Focus/SubViewport/Camera2D.position =\
+				dupe_focus.global_position + dupe_focus.card_size / 2
 		# We always make sure to clean tweening conflicts
 		_focus_tween.remove_all()
 		# We do a nice alpha-modulate tween

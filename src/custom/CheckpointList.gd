@@ -6,6 +6,7 @@ const CheckpointStore = preload("res://src/custom/CheckpointStore.gd")
 
 const PHASE_LABELS := {
 	"REG": "Regressiva",
+	"DRAW": "Compra",
 	"PREP": "Preparação",
 	"ADJ": "Ajuste",
 	"ANT": "Antecipação",

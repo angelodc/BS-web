@@ -108,6 +108,7 @@ func _context() -> Dictionary:
 		"solo": Multiplayer.is_solo(),
 		"my_slot": _seat,
 		"my_phase": Multiplayer.is_my_phase() if active else true,
+		"setup_only_discard": Multiplayer.is_prep_game_open(),
 		"enforce_cost": not cfc.ut,
 		"undo_entry": last_undo_target(),
 	}
@@ -428,16 +429,23 @@ func _do_draw(intent : Dictionary) -> Dictionary:
 	return {"ok": true, "cards": drawn, "names": names}
 
 
-func _do_mill(_intent : Dictionary) -> Dictionary:
+func _do_mill(intent : Dictionary) -> Dictionary:
 	var deck = _deck()
 	var resources = _resources_pile()
 	if not is_instance_valid(deck) or not is_instance_valid(resources):
 		return _fail("mesa_indisponivel", "Deck ou recursos não estão na mesa.")
-	var card: Card = deck.get_top_card()
-	if not card:
+	var moved := []
+	var names := []
+	for _index in range(int(intent.get("quantity", 1))):
+		var card: Card = deck.get_top_card()
+		if not card:
+			break
+		moved.append(_Snapshot.id_of(card))
+		names.append(str(card.canonical_name))
+		card.move_to(resources)
+	if moved.is_empty():
 		return _fail("deck_vazio", "O deck está vazio.")
-	card.move_to(resources)
-	return _ok_result()
+	return {"ok": true, "cards": moved, "names": names}
 
 
 func _do_play(intent : Dictionary) -> Dictionary:
@@ -1008,7 +1016,11 @@ func _describe_entry(intent : Dictionary, entry : Dictionary,
 			text = who + " comprou " + str(names.size()) + " carta(s): " \
 					+ ", ".join(names)
 		"mandar_topo_para_recursos":
-			text = who + " mandou " + name + " do topo para os recursos"
+			var milled := PackedStringArray(outcome.get("names", []))
+			var milled_text := name
+			if not milled.is_empty():
+				milled_text = ", ".join(milled)
+			text = who + " mandou " + milled_text + " do topo para os recursos"
 		"jogar":
 			text = who + " jogou " + name + " (" + str(entry["from"]) \
 					+ " → " + str(entry["to"]) + ")"

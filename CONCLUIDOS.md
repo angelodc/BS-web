@@ -134,6 +134,20 @@
   **Full HD 1920×1080**. As coordenadas de design continuam 1280×720 via
   `size_2d_override` (`src/custom/RenderResolution.gd` + `DisplayMode`).
 
+## 🕹️ Turno automático (branch `autoTurno`)
+
+- **Regra pura do turno** em `src/custom/TurnRules.gd`: mulligan automático e
+  manual, Contagem Regressiva, Compra, Ajuste e deck vazio, sem depender de cena
+  ou rede. Coberta por `tests/unit/test_turn_rules.gd` (24 testes).
+- **Mulligan automático em partida:** a mão com menos de dois Personagens volta
+  ao deck e é recomprada, com log, no assento local e no oculto do hotseat.
+  Embaralhamento semeado por `seed + "|mulliganN"` e guarda de 50 repetições.
+- **Mulligan manual** exposto como API (`manual_mulligan_local`,
+  `get_mulligan_info`): mão `10→8→6→4→2→0`, dois cards por repetição para
+  Recursos/Descarte e os recursos antigos preservados. Coberto por
+  `tests/integration/test_auto_mulligan.gd` (7 testes).
+- Plano e decisões de regra em [AUTOTURNO.md](./AUTOTURNO.md).
+
 ## 🩹 Correções entregues
 
 - Sinais duplicados em `CGFDiscard`/`CGFPrizes` (10 erros de `Signal already

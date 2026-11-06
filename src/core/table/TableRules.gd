@@ -36,6 +36,11 @@ const VERBS := [
 	"desfazer",
 ]
 
+# The preparation window (§3.3) is the one moment a player may throw hand cards
+# away outside a turn. Everything else has to wait for the first step, or the
+# starter could put a character in scene before the Contagem Regressiva counts it.
+const SETUP_ALLOWED_VERBS := ["descartar", "reordenar_mão", "desfazer"]
+
 const FIELD_ROWS := ["frente", "trás"]
 const SCENARIO_ADDRESS := "mesa:cenário"
 const KNOCKOUT_TYPES := ["Personagem", "Suporte"]
@@ -51,6 +56,7 @@ const SHIELD_STEP := 3
 #   solo          — the match is hotseat (Multiplayer.is_solo())
 #   my_slot       — the seat acting now
 #   my_phase      — the turn belongs to `my_slot`
+#   setup_only_discard — the preparation window is open (AUTOTURNO.md §3.3)
 #   enforce_cost  — check the card's ENERGIA against the resources
 #   undo_entry    — last log entry that can still be undone (or null)
 func validate(state, intent : Dictionary, context : Dictionary) -> Dictionary:
@@ -65,6 +71,10 @@ func validate(state, intent : Dictionary, context : Dictionary) -> Dictionary:
 			and not bool(context.get("solo", false)) \
 			and not bool(context.get("my_phase", true)):
 		return _fail("fora_da_sua_fase", "Não é a sua fase.")
+	if bool(context.get("setup_only_discard", false)) \
+			and not op in SETUP_ALLOWED_VERBS:
+		return _fail("fora_da_preparacao",
+				"Na preparação só dá para descartar cartas da mão.")
 	var normalized := intent.duplicate(true)
 	normalized["op"] = op
 	normalized["seat"] = seat
@@ -136,8 +146,15 @@ func _validate_draw(state, normalized : Dictionary) -> Dictionary:
 
 
 func _validate_mill(state, normalized : Dictionary) -> Dictionary:
-	if state.deck_count(int(normalized["seat"])) == 0:
-		return _fail("deck_vazio", "O deck está vazio.")
+	var quantity := int(normalized.get("quantity", 1))
+	if quantity < 1:
+		return _fail("quantidade_invalida",
+				"A quantidade precisa ser pelo menos 1.")
+	var available_cards: int = state.deck_count(int(normalized["seat"]))
+	if available_cards < quantity:
+		return _fail("deck_insuficiente",
+				"O deck não tem " + str(quantity) + " carta(s).")
+	normalized["quantity"] = quantity
 	return _ok(normalized)
 
 

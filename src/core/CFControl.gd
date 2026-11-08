@@ -13,6 +13,8 @@ signal scripts_loaded
 # Sent when a new Card node is instanced
 signal new_card_instanced(card)
 signal card_image_loaded(image_path, texture)
+signal card_image_prefetch_progress(done, total)
+signal card_image_prefetch_finished(failed)
 
 var load_start_time := Time.get_ticks_msec()
 
@@ -112,6 +114,11 @@ var _card_image_queue := []
 var _card_image_pending := {}
 var _card_image_textures := {}
 var _active_card_image_path := ""
+var _prefetch_pending := {}
+var _prefetch_done := 0
+var _prefetch_total := 0
+var _prefetch_failed := 0
+var _prefetch_active := false
 
 func _ready() -> void:
 	_card_image_request = HTTPRequest.new()
@@ -152,6 +159,7 @@ func _load_cached_card_image(image_path: String) -> ImageTexture:
 	if image == null or image.is_empty():
 		push_error("Could not load cached BSDB card image: " + cache_path)
 		return null
+	image.generate_mipmaps()
 	return ImageTexture.create_from_image(image)
 
 
@@ -179,6 +187,7 @@ func _on_card_image_request_completed(
 				+ str(result) + ", HTTP " + str(response_code) + "): "
 				+ image_path)
 		_card_image_pending.erase(image_path)
+		_complete_prefetch_path(image_path, true)
 		_start_next_card_image_request()
 		return
 	var image := Image.new()
@@ -186,8 +195,10 @@ func _on_card_image_request_completed(
 	if image_error != OK:
 		push_error("Could not decode BSDB card image: " + image_path)
 		_card_image_pending.erase(image_path)
+		_complete_prefetch_path(image_path, true)
 		_start_next_card_image_request()
 		return
+	image.generate_mipmaps()
 	var texture := ImageTexture.create_from_image(image)
 	_card_image_textures[image_path] = texture
 	var directory_error := DirAccess.make_dir_recursive_absolute(
@@ -204,7 +215,61 @@ func _on_card_image_request_completed(
 			cache_file.close()
 	_card_image_pending.erase(image_path)
 	card_image_loaded.emit(image_path, texture)
+	_complete_prefetch_path(image_path, false)
 	_start_next_card_image_request()
+
+
+# Downloads every image of a deck before the match starts, so the cards never
+# appear as plain text while their art is still on the way. Uses the same
+# serialized queue and disk cache as the lazy loader.
+func prefetch_card_images(image_paths: Array) -> void:
+	if _prefetch_active:
+		return
+	_prefetch_pending.clear()
+	_prefetch_done = 0
+	_prefetch_total = 0
+	_prefetch_failed = 0
+	var unique := {}
+	for path in image_paths:
+		var image_path := str(path)
+		if image_path.is_empty() or unique.has(image_path):
+			continue
+		unique[image_path] = true
+		if _card_image_textures.has(image_path):
+			continue
+		var cached_texture := _load_cached_card_image(image_path)
+		if cached_texture:
+			_card_image_textures[image_path] = cached_texture
+			continue
+		_prefetch_pending[image_path] = true
+	_prefetch_active = true
+	_prefetch_total = unique.size()
+	_prefetch_done = _prefetch_total - _prefetch_pending.size()
+	card_image_prefetch_progress.emit(_prefetch_done, _prefetch_total)
+	if _prefetch_pending.is_empty():
+		_finish_card_image_prefetch()
+		return
+	for image_path in _prefetch_pending.keys():
+		request_card_image(image_path)
+
+
+func _complete_prefetch_path(image_path: String, failed: bool) -> void:
+	if not _prefetch_pending.has(image_path):
+		return
+	_prefetch_pending.erase(image_path)
+	if failed:
+		_prefetch_failed += 1
+	_prefetch_done += 1
+	card_image_prefetch_progress.emit(_prefetch_done, _prefetch_total)
+	if _prefetch_pending.is_empty():
+		_finish_card_image_prefetch()
+
+
+func _finish_card_image_prefetch() -> void:
+	if not _prefetch_active:
+		return
+	_prefetch_active = false
+	card_image_prefetch_finished.emit(_prefetch_failed)
 
 
 func _setup() -> void:

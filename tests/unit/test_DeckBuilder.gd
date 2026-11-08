@@ -192,6 +192,44 @@ func test_bsdb_card_text_extras_mapping():
 	assert_eq(upper["ENERGIA"], "",
 			"Suporte keeps the empty ENERGIA default")
 
+func test_bsdb_repo_card_mapping():
+	var importer = load(
+			"res://src/custom/BSDBDeckImportDialog.gd")
+	var record = importer.repo_card_to_record({
+		"ID_CARD": "BSCA_006",
+		"NOME": "Adaga",
+		"TIPO": "Personagem",
+		"IMAGEM": "/bsca/BSCA_006.png",
+		"ENERGIA": "3",
+		"ESCUDO": "1",
+		"AFILIACAO": "Aliados do Homem-Aranha",
+		"PODERES": ["Agilidade", "Regeneração"],
+		"TEXTO": "Texto de teste.",
+		"ACOES": [{"TEXTO": "Ação de teste."}],
+	})
+	assert_eq(record["id_card"], "BSCA_006")
+	assert_eq(record["nome"], "Adaga")
+	assert_eq(record["imagem"], "/bsca/BSCA_006.png")
+	var card = importer.make_card_properties(record)
+	assert_eq(card["Name"], "Adaga")
+	assert_eq(card["Type"], "Blue")
+	assert_eq(card["_tipo"], "Personagem")
+	assert_eq(card["ENERGIA"], "3")
+	assert_eq(card["Requirements"], "Aliados do Homem-Aranha")
+	assert_eq(card["Abilities"], "Texto de teste.\n\nAção de teste.")
+	assert_eq(card["_bsdb_image_path"], "/bsca/BSCA_006.png")
+	assert_eq(card["_bsdb_shield"], "1")
+
+	var no_art = importer.make_card_properties(
+			importer.repo_card_to_record({
+				"ID_CARD": "BSCA_000",
+				"NOME": "Sem arte",
+				"TIPO": "Suporte",
+				"IMAGEM": null,
+			}))
+	assert_true(no_art.is_empty(),
+			"Cards without an image are rejected by the import")
+
 func test_bsdb_import_menu_scene_loads():
 	var scene = load("res://src/custom/MainMenu.tscn")
 	assert_not_null(scene, "The main menu scene includes the deck import dialog")

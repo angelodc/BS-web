@@ -3,8 +3,10 @@ extends Panel
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const RedeScript = preload("res://src/custom/Rede.gd")
 const RenderResolution = preload("res://src/custom/RenderResolution.gd")
+const FeedbackAdminScript = preload("res://src/custom/FeedbackAdmin.gd")
 
 @onready var v_buttons := $MainMenu/VBox/Center/VButtons
+@onready var title_label := $MainMenu/VBox/Margin/Label
 @onready var main_menu := $MainMenu
 @onready var backdrop := $MainMenu/Backdrop
 @onready var checkpoint_list := $CheckpointList
@@ -16,6 +18,7 @@ const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 @onready var match_status := $MainMenu/VBox/Center/VButtons/MatchStatus
 @onready var server_status := $MainMenu/VBox/Center/VButtons/ServerStatus
 @onready var server_probe := $ServerProbe
+@onready var version_probe := $VersionProbe
 @onready var multiplayer_button := $MainMenu/VBox/Center/VButtons/Multiplayer
 @onready var solo_match_button := $MainMenu/VBox/Center/VButtons/SoloMatch
 @onready var create_match_button := $MainMenu/VBox/Center/VButtons/CreateMatch
@@ -30,12 +33,19 @@ const SERVER_PROBE_SECONDS := 20.0
 const SERVER_PROBE_AFTER_TYPING := 2.0
 const PWA_BUTTON_SIZE := Vector2(160, 34)
 const PWA_BUTTON_MARGIN := 16.0
+# O leitor de relatos é escondido: sete cliques no título, sem atalho visível.
+const FEEDBACK_CLICKS := 7
+const FEEDBACK_CLICK_GAP_MS := 1500
 
 var _lobby_busy := false
 var _entering_game := false
 var _probe_elapsed := SERVER_PROBE_SECONDS
 var _probe_pending := false
 var _pwa_button: Button
+var _title_clicks := 0
+var _last_title_click := 0
+var _feedback_admin: Window = null
+var _version_label: Label
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -49,6 +59,9 @@ func _ready() -> void:
 	_relay_setup()
 	room_code_input.text = _read_web_query("room").to_upper()
 	server_probe.request_completed.connect(_on_server_probe_done)
+	version_probe.request_completed.connect(_on_version_probe_done)
+	_setup_version_label()
+	_probe_version()
 	relay_address_input.text_changed.connect(_on_relay_address_changed)
 	Rede.status_changed.connect(_on_match_status_changed)
 	Rede.join_failed.connect(_on_join_failed)
@@ -61,6 +74,7 @@ func _ready() -> void:
 	_update_lobby_controls()
 	_setup_pwa_entry()
 	_setup_render_option()
+	_setup_feedback_entry()
 	_setup_card_text_toggle()
 	_probe_server()
 	# warning-ignore:return_value_discarded
@@ -309,6 +323,70 @@ func _show_server_state(online: bool, text: String) -> void:
 			else Color(0.95, 0.55, 0.5)
 
 
+# O rotulo e criado por codigo, como o botao PWA: o editor nao tem como move-lo
+# para dentro de outro no ao salvar a cena.
+func _setup_version_label() -> void:
+	_version_label = Label.new()
+	_version_label.name = "VersionLabel"
+	_version_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_version_label.add_theme_font_size_override("font_size", 13)
+	_version_label.add_theme_color_override(
+			"font_color", Color(0.72, 0.74, 0.78, 0.85))
+	_version_label.text = Version.display_text()
+	add_child(_version_label)
+	_place_version_label()
+	get_viewport().size_changed.connect(_place_version_label)
+	# Os containers so fecham o layout no primeiro frame; o titulo ainda tem
+	# tamanho provisorio durante o _ready.
+	await get_tree().process_frame
+	_place_version_label()
+
+
+func _place_version_label() -> void:
+	if not is_instance_valid(_version_label):
+		return
+	var title := get_node_or_null("MainMenu/VBox/Margin/Label")
+	if title == null:
+		var area: Vector2 = get_viewport().get_visible_rect().size
+		_version_label.position = Vector2(area.x - 240.0, area.y - 32.0)
+		_version_label.size = Vector2(224.0, 22.0)
+		return
+	var rect: Rect2 = title.get_global_rect()
+	_version_label.position = Vector2(rect.position.x, rect.end.y + 4.0)
+	_version_label.size = Vector2(rect.size.x, 24.0)
+
+
+# A versao semantica vem no PCK; o commit so existe no deploy do site, entao a
+# sondagem roda apenas na web e uma falha deixa o rotulo so com "v0.1.0".
+func _probe_version() -> void:
+	if not OS.has_feature("web"):
+		return
+	var origin := _web_origin()
+	if origin.is_empty():
+		return
+	# warning-ignore:return_value_discarded
+	version_probe.request(origin + "/api/version")
+
+
+func _on_version_probe_done(
+		result: int,
+		response_code: int,
+		_headers: PackedStringArray,
+		body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		return
+	var json := JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		return
+	if typeof(json.data) != TYPE_DICTIONARY:
+		return
+	var data: Dictionary = json.data
+	var commit := str(data.get("game", "")).strip_edges()
+	if not commit.is_empty() and is_instance_valid(_version_label):
+		_version_label.text = Version.display_text(commit)
+
+
 func _on_relay_address_changed(_new_text: String) -> void:
 	# Cada tecla remarca a pausa, entao a sonda espera o endereco ficar pronto.
 	_probe_elapsed = SERVER_PROBE_SECONDS - SERVER_PROBE_AFTER_TYPING
@@ -468,6 +546,39 @@ func _on_render_option_selected(index: int) -> void:
 	var choice := RenderResolution.FULL_HD if index == 1 else RenderResolution.HD
 	RenderResolution.set_choice(choice)
 	DisplayMode.apply_render_choice()
+
+
+# O leitor de relatos não aparece em nenhum botão: só sete cliques rápidos no
+# título. Um clique isolado não deixa rastro visual.
+func _setup_feedback_entry() -> void:
+	title_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	title_label.gui_input.connect(_on_title_gui_input)
+	var notice := Feedback.take_boot_notice()
+	if not notice.is_empty():
+		match_status.text = notice
+		match_status.modulate = Color(1.0, 0.85, 0.6)
+
+
+func _on_title_gui_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton) or not event.is_pressed() \
+			or event.get_button_index() != MOUSE_BUTTON_LEFT:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_title_click > FEEDBACK_CLICK_GAP_MS:
+		_title_clicks = 0
+	_last_title_click = now
+	_title_clicks += 1
+	if _title_clicks < FEEDBACK_CLICKS:
+		return
+	_title_clicks = 0
+	_open_feedback_admin()
+
+
+func _open_feedback_admin() -> void:
+	if not is_instance_valid(_feedback_admin):
+		_feedback_admin = FeedbackAdminScript.new()
+		add_child(_feedback_admin)
+	_feedback_admin.open()
 
 
 const CARD_TEXT_SETTING := "card_text_enabled"

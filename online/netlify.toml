@@ -13,6 +13,13 @@
   to = "/.netlify/functions/relay"
   status = 200
 
+# Confirma qual build está publicado: commit do deploy, semver do jogo, data do
+# deploy e versão do relay.
+[[redirects]]
+  from = "/api/version"
+  to = "/.netlify/functions/version"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
@@ -40,6 +47,14 @@
   for = "/game/index.html"
   [headers.values]
     Cache-Control = "no-cache"
+
+# A versão muda a cada publicação; o endpoint lê o Last-Modified deste arquivo
+# para saber quando o build entrou, então ele não pode vir do cache do CDN.
+[[headers]]
+  for = "/version.json"
+  [headers.values]
+    Content-Type = "application/json; charset=utf-8"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 # PWA: o manifest precisa do MIME certo para o navegador oferecer a instalação.
 [[headers]]

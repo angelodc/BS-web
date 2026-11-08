@@ -55,3 +55,53 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& '.\restart-godot-g
 
 Essa excecao vale somente para essa chamada e nao altera a politica permanente
 do Windows. A implementacao fica em [restart-godot-game.ps1](./restart-godot-game.ps1).
+
+## Testes em Linux headless (sandbox sem editor)
+
+No Linux nao existe build separado de headless: use o binario normal com
+`--headless`. A versao instalada no sandbox e o Godot 4.7.2 em `/usr/local/bin/godot4`.
+
+Antes de qualquer teste, rode uma passada de importacao. Sem ela faltam os
+arquivos `.import` dos assets e o registro de `class_name` novos, e a suite
+falha com `Identifier "..." not declared in the current scope` ou com recursos
+nao encontrados.
+
+```bash
+godot4 --headless --editor --quit
+```
+
+Repita essa passada sempre que criar um script com `class_name` novo, como
+`TurnRules`, ou adicionar imagens, fontes e cenas novas.
+
+Suite completa:
+
+```bash
+godot4 --headless -s addons/gut/gut_cmdln.gd -gexit
+```
+
+A suite leva por volta de 15 minutos por causa dos `yield`, e alguns testes
+emitem avisos de objeto orfao (`Orphan StringName`/`ObjectDB instances leaked`)
+ao encerrar. Esses avisos sao ruido do harness, nao falhas. Use timeout longo
+se rodar dentro de um comando com limite de tempo.
+
+Execucao filtrada, mais rapida durante o desenvolvimento:
+
+```bash
+godot4 --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gselect=turn_rules -gexit
+```
+
+Avisos sobre os argumentos do GUT:
+
+- `-gtest=<caminho>` e ignorado nesta versao do GUT; use `-gdir` + `-gselect`.
+- `-gconfig=` vazio aborta com `You do not have any directories configured`.
+- `-gselect` casa por substring no nome dos scripts de teste, nao no nome do teste.
+
+Limites do headless: nao ha renderizacao, portanto nao valide layout, HUD nem
+screenshots por essa via. A validacao visual continua no Windows com
+`restart-godot-game.ps1`, descrito acima. A CI usa `tests/cli/tests.tscn` com
+`godot --headless tests/cli/tests.tscn`, que continua sendo o caminho oficial.
+
+Falha de base conhecida: `tests/unit/test_AskInteger_scene.gd` falha com
+`Invalid access to property or key 'board' on a base object of type 'Dictionary'`
+em `Pile._process`. Ela ja falhava antes das mudancas da branch `autoTurno`;
+considere essa falha como base e nao como regressao.

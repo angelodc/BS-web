@@ -2,6 +2,7 @@ extends Control
 
 const DeckCatalog = preload("res://src/custom/DeckCatalog.gd")
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
+const FeedbackButtonScript = preload("res://src/custom/FeedbackButton.gd")
 const LinkDeckScene = preload("res://src/custom/BSDBDeckImportDialog.tscn")
 const TableScriptScript = preload("res://src/core/table/TableScript.gd")
 const TableKeyboardScript = preload("res://src/core/table/TableKeyboard.gd")
@@ -59,6 +60,16 @@ const WEB_CHUNK_SIZE := 262144
 @onready var _overlay_message: Label = $Overlay/Center/VBox/OverlayMessage
 @onready var _reconnect_button: Button = $Overlay/Center/VBox/Buttons/ReconnectButton
 @onready var _leave_button: Button = $Overlay/Center/VBox/Buttons/LeaveButton
+@onready var _mulligan_panel: PanelContainer = $MulliganPanel
+@onready var _mulligan_info: Label = $MulliganPanel/Margin/VBox/Info
+@onready var _keep_hand_button: Button = \
+		$MulliganPanel/Margin/VBox/Buttons/KeepHandButton
+@onready var _mulligan_button: Button = \
+		$MulliganPanel/Margin/VBox/Buttons/MulliganButton
+@onready var _prep_game_panel: PanelContainer = $PrepGamePanel
+@onready var _prep_game_info: Label = $PrepGamePanel/Margin/VBox/Info
+@onready var _ready_button: Button = \
+		$PrepGamePanel/Margin/VBox/Buttons/ReadyButton
 
 var _saved_deck_list := []
 var _playmat_list := []
@@ -104,6 +115,9 @@ func _ready() -> void:
 	_cancel_button.pressed.connect(_on_leave_pressed)
 	_advance_button.pressed.connect(_on_advance_pressed)
 	_swap_seat_button.pressed.connect(_on_swap_seat_pressed)
+	_keep_hand_button.pressed.connect(_on_keep_hand_pressed)
+	_mulligan_button.pressed.connect(_on_mulligan_pressed)
+	_ready_button.pressed.connect(_on_prep_ready_pressed)
 	_reconnect_button.pressed.connect(_on_reconnect_pressed)
 	_leave_button.pressed.connect(_on_leave_pressed)
 	_link_dialog = LinkDeckScene.instantiate()
@@ -115,6 +129,8 @@ func _ready() -> void:
 	Multiplayer.session_changed.connect(_refresh)
 	Multiplayer.prep_changed.connect(_on_prep_changed)
 	Multiplayer.phase_changed.connect(_refresh)
+	Multiplayer.mulligan_changed.connect(_refresh)
+	Multiplayer.prep_game_changed.connect(_refresh)
 	Multiplayer.match_started.connect(_on_match_started)
 	Multiplayer.checkpoint_saved.connect(_on_checkpoint_saved)
 	Multiplayer.checkpoint_error.connect(_on_checkpoint_error)
@@ -134,6 +150,9 @@ func _ready() -> void:
 	else:
 		_append_log("Modo solo: cada ação sua é registrada aqui.")
 	_build_console()
+	var feedback_button: Control = FeedbackButtonScript.new()
+	feedback_button.name = "FeedbackButton"
+	add_child(feedback_button)
 	_refresh()
 	call_deferred("_apply_last_deck")
 
@@ -524,6 +543,21 @@ func _on_swap_seat_pressed() -> void:
 				"Não foi possível trocar de assento agora.")))
 
 
+func _on_mulligan_pressed() -> void:
+	if not Multiplayer.manual_mulligan_local():
+		_append_log("Não foi possível fazer o mulligan agora.")
+
+
+func _on_keep_hand_pressed() -> void:
+	if not Multiplayer.accept_local_hand():
+		_append_log("Essa mão já foi aceita.")
+
+
+func _on_prep_ready_pressed() -> void:
+	if not Multiplayer.ready_local_prep_game():
+		_append_log("A preparação já foi concluída.")
+
+
 func _on_match_menu_pressed(id: int) -> void:
 	if id == MENU_SAVE:
 		_append_log(str(Multiplayer.save_current_game().get("message", "")))
@@ -636,6 +670,16 @@ func _on_reconnect_pressed() -> void:
 
 
 func _on_leave_pressed() -> void:
+	var board = _recorder_board()
+	# Leaving ends the match too, so the recording gets the same choice; the
+	# scene only changes after the player decides.
+	if board != null and board.has_method("offer_recording_choice") \
+			and board.offer_recording_choice("saiu_da_mesa", _leave_now):
+		return
+	_leave_now()
+
+
+func _leave_now() -> void:
 	Multiplayer.leave_session("Partida encerrada pelo jogador.")
 	cfc.quit_game()
 	# warning-ignore:return_value_discarded
@@ -661,8 +705,16 @@ func _refresh() -> void:
 	if not _prepare_panel.visible and is_instance_valid(_link_dialog):
 		_link_dialog.hide()
 	_overlay.visible = Multiplayer.is_frozen()
+	# The mulligan window owns the table: no phase advances until every seat has
+	# kept a hand (AUTOTURNO.md §3.2, decision 12).
+	var mulligan := _mulligan_is_open()
+	_mulligan_panel.visible = mulligan
+	# The preparation window is the second gate: the table holds until each seat
+	# has discarded what it wants (AUTOTURNO.md §3.3).
+	var prep := _prep_game_is_open()
+	_prep_game_panel.visible = prep
 	_advance_button.visible = Multiplayer.is_playing() \
-			and Multiplayer.is_my_phase()
+			and Multiplayer.is_my_phase() and not mulligan and not prep
 	_swap_seat_button.visible = Multiplayer.is_solo() \
 			and Multiplayer.is_playing()
 	if _swap_seat_button.visible:
@@ -676,6 +728,16 @@ func _refresh() -> void:
 		_status_note = ""
 	_refresh_texts()
 	_refresh_overlay()
+	_refresh_mulligan()
+	_refresh_prep_game()
+
+
+func _mulligan_is_open() -> bool:
+	return Multiplayer.is_mulligan_open() and Multiplayer.is_playing()
+
+
+func _prep_game_is_open() -> bool:
+	return Multiplayer.is_prep_game_open() and Multiplayer.is_playing()
 
 
 func _refresh_texts() -> void:
@@ -688,11 +750,14 @@ func _refresh_texts() -> void:
 		if Multiplayer.is_solo():
 			turn = "Você é " + Multiplayer.get_my_username() \
 					+ " · vez de " + actor
-		_phase_label.text = Multiplayer.get_phase_label().to_upper()
+		_phase_label.text = "PREPARAÇÃO" if _prep_game_is_open() \
+				else ("MULLIGAN" if _mulligan_is_open() \
+				else Multiplayer.get_phase_label().to_upper())
 		_phase_label.add_theme_color_override(
 				"font_color", Multiplayer.get_phase_color())
 		var lines := ["R" + str(Multiplayer.round_number) + " · E" \
-				+ str(Multiplayer.step_index + 1) + "/10 · " + turn]
+				+ str(Multiplayer.step_index + 1) + "/" \
+				+ str(Multiplayer.get_steps_per_round()) + " · " + turn]
 		var extras := []
 		var starter := Multiplayer.get_slot_username(Multiplayer.starting_slot)
 		if not starter.is_empty():
@@ -789,6 +854,54 @@ func _refresh_overlay() -> void:
 	else:
 		_overlay_title.text = "Iniciando partida"
 		_overlay_message.text = "Embaralhando e distribuindo as cartas..."
+
+
+func _refresh_mulligan() -> void:
+	if not _mulligan_panel.visible:
+		return
+	var info := Multiplayer.get_mulligan_info()
+	if bool(info.get("waiting_for_opponent", false)):
+		_keep_hand_button.visible = false
+		_mulligan_button.visible = false
+		_mulligan_info.text = _mulligan_waiting_text()
+		return
+	_keep_hand_button.visible = true
+	_mulligan_button.visible = bool(info.get("can_mulligan", false))
+	_mulligan_info.text = "Mão " + str(info.get("hand_size", 0)) \
+			+ " · Recursos " + str(info.get("resources", 0)) \
+			+ " · Mulligan " + str(int(info.get("repetition", 0))) + "/" \
+			+ str(int(info.get("max_repetitions", 0))) + "\n" \
+			+ str(info.get("cost", 0)) + " cartas vão para os Recursos e " \
+			+ "você compra " + str(info.get("draw", 0)) + "."
+
+
+func _mulligan_waiting_text() -> String:
+	if Multiplayer.is_solo():
+		return "Mão guardada. A mesa passa para " \
+				+ Multiplayer.get_opponent_username() + "."
+	return "Mão guardada. Aguardando o oponente decidir."
+
+
+func _refresh_prep_game() -> void:
+	if not _prep_game_panel.visible:
+		return
+	var info := Multiplayer.get_prep_game_info()
+	if bool(info.get("waiting_for_opponent", false)):
+		_ready_button.visible = false
+		_prep_game_info.text = _prep_game_waiting_text()
+		return
+	_ready_button.visible = true
+	_prep_game_info.text = "Mão " + str(info.get("hand_size", 0)) \
+			+ " · Recursos " + str(info.get("resources", 0)) + "\n" \
+			+ "Descarte quantas cartas quiser para os Recursos e clique " \
+			+ "em Pronto."
+
+
+func _prep_game_waiting_text() -> String:
+	if Multiplayer.is_solo():
+		return "Preparação concluída. A mesa passa para " \
+				+ Multiplayer.get_opponent_username() + "."
+	return "Suas cartas estão prontas. Aguardando o oponente descartar."
 
 
 func _on_display_changed() -> void:

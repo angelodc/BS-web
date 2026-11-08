@@ -12,8 +12,14 @@ func after_all():
 func before_each():
 	await setup_board()
 	card = cfc.NMAP.deck.get_top_card()
-	
-	
+
+
+func after_each():
+	# Some tests start the rich-label fitting without awaiting it. Freeing the
+	# board at the end of the test makes those coroutines resume on a freed
+	# card, and GUT reports the engine error as a failure on slower runners.
+	await yield_for(0.3)
+
 func test_methods():
 	assert_eq('Card',card.get_card_class(), 'class name returns correct value')
 

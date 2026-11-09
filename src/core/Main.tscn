@@ -67,7 +67,7 @@ gui_disable_input = true
 [node name="Camera2D" type="Camera2D" parent="VBC/FocusBox/Focus/SubViewport"]
 anchor_mode = 1
 current = true
-zoom = Vector2( 0.75, 0.75 )
+zoom = Vector2( 1.15, 1.15 )
 
 
 [node name="FocusInfo" type="GridContainer" parent="VBC"]

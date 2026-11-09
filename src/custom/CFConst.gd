@@ -148,6 +148,10 @@ const PREVIEW_SCALE := 1.5
 # The scale of a card while it's shown focused on the top right.
 # You can adjust this for each different card type
 const FOCUSED_SCALE := 1.5
+# The scale a hand card grows to under the mouse. Bigger than FOCUSED_SCALE:
+# the hand card only fills the middle of the board, so it can read larger
+# without hiding the spare area.
+const HAND_HOVER_SCALE := 1.65
 # Draw order on the table. Table cards are reparented under the board as they
 # are played, so they end up after the hand in the tree; these layers keep the
 # hand over the table and lift the pile being read over the hand on hover.

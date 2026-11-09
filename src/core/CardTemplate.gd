@@ -1925,8 +1925,10 @@ func get_focus() -> bool:
 # The hover follows the card while it grows, instead of being lost in the
 # smaller area it still has mid-animation.
 func get_focus_target_rect() -> Rect2:
+	var target_scale := CFConst.HAND_HOVER_SCALE \
+			if state == CardState.FOCUSED_IN_HAND else CFConst.FOCUSED_SCALE
 	return Rect2(get_parent().to_global(_target_position),
-			card_size * CFConst.FOCUSED_SCALE)
+			card_size * target_scale)
 
 
 # Returns the Card's index position among other card objects
@@ -2583,8 +2585,8 @@ func _process_card_state() -> void:
 				# The card grows from its top-left corner, so centring it over the
 				# resting slot means offsetting it by half of the extra width.
 				var focus_offset: float = \
-						-(card_size.x * CFConst.FOCUSED_SCALE - resting_width) * 0.5
-				var focused_size: float = card_size.x * CFConst.FOCUSED_SCALE
+						-(card_size.x * CFConst.HAND_HOVER_SCALE - resting_width) * 0.5
+				var focused_size: float = card_size.x * CFConst.HAND_HOVER_SCALE
 				var focused_left: float = expected_position.x + focus_offset
 				var focused_right: float = focused_left + focused_size
 				# Both sides move, each as a rigid block, so the resting fan
@@ -2635,7 +2637,7 @@ func _process_card_state() -> void:
 					while  get_parent().get_parent().global_position.y\
 							+ get_parent().bottom_margin \
 							+ _target_position.y \
-							+ card_size.y * 1.5 > get_viewport().get_visible_rect().size.y:
+							+ card_size.y * CFConst.HAND_HOVER_SCALE > get_viewport().get_visible_rect().size.y:
 						_target_position.y -= 1
 				else:
 					# The hand's position already includes its bottom margin,
@@ -2644,7 +2646,7 @@ func _process_card_state() -> void:
 					# card up into the middle of the screen.
 					while get_parent().position.y \
 						+ _target_position.y \
-						+ card_size.y * 1.5 > get_viewport().get_visible_rect().size.y:
+						+ card_size.y * CFConst.HAND_HOVER_SCALE > get_viewport().get_visible_rect().size.y:
 						_target_position.y -= 1
 				# We need to bump up the y postion a bit based on the rotation
 				# We subtract 13 if there is no rotation
@@ -2652,7 +2654,8 @@ func _process_card_state() -> void:
 				# We make sure to remove other tweens of the same type
 				# to avoid a deadlock
 				_add_tween_position(expected_position, _target_position, focus_tween_duration)
-				_add_tween_scale(scale, Vector2(1.5,1.5), focus_tween_duration)
+				_add_tween_scale(scale, Vector2(CFConst.HAND_HOVER_SCALE,
+						CFConst.HAND_HOVER_SCALE), focus_tween_duration)
 
 				if cfc.game_settings.hand_use_oval_shape:
 					_add_tween_rotation($Control.rotation_degrees, 0, focus_tween_duration)

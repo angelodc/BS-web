@@ -7,16 +7,21 @@ const ValidationDialogScene = preload(
 		"res://src/custom/BSDBDeckValidationDialog.tscn")
 
 const BSDB_BASE_URL := "https://battlescenes.vercel.app/deck/"
+const BSDB_CARDS_URL := "https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main/dados/cards.json"
+const CARD_CATALOG_CACHE_PATH := "user://BSDB/cards.json"
 const SUPABASE_REST_URL := "https://xtdqcfchdqmqlbmkvdit.supabase.co/rest/v1"
 const SUPABASE_PUBLIC_KEY := "sb_publishable_mx4QrlcZMx-FgZyGC7Q-uw_w3qbMhd9"
 const DECK_CACHE_PATH := "user://Decks/"
+# Old cached decks carry card data from the BSDB site; a mismatch forces the
+# deck to be imported again from the GitHub catalog.
+const DECK_CACHE_VERSION := 2
 const VALID_CARD_TYPES := ["Personagem", "Suporte", "Habilidade", "Cenário"]
 const ENERGY_CARD_TYPES := ["Personagem", "Suporte"]
 
 enum RequestStage {
 	DECK,
 	DECK_CARDS,
-	CARD_DATA,
+	CARD_CATALOG,
 }
 
 @onready var _deck_url: LineEdit = $VBox/DeckURL
@@ -32,10 +37,15 @@ var _card_definitions := {}
 var _validation_dialog: Window
 var _validation_queue := []
 var _pending_deck := {}
+var _prefetched_deck := {}
 
 
 func _ready() -> void:
 	_request = HTTPRequest.new()
+	# Browsers already decompress fetch bodies, so HTTPRequest decompressing
+	# again fails with RESULT_BODY_DECOMPRESS_FAILED on the web build.
+	if OS.has_feature("web"):
+		_request.accept_gzip = false
 	add_child(_request)
 	# warning-ignore:return_value_discarded
 	_request.request_completed.connect(_on_request_completed)
@@ -47,6 +57,16 @@ func _ready() -> void:
 	_validation_dialog.card_confirmed.connect(_on_validation_confirmed)
 	# warning-ignore:return_value_discarded
 	_validation_dialog.canceled.connect(_on_validation_cancelled)
+	if not cfc.card_image_prefetch_progress.is_connected(
+			_on_card_image_prefetch_progress):
+		# warning-ignore:return_value_discarded
+		cfc.card_image_prefetch_progress.connect(
+				_on_card_image_prefetch_progress)
+	if not cfc.card_image_prefetch_finished.is_connected(
+			_on_card_image_prefetch_finished):
+		# warning-ignore:return_value_discarded
+		cfc.card_image_prefetch_finished.connect(
+				_on_card_image_prefetch_finished)
 
 
 static func get_deck_id_from_url(url: String) -> String:
@@ -76,19 +96,19 @@ func _on_import_pressed() -> void:
 	_deck_record = {}
 	_deck_cards.clear()
 	_card_definitions.clear()
+	_prefetched_deck = {}
 	_request_stage = RequestStage.DECK
 	_import_button.disabled = true
 	_set_status("Buscando o deck no BSDB...")
 	_request_get(
 			SUPABASE_REST_URL + "/decks?select=id,title,description,cards_count"
-			+ "&id=eq." + _deck_id)
+			+ "&id=eq." + _deck_id, true)
 
 
-func _request_get(url: String) -> void:
-	var headers := PackedStringArray([
-		"apikey: " + SUPABASE_PUBLIC_KEY,
-		"Accept: application/json",
-	])
+func _request_get(url: String, with_key := false) -> void:
+	var headers := PackedStringArray(["Accept: application/json"])
+	if with_key:
+		headers.append("apikey: " + SUPABASE_PUBLIC_KEY)
 	var request_error := _request.request(url, headers)
 	if request_error != OK:
 		_fail_import(
@@ -99,6 +119,9 @@ func _request_get(url: String) -> void:
 func _on_request_completed(
 		result: int, response_code: int, _headers: PackedStringArray,
 		body: PackedByteArray) -> void:
+	if _request_stage == RequestStage.CARD_CATALOG:
+		_handle_card_catalog_response(result, response_code, body)
+		return
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		_fail_import(
 				"Falha ao baixar dados do BSDB (HTTP "
@@ -119,8 +142,6 @@ func _on_request_completed(
 			_handle_deck_response(parsed)
 		RequestStage.DECK_CARDS:
 			_handle_deck_cards_response(parsed)
-		RequestStage.CARD_DATA:
-			_handle_card_data_response(parsed)
 
 
 func _handle_deck_response(records: Array) -> void:
@@ -132,14 +153,13 @@ func _handle_deck_response(records: Array) -> void:
 	_set_status("Carregando a lista de cartas...")
 	_request_get(
 			SUPABASE_REST_URL + "/deck_cards?select=card_id,quantity"
-			+ "&deck_id=eq." + _deck_id)
+			+ "&deck_id=eq." + _deck_id, true)
 
 
 func _handle_deck_cards_response(records: Array) -> void:
 	if records.is_empty():
 		_fail_import("O deck encontrado não possui cartas.")
 		return
-	var card_ids := []
 	var total_cards := 0
 	for record in records:
 		if typeof(record) != TYPE_DICTIONARY:
@@ -154,36 +174,62 @@ func _handle_deck_cards_response(records: Array) -> void:
 			"card_id": card_id,
 			"quantity": quantity,
 		})
-		card_ids.append(card_id)
 		total_cards += quantity
 	if total_cards != int(_deck_record.get("cards_count", total_cards)):
 		_fail_import("A quantidade de cartas do deck não confere com o BSDB.")
 		return
-	var ids_filter := ",".join(PackedStringArray(card_ids))
-	_request_stage = RequestStage.CARD_DATA
-	_set_status("Baixando dados de " + str(card_ids.size()) + " cartas...")
-	_request_get(
-			SUPABASE_REST_URL
-			+ "/cards?select=id_card,nome,tipo,imagem,dados"
-			+ "&id_card=in.(" + ids_filter + ")")
+	_request_stage = RequestStage.CARD_CATALOG
+	_set_status("Baixando o catálogo de cartas do GitHub...")
+	_request_get(BSDB_CARDS_URL)
 
 
-func _handle_card_data_response(records: Array) -> void:
+func _handle_card_catalog_response(
+		result: int, response_code: int, body: PackedByteArray) -> void:
+	if result == HTTPRequest.RESULT_SUCCESS and response_code == 200:
+		_save_card_catalog(body)
+		var test_json_conv = JSON.new()
+		var parse_error := test_json_conv.parse(body.get_string_from_utf8())
+		var parsed = test_json_conv.get_data()
+		if parse_error != OK:
+			_fail_import("O catálogo do GitHub está em formato inválido.")
+			return
+		if typeof(parsed) != TYPE_ARRAY:
+			_fail_import("O catálogo do GitHub não contém uma lista válida.")
+			return
+		_handle_card_catalog(parsed)
+		return
+	var cached := _load_cached_card_catalog()
+	if cached.is_empty():
+		_fail_import(
+				"Não foi possível baixar o catálogo do GitHub (HTTP "
+				+ str(response_code) + ", código " + str(result) + ").")
+		return
+	push_warning("Using the cached BSDB card catalog; GitHub request failed.")
+	_handle_card_catalog(cached)
+
+
+func _handle_card_catalog(records: Array) -> void:
+	var catalog := {}
 	for record in records:
 		if typeof(record) != TYPE_DICTIONARY:
-			_fail_import("O BSDB retornou dados de carta inválidos.")
+			continue
+		var card_id := str(record.get("ID_CARD", ""))
+		if not card_id.is_empty():
+			catalog[card_id] = record
+	for card in _deck_cards:
+		var entry = catalog.get(card.card_id, null)
+		if typeof(entry) != TYPE_DICTIONARY:
+			_fail_import(
+					"A carta " + str(card.card_id)
+					+ " não está no catálogo do GitHub.")
 			return
-		var card_id := str(record.get("id_card", ""))
-		var card_properties := make_card_properties(record)
-		if not card_id or card_properties.is_empty():
-			_fail_import("Não foi possível interpretar uma carta do deck.")
+		var card_properties := make_card_properties(repo_card_to_record(entry))
+		if card_properties.is_empty():
+			_fail_import(
+					"Não foi possível interpretar a carta "
+					+ str(card.card_id) + " do catálogo do GitHub.")
 			return
-		_card_definitions[card_id] = card_properties
-	if _card_definitions.size() != _deck_cards.size():
-		_fail_import(
-				"Não foi possível encontrar os dados de todas as cartas "
-				+ "desse deck no BSDB.")
-		return
+		_card_definitions[card.card_id] = card_properties
 	var cards := {}
 	for card in _deck_cards:
 		cards[card.card_id] = card.quantity
@@ -193,8 +239,37 @@ func _handle_card_data_response(records: Array) -> void:
 		"cards": cards,
 		"definitions": _card_definitions,
 		"source_url": BSDB_BASE_URL + _deck_id,
+		"cache_version": DECK_CACHE_VERSION,
 	}
 	_begin_validation(deck)
+
+
+func _save_card_catalog(body: PackedByteArray) -> void:
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+			ProjectSettings.globalize_path(
+					CARD_CATALOG_CACHE_PATH.get_base_dir()))
+	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
+		return
+	var file := FileAccess.open(CARD_CATALOG_CACHE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_buffer(body)
+	file.close()
+
+
+func _load_cached_card_catalog() -> Array:
+	if not FileAccess.file_exists(CARD_CATALOG_CACHE_PATH):
+		return []
+	var file := FileAccess.open(CARD_CATALOG_CACHE_PATH, FileAccess.READ)
+	if file == null:
+		return []
+	var test_json_conv = JSON.new()
+	var parse_error := test_json_conv.parse(file.get_as_text())
+	file.close()
+	if parse_error != OK:
+		return []
+	var parsed = test_json_conv.get_data()
+	return parsed if typeof(parsed) == TYPE_ARRAY else []
 
 
 func _begin_validation(deck: Dictionary) -> void:
@@ -272,7 +347,43 @@ func _finish_import() -> void:
 	_pending_deck["definitions"] = _card_definitions
 	if not _save_cached_deck(_pending_deck):
 		return
-	_start_game_with_deck(_pending_deck)
+	_start_image_prefetch(_pending_deck)
+
+
+func _start_image_prefetch(deck: Dictionary) -> void:
+	var image_paths := []
+	var definitions = deck.get("definitions", {})
+	if typeof(definitions) == TYPE_DICTIONARY:
+		for definition in definitions.values():
+			if typeof(definition) != TYPE_DICTIONARY:
+				continue
+			var image_path := str(definition.get("_bsdb_image_path", ""))
+			if not image_path.is_empty() and not image_paths.has(image_path):
+				image_paths.append(image_path)
+	_prefetched_deck = deck
+	if image_paths.is_empty():
+		_prefetched_deck = {}
+		_start_game_with_deck(deck)
+		return
+	_set_status("Baixando imagens das cartas (0/%d)..." % image_paths.size())
+	cfc.prefetch_card_images(image_paths)
+
+
+func _on_card_image_prefetch_progress(done: int, total: int) -> void:
+	if _prefetched_deck.is_empty():
+		return
+	_set_status("Baixando imagens das cartas (%d/%d)..." % [done, total])
+
+
+func _on_card_image_prefetch_finished(failed: int) -> void:
+	if _prefetched_deck.is_empty():
+		return
+	var deck: Dictionary = _prefetched_deck
+	_prefetched_deck = {}
+	if failed > 0:
+		push_warning(
+				"%d card image(s) could not be prefetched." % failed)
+	_start_game_with_deck(deck)
 
 
 static func _missing_essential_fields(definition: Dictionary) -> Array:
@@ -315,6 +426,18 @@ static func _normalize_category(raw: String) -> String:
 		if category.to_lower() == valid.to_lower():
 			return valid
 	return category
+
+
+# The GitHub catalog keeps every field at the top level; make_card_properties
+# expects the BSDB site row shape (id_card/nome/tipo/imagem/dados).
+static func repo_card_to_record(entry: Dictionary) -> Dictionary:
+	return {
+		"id_card": _string_or_default(entry, "ID_CARD", ""),
+		"nome": _string_or_default(entry, "NOME", ""),
+		"tipo": _string_or_default(entry, "TIPO", ""),
+		"imagem": _string_or_default(entry, "IMAGEM", ""),
+		"dados": entry,
+	}
 
 
 static func make_card_properties(record: Dictionary) -> Dictionary:
@@ -431,6 +554,8 @@ func _load_cached_deck(deck_id: String) -> Dictionary:
 		_fail_import("O arquivo local do deck está corrompido.")
 		return {}
 	var deck: Dictionary = parsed
+	if int(deck.get("cache_version", 0)) != DECK_CACHE_VERSION:
+		return {}
 	if deck.get("id", "") != deck_id \
 			or typeof(deck.get("cards", null)) != TYPE_DICTIONARY \
 			or typeof(deck.get("definitions", null)) != TYPE_DICTIONARY \

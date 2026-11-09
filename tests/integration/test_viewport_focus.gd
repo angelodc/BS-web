@@ -1,5 +1,8 @@
 extends "res://tests/UTcommon.gd"
 
+const RenderResolution = preload("res://src/custom/RenderResolution.gd")
+const FocusScript = preload("res://src/core/ViewportCardFocus.gd")
+
 var cards := []
 
 func before_each():
@@ -168,6 +171,65 @@ func test_preview_centers_on_screen():
 	assert_true(abs(vbc.position.x - expected.x) <= 2.0
 			and abs(vbc.position.y - expected.y) <= 2.0,
 			"The preview centers on the screen")
+
+# The preview and the table rasterise at the chosen density but keep the
+# 1280x720 (and 300x450) design coordinates. The containers must keep `stretch`
+# off: with it on, the engine forces the SubViewport back to the container size
+# and the chosen density never reaches the screen.
+func test_full_hd_density_reaches_the_viewports():
+	cfc.game_settings[RenderResolution.SETTING] = RenderResolution.FULL_HD
+	main._apply_render_density()
+	await yield_for(0.2)
+	assert_false(main._board_host.stretch,
+			"The board container must not force its SubViewport size")
+	assert_false(main.card_focus.stretch,
+			"The preview container must not force its SubViewport size")
+	assert_eq(main._board_viewport.size, Vector2i(1920, 1080),
+			"The board rasterises at Full HD")
+	assert_eq(main._board_viewport.size_2d_override, RenderResolution.DESIGN_SIZE,
+			"The board keeps the 1280x720 design coordinates")
+	assert_true(main._board_viewport.size_2d_override_stretch,
+			"The board content fills the Full HD raster")
+	assert_eq(main._board_host.size, Vector2(1920, 1080),
+			"The board host covers the Full HD raster unscaled")
+	assert_almost_eq(main._board_host.scale.x, 2.0 / 3.0, 0.001,
+			"The board host is scaled back into the design rectangle")
+	assert_eq(main._focus_viewport.size, Vector2i(450, 675),
+			"The preview rasterises at Full HD density")
+	assert_eq(main._focus_viewport.size_2d_override,
+			RenderResolution.FOCUS_DESIGN_SIZE,
+			"The preview keeps the 300x450 design coordinates")
+	assert_eq(main.card_focus.size, Vector2(450, 675),
+			"The preview host covers the dense raster unscaled")
+	assert_almost_eq(main.card_focus.scale.x, 2.0 / 3.0, 0.001,
+			"The preview host is scaled back into the 300x450 box")
+	cfc.game_settings[RenderResolution.SETTING] = RenderResolution.HD
+
+
+func test_hand_panel_opens_beside_the_cursor():
+	var pos := FocusScript.hand_panel_position(
+			Vector2(400, 300), Vector2(200, 120), Vector2(1280, 720))
+	assert_eq(pos, Vector2(460, 240),
+			"The hand text panel opens to the right of the cursor, vertically centered")
+
+
+func test_hand_panel_flips_side_near_the_right_edge():
+	var pos := FocusScript.hand_panel_position(
+			Vector2(1200, 300), Vector2(200, 120), Vector2(1280, 720))
+	assert_eq(pos, Vector2(940, 240),
+			"Near the right edge the panel flips to the left of the cursor")
+
+
+func test_hand_panel_stays_inside_the_screen():
+	var bottom := FocusScript.hand_panel_position(
+			Vector2(400, 700), Vector2(200, 120), Vector2(1280, 720))
+	assert_eq(bottom, Vector2(460, 600),
+			"The panel never hangs below the screen")
+	var tiny := FocusScript.hand_panel_position(
+			Vector2(10, 10), Vector2(800, 600), Vector2(640, 480))
+	assert_eq(tiny, Vector2.ZERO,
+			"A panel wider and taller than the screen is pinned to its corner")
+
 
 # The mirrored cards of the opponent run the state machine every frame, and its
 # ON_PLAY_BOARD branch used to unfocus the closeup right after the hover showed

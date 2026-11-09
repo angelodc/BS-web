@@ -7,9 +7,10 @@ class TestSingleCardFocus:
 		cfc.game_settings.hand_use_oval_shape = false
 		cards[0]._on_Card_mouse_entered()
 		await yield_to(cards[0]._tween, "tween_all_completed", 1)
-		assert_almost_eq(Vector2(257.5, -210),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(246.25, -242.0),cards[0].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(1.5, 1.5),cards[0].scale,Vector2(0.1,0.1),
+		assert_almost_eq(Vector2(CFConst.HAND_HOVER_SCALE, CFConst.HAND_HOVER_SCALE),
+				cards[0].scale,Vector2(0.1,0.1),
 				"Card has correct scale")
 		cards[0]._on_Card_mouse_exited()
 		await yield_to(cards[0]._tween, "tween_all_completed", 1)
@@ -23,9 +24,10 @@ class TestSingleCardFocus:
 		cfc.game_settings.hand_use_oval_shape = true
 		cards[0]._on_Card_mouse_entered()
 		await yield_to(cards[0]._tween, "tween_all_completed", 1)
-		assert_almost_eq(Vector2(87.27745, -210.20842),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(76.02745, -242.2084),cards[0].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(1.5, 1.5),cards[0].scale,Vector2(0.1,0.1),
+		assert_almost_eq(Vector2(CFConst.HAND_HOVER_SCALE, CFConst.HAND_HOVER_SCALE),
+				cards[0].scale,Vector2(0.1,0.1),
 				"Card has correct scale")
 		cards[0]._on_Card_mouse_exited()
 		await yield_to(cards[0]._tween, "tween_all_completed", 1)
@@ -46,13 +48,13 @@ class TestNeightbourPush:
 		# block so the resting gap between those cards is kept (no piling behind
 		# each other). The nearest cards tuck 12 px under the enlarged card, so
 		# the mouse never crosses a dead gap between them.
-		assert_almost_eq(Vector2(253.0, 0),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(241.75, 0.0),cards[0].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(311.5, 0),cards[1].position,Vector2(2,2),
+		assert_almost_eq(Vector2(300.25, 0.0),cards[1].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(587.5, 0),cards[3].position,Vector2(2,2),
+		assert_almost_eq(Vector2(598.75, 0.0),cards[3].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(646.0, 0),cards[4].position,Vector2(2,2),
+		assert_almost_eq(Vector2(657.25, 0.0),cards[4].position,Vector2(2,2),
 				"Card dragged in correct global position")
 		cfc.game_settings.hand_use_oval_shape = true
 
@@ -62,13 +64,13 @@ class TestNeightbourPush:
 		await yield_for(1)
 		# The oval spacing is wider than the enlarged card, so both side blocks
 		# tuck in under it until they touch.
-		assert_almost_eq(Vector2(171.365, -26.20842),cards[0].position,Vector2(2,2),
+		assert_almost_eq(Vector2(160.115, -26.20842),cards[0].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(311.5, -45.83563),cards[1].position,Vector2(2,2),
+		assert_almost_eq(Vector2(300.25, -45.83563),cards[1].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(587.5, -45.83563),cards[3].position,Vector2(2,2),
+		assert_almost_eq(Vector2(598.75, -45.83563),cards[3].position,Vector2(2,2),
 				"Card dragged in correct global position")
-		assert_almost_eq(Vector2(727.6349, -26.20842),cards[4].position,Vector2(2,2),
+		assert_almost_eq(Vector2(738.8849, -26.20842),cards[4].position,Vector2(2,2),
 				"Card dragged in correct global position")
 		cfc.game_settings.hand_use_oval_shape = true
 
@@ -132,7 +134,7 @@ class TestHoverContinuity:
 			await yield_for(0.8)
 			var focused_left: float = cards[2].position.x
 			var focused_right: float = focused_left \
-					+ cards[2].card_size.x * CFConst.FOCUSED_SCALE
+					+ cards[2].card_size.x * CFConst.HAND_HOVER_SCALE
 			var resting_width: float = cards[2].card_size.x \
 					* cards[2]._get_hand_display_scale()
 			# At least 8 px of overlap on each side keeps both areas around the
@@ -163,7 +165,7 @@ class TestHoverContinuity:
 		await yield_for(1)
 		var focused_left: float = middle.position.x
 		var focused_right: float = focused_left \
-				+ middle.card_size.x * CFConst.FOCUSED_SCALE
+				+ middle.card_size.x * CFConst.HAND_HOVER_SCALE
 		var resting_width: float = middle.card_size.x \
 				* middle._get_hand_display_scale()
 		var left_neighbour: Card = hand.get_card(4)

@@ -16,10 +16,12 @@ var _current_focus_source : Card = null
 # screen, no matter whether the closeup image is shown alongside the panels.
 var _current_is_hand := false
 
-@onready var card_focus := $VBC/Focus
+@onready var card_focus := $VBC/FocusBox/Focus
 @onready var focus_info := $VBC/FocusInfo
+@onready var _focus_box := $VBC/FocusBox
+@onready var _board_host := $SubViewportContainer
 @onready var _board_viewport := $SubViewportContainer/SubViewport
-@onready var _focus_viewport := $VBC/Focus/SubViewport
+@onready var _focus_viewport := $VBC/FocusBox/Focus/SubViewport
 @onready var world_environemt : WorldEnvironment = $WorldEnvironment
 @onready var _focus_tween := LegacyTween.new(self)
 
@@ -43,18 +45,36 @@ func _ready():
 	focus_info.setup()
 
 
-# The board and the preview are stretched over fixed design rectangles, so the
-# raster density can grow with the window without moving a single authored
-# offset. `size_2d_override` keeps both viewports at their design coordinates
-# (1280x720 and 300x450), which also keeps the mouse mapping and the playmat
-# fit working exactly as before.
+# The board and the preview are rasterised at the chosen density and drawn
+# scaled down inside the design rectangles, so the content stays at 1280x720
+# coordinates while every pixel on screen comes from the larger render. A
+# SubViewportContainer with `stretch` on refuses manual SubViewport sizes (the
+# engine warns and keeps the container size), so the containers have it off and
+# the script sets both the raster size and the scale that maps it back.
 func _apply_render_density() -> void:
-	_board_viewport.size = RenderResolution.board_pixels()
+	var board_pixels := RenderResolution.board_pixels()
+	_board_host.size = Vector2(board_pixels)
+	_board_host.scale = Vector2.ONE / RenderResolution.board_factor()
+	_board_viewport.size = board_pixels
 	_board_viewport.size_2d_override = RenderResolution.DESIGN_SIZE
 	_board_viewport.size_2d_override_stretch = true
-	_focus_viewport.size = RenderResolution.focus_pixels()
+	var focus_pixels := RenderResolution.focus_pixels()
+	card_focus.size = Vector2(focus_pixels)
+	card_focus.scale = Vector2.ONE / RenderResolution.focus_factor()
+	_focus_viewport.size = focus_pixels
 	_focus_viewport.size_2d_override = RenderResolution.FOCUS_DESIGN_SIZE
 	_focus_viewport.size_2d_override_stretch = true
+
+
+# Where the hand's text panel goes: beside the cursor, flipping to the other
+# side when the right edge is near, and always fully inside the screen.
+static func hand_panel_position(mouse: Vector2, panel: Vector2, area: Vector2) -> Vector2:
+	var x := mouse.x + 60.0
+	if x + panel.x > area.x:
+		x = mouse.x - 60.0 - panel.x
+	return Vector2(
+			clampf(x, 0.0, maxf(0.0, area.x - panel.x)),
+			clampf(mouse.y - panel.y / 2.0, 0.0, maxf(0.0, area.y - panel.y)))
 
 
 func _process(_delta) -> void:
@@ -74,17 +94,12 @@ func _process(_delta) -> void:
 	# cursor, everything else is centered on the screen.
 	if _current_focus_source and is_instance_valid(_current_focus_source):
 		if _current_is_hand:
-			if get_global_mouse_position().y + focus_info.size.y/2 > get_viewport().get_visible_rect().size.y:
-				$VBC.position.y = get_viewport().get_visible_rect().size.y - focus_info.size.y
-			else:
-				$VBC.position.y = get_global_mouse_position().y - focus_info.size.y / 2
-			if get_global_mouse_position().x + focus_info.size.x + 60 > get_viewport().get_visible_rect().size.x:
-				$VBC.position.x = get_viewport().get_visible_rect().size.x - focus_info.size.x
-				$VBC.position.y = get_global_mouse_position().y - 500
-			else:
-				$VBC.position.x = get_global_mouse_position().x + 60
+			$VBC.position = hand_panel_position(
+					get_global_mouse_position(), focus_info.size,
+					get_viewport().get_visible_rect().size)
 		else:
-			$VBC.position = (get_viewport().get_visible_rect().size - $VBC.size) / 2
+			$VBC.position = (get_viewport().get_visible_rect().size \
+					- $VBC.size) / 2
 	# The below performs some garbage collection on previously focused cards.
 	for c in _previously_focused_cards:
 		if not is_instance_valid(_previously_focused_cards[c]):
@@ -96,9 +111,9 @@ func _process(_delta) -> void:
 				and not _focus_tween.is_active():
 			current_dupe_focus.visible = false
 	if not is_instance_valid(_current_focus_source)\
-			and $VBC/Focus.modulate.a != 0\
+			and card_focus.modulate.a != 0\
 			and not _focus_tween.is_active():
-		$VBC/Focus.modulate.a = 0
+		card_focus.modulate.a = 0
 
 
 # A card known to both players can be previewed face up even while its copy on
@@ -183,13 +198,13 @@ func focus_card(card: Card, show_preview := true) -> void:
 		# see https://github.com/godotengine/godot/issues/3393
 		# We make the viewport camera focus on the card center, so the
 		# closeup sits centered in the focus area at a uniform zoom.
-		$VBC/Focus/SubViewport/Camera2D.position =\
+		$VBC/FocusBox/Focus/SubViewport/Camera2D.position =\
 				dupe_focus.global_position + dupe_focus.card_size / 2
 		# We always make sure to clean tweening conflicts
 		_focus_tween.remove_all()
 		# We do a nice alpha-modulate tween
-		_focus_tween.interpolate_property($VBC/Focus,'modulate',
-				$VBC/Focus.modulate, Color(1,1,1,1), 0.25,
+		_focus_tween.interpolate_property(card_focus,'modulate',
+				card_focus.modulate, Color(1,1,1,1), 0.25,
 				Tween.TRANS_SINE, Tween.EASE_IN)
 		if focus_info.visible_details > 0:
 			_focus_tween.interpolate_property(focus_info,'modulate',
@@ -200,12 +215,14 @@ func focus_card(card: Card, show_preview := true) -> void:
 					focus_info.modulate, Color(1,1,1,0), 0.25,
 					Tween.TRANS_SINE, Tween.EASE_IN)
 		_focus_tween.start()
+		# The box hides with the closeup so the hand, which only shows the text
+		# panel, is not pushed aside by an empty 300x450 slot.
+		_focus_box.visible = show_preview
 		card_focus.visible = show_preview
 		# Now that the display panels can expand horizontally
 		# we need to set their parent container size to 0 here
 		# To ensure they are shown as expected on the screen
 		# I.e. the card doesn't appear mid-screen for no reason etc
-		card_focus.size = Vector2(0,0)
 		$VBC.size = Vector2(0,0)
 
 
@@ -215,8 +232,8 @@ func unfocus(card: Card) -> void:
 	if _current_focus_source == card:
 		_current_focus_source = null
 		_focus_tween.remove_all()
-		_focus_tween.interpolate_property($VBC/Focus,'modulate',
-				$VBC/Focus.modulate, Color(1,1,1,0), 0.25,
+		_focus_tween.interpolate_property(card_focus,'modulate',
+				card_focus.modulate, Color(1,1,1,0), 0.25,
 				Tween.TRANS_SINE, Tween.EASE_IN)
 		if focus_info.modulate != Color(1,1,1,0):
 			_focus_tween.interpolate_property(focus_info,'modulate',

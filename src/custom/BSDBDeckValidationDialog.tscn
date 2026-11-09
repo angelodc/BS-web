@@ -51,6 +51,7 @@ offset_left = 0.0
 offset_right = 170.0
 offset_bottom = 240.0
 mouse_filter = 2
+texture_filter = 4
 expand = true
 stretch_mode = 5
 

@@ -50,6 +50,17 @@ static func focus_pixels() -> Vector2i:
 	return _scaled(FOCUS_DESIGN_SIZE)
 
 
+# Render pixels per design unit. The SubViewport draws its texture at the
+# raster size inside the design rectangle, so the host control is scaled by the
+# inverse of this factor.
+static func board_factor() -> float:
+	return float(board_pixels().x) / float(DESIGN_SIZE.x)
+
+
+static func focus_factor() -> float:
+	return float(focus_pixels().x) / float(FOCUS_DESIGN_SIZE.x)
+
+
 # The desktop window follows the chosen density so the table is shown 1:1.
 # The web window is the browser canvas and is left alone.
 static func window_size() -> Vector2i:

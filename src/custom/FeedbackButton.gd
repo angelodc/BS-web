@@ -13,7 +13,10 @@ const DialogScript = preload("res://src/custom/FeedbackDialog.gd")
 const SIZE := 54.0
 const EDGE_MARGIN := 12.0
 
-const HINT_SIZE := Vector2(292, 96)
+const HINT_SIZE := Vector2(292, 120)
+const HINT_TEXT := "Relatar bug ou sugerir melhoria.\nClique para abrir o " \
+		+ "formulário ou arraste uma carta\npara anexá-la. A gravação da " \
+		+ "partida vai junto."
 
 var _dialog: Window = null
 var _toast: Label = null
@@ -88,9 +91,12 @@ func _show_hint() -> void:
 		box.content_margin_bottom = 6
 		_hint.add_theme_stylebox_override("normal", box)
 		add_child(_hint)
-	_hint.text = "Relatar bug ou sugerir melhoria.\nClique para abrir o " \
-			+ "formulário ou arraste uma carta\npara anexá-la. A gravação da " \
-			+ "partida vai junto."
+		# A largura precisa existir antes do texto: com largura zero o autowrap
+		# mede o texto numa coluna mínima e o minimo vertical vira milhares de
+		# pixels, então o primeiro hover abria vazio e gigante. Com a largura
+		# certa a medição sai correta e os hovers seguintes só reposicionam.
+		_hint.size = Vector2(HINT_SIZE.x, 0)
+		_hint.text = HINT_TEXT
 	_hint.size = HINT_SIZE
 	_hint.position = Vector2(-HINT_SIZE.x - EDGE_MARGIN,
 			SIZE * 0.5 - HINT_SIZE.y * 0.5)

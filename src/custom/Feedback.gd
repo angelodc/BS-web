@@ -251,8 +251,22 @@ func list_reports() -> Array:
 		report["_folder"] = directory + name + "/"
 		reports.append(report)
 	reports.sort_custom(func(a, b):
-		return float(a.get("created_at", 0)) > float(b.get("created_at", 0)))
+		var a_time := float(a.get("created_at", 0))
+		var b_time := float(b.get("created_at", 0))
+		if a_time != b_time:
+			return a_time > b_time
+		# Dois relatos gravados no mesmo tick do relógio ficam empatados; o
+		# sufixo numérico do id é a única ordem real entre eles.
+		return _report_sequence(a) > _report_sequence(b))
 	return reports
+
+
+func _report_sequence(report: Dictionary) -> int:
+	var name := str(report.get("_folder", "")).trim_suffix("/").get_file()
+	var dash := name.rfind("-")
+	if dash < 0:
+		return 0
+	return int(name.substr(dash + 1))
 
 
 func report_file(report: Dictionary, name: String) -> String:

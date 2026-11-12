@@ -58,7 +58,7 @@ func _card_actions(card: Card) -> Array:
 func _details_bbcode(abilities: String, actions: Array) -> String:
 	var blocks: Array[String] = []
 	if not abilities.is_empty():
-		blocks.append(_escape_bbcode(abilities))
+		blocks.append(_escape_bbcode(break_sentences(abilities)))
 	for action in actions:
 		blocks.append(_action_bbcode(action))
 	return "\n\n".join(blocks)
@@ -86,8 +86,31 @@ func _action_bbcode(action: Dictionary) -> String:
 				+ _escape_bbcode(" • ".join(bits)) + "[/font_size][/color]")
 	var text := str(action.get("text", "")).strip_edges()
 	if not text.is_empty():
-		lines.append(_escape_bbcode(text))
+		lines.append(_escape_bbcode(break_sentences(text)))
 	return "\n".join(lines)
+
+
+# Printed card texts arrive as one paragraph, and a single long line is hard to
+# follow in the hover panel. Each full stop starts a new line, the way the
+# printed cards read. A dot only ends a sentence when whitespace follows it, so
+# decimals such as "1.5" stay together.
+static func break_sentences(text: String) -> String:
+	var broken := ""
+	var index := 0
+	while index < text.length():
+		var character := text[index]
+		broken += character
+		index += 1
+		if character != ".":
+			continue
+		var spaces := 0
+		while index < text.length() \
+				and (text[index] == " " or text[index] == "\t"):
+			index += 1
+			spaces += 1
+		if spaces > 0 and index < text.length() and text[index] != "\n":
+			broken += "\n"
+	return broken
 
 
 func _meta_line(card: Card) -> String:

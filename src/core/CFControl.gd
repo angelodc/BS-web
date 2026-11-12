@@ -107,7 +107,11 @@ var ov_utils = load(CFConst.PATH_OVERRIDABLE_UTILS).new()
 var curr_scale: float
 
 var scripts_loading := true
-const BSDB_IMAGE_BASE_URL := "https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main/cards/oficial"
+const BSDB_REPO_MAIN_URL := "https://raw.githubusercontent.com/inimig0r/bsdb-imagens/refs/heads/main"
+const BSDB_IMAGE_BASE_URL := BSDB_REPO_MAIN_URL + "/cards/oficial"
+# Fan-made Excelsior cards live under cards/excelsior; their catalog paths start
+# with the collection folder ("/fmbspi/..."), exactly like the official ones.
+const BSDB_EXCELSIOR_IMAGE_BASE_URL := BSDB_REPO_MAIN_URL + "/cards/excelsior"
 const CARD_IMAGE_CACHE_PATH := "user://CardImages/"
 var _card_image_request: HTTPRequest
 var _card_image_queue := []
@@ -163,11 +167,22 @@ func _load_cached_card_image(image_path: String) -> ImageTexture:
 	return ImageTexture.create_from_image(image)
 
 
+# A few catalog rows already carry the full "/cards/..." path, so they resolve
+# straight from the repository root.
+static func bsdb_image_url(image_path: String) -> String:
+	if image_path.begins_with("/cards/"):
+		return BSDB_REPO_MAIN_URL + image_path
+	var folder := image_path.trim_prefix("/").get_slice("/", 0).to_lower()
+	if folder.begins_with("fm"):
+		return BSDB_EXCELSIOR_IMAGE_BASE_URL + image_path
+	return BSDB_IMAGE_BASE_URL + image_path
+
+
 func _start_next_card_image_request() -> void:
 	if _active_card_image_path or _card_image_queue.is_empty():
 		return
 	_active_card_image_path = _card_image_queue.pop_front()
-	var image_url := BSDB_IMAGE_BASE_URL + _active_card_image_path
+	var image_url := bsdb_image_url(_active_card_image_path)
 	var request_error := _card_image_request.request(image_url)
 	if request_error != OK:
 		push_error("Could not request BSDB card image: " + image_url)

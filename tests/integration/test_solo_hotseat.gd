@@ -521,7 +521,11 @@ func test_arrange_attachment_stack_recovers_a_pile_listed_before_its_host():
 	# their table scale; their stack positions are applied once the tween ends.
 	await yield_for(0.4)
 
-	assert_eq(host.get_index(), board.get_child_count() - 1,
+	var top: int = board.get_child_count() - 1
+	var pins = board.get_node_or_null("NegationPins")
+	if is_instance_valid(pins) and pins.get_index() == top:
+		top -= 1
+	assert_eq(host.get_index(), top,
 			"The rebuild leaves the character on top of the table")
 	for index in range(stack.size()):
 		var card: Card = stack[index]

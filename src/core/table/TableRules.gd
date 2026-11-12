@@ -74,7 +74,7 @@ func validate(state, intent : Dictionary, context : Dictionary) -> Dictionary:
 	if bool(context.get("setup_only_discard", false)) \
 			and not op in SETUP_ALLOWED_VERBS:
 		return _fail("fora_da_preparacao",
-				"Na preparação só dá para descartar cartas da mão.")
+				"Antes da partida só dá para descartar cartas da mão.")
 	var normalized := intent.duplicate(true)
 	normalized["op"] = op
 	normalized["seat"] = seat
@@ -334,6 +334,18 @@ func _validate_move(state, normalized : Dictionary) -> Dictionary:
 			if int(parsed["slot"]) != 1:
 				return _fail("slot_invalido",
 						"Os prêmios recebem cartas no topo (prêmios:1).")
+		"deck":
+			if int(parsed["seat"]) != seat:
+				return _fail("destino_de_outro_assento",
+						"O deck de destino é do assento P"
+						+ str(parsed["seat"]) + ".")
+			# The deck accepts the top (1) and the base (right after the last
+			# card); any slot in between would need a shuffle to mean anything.
+			var deck_size: int = state.deck_count(seat)
+			if int(parsed["slot"]) < 1 or int(parsed["slot"]) > deck_size + 1:
+				return _fail("slot_invalido",
+						"O deck recebe cartas no topo (deck:1) ou na base (deck:"
+						+ str(deck_size + 1) + ").")
 		"field":
 			if int(parsed["seat"]) != seat:
 				return _fail("destino_de_outro_assento",

@@ -94,6 +94,13 @@ func get_seat() -> int:
 	return _seat
 
 
+# The Card node the last snapshot gave this id, or null. The board uses it after
+# an intent to reach the card that entered or left the scenario zone without
+# walking the tree again.
+func node_of(id : String):
+	return _node(id)
+
+
 # Makes the scene follow the addresses of the state: hand order, field slots and
 # the shared scenario. Every applied intent and every undo ends here, so the
 # table the player sees is the state that was validated.
@@ -108,7 +115,10 @@ func _context() -> Dictionary:
 		"solo": Multiplayer.is_solo(),
 		"my_slot": _seat,
 		"my_phase": Multiplayer.is_my_phase() if active else true,
-		"setup_only_discard": Multiplayer.is_prep_game_open(),
+		# The mulligan is the first gate: the table only accepts hand cards going
+		# to the resources until every seat answers it.
+		"setup_only_discard": Multiplayer.is_prep_game_open() \
+				or Multiplayer.is_mulligan_open(),
 		"enforce_cost": not cfc.ut,
 		"undo_entry": last_undo_target(),
 	}
@@ -161,6 +171,10 @@ func apply(raw_intent : Dictionary) -> Dictionary:
 		"state": state,
 	}
 	_record(normalized, result)
+	# The board is the one who knows the custom rules; the table only reports
+	# that an intent landed, with the before/after addresses it already kept.
+	if is_instance_valid(board) and board.has_method("on_table_intent_applied"):
+		board.on_table_intent_applied(self, entry)
 	return result
 
 
@@ -499,7 +513,8 @@ func _do_attach(intent : Dictionary) -> Dictionary:
 
 
 func _do_move(intent : Dictionary) -> Dictionary:
-	return _move_to_address(str(intent["card"]), str(intent["to"]))
+	return _move_to_address(str(intent["card"]), str(intent["to"]),
+			intent.get("tags", ["Manual"]))
 
 
 func _do_discard(intent : Dictionary) -> Dictionary:
@@ -705,8 +720,15 @@ func _move_to_address(id : String, address : String,
 			var deck = _deck()
 			if not is_instance_valid(deck):
 				return _fail("deck_indisponivel", "O deck não está na mesa.")
-			# Appending to a pile puts the card on top, which is deck:1.
-			node.move_to(deck)
+			# Appending to a pile puts the card on top, which is deck:1. The base
+			# is the other end of the same stack, so the card enters before the
+			# current bottom card instead.
+			# The tags travel with the move so the resources viewer can tell an
+			# explicit send from a manual drag when the card reaches the deck.
+			if int(parsed.get("slot", 1)) > 1:
+				node.move_to(deck, 0, null, tags)
+			else:
+				node.move_to(deck, -1, null, tags)
 			return _ok_result()
 		"scenario":
 			var slot = _scenario_slot()

@@ -226,6 +226,11 @@ func _send_public_snapshot(with_definitions: bool) -> void:
 	}
 	if with_definitions:
 		payload["definitions"] = state.get("definitions", {})
+		# A full sync is also the moment a peer that joined late learns the pins
+		# already on the table.
+		var pins = _pin_layer()
+		if pins and pins.has_method("local_pin_state"):
+			payload["pins"] = pins.local_pin_state()
 	Rede.send_message(payload)
 
 
@@ -242,6 +247,29 @@ func send_counts() -> void:
 		"hand": int(counts["hand"]),
 		"deck": int(counts["deck"]),
 	})
+
+
+# Pins change only when someone drops, creates or clears one, so the whole list
+# goes out at once and the peer rebuilds its copy of the other side's pins.
+func send_pins_state(entries: Array) -> void:
+	if not _can_send():
+		return
+	Rede.send_message({"t": "mp_pins", "pins": entries})
+
+
+func _pin_layer():
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board):
+		return null
+	return board.get_node_or_null("NegationPins")
+
+
+func _apply_remote_pins(entries) -> void:
+	if not Multiplayer.is_session_active() or not (entries is Array):
+		return
+	var pins = _pin_layer()
+	if pins and pins.has_method("apply_remote_pins"):
+		pins.apply_remote_pins(entries)
 
 
 func _send_pending_counts(delta: float) -> void:
@@ -413,6 +441,8 @@ func _on_network_message(data: Dictionary) -> void:
 			_apply_remote_zone(str(data.get("zone", "")))
 		"mp_card_move_request":
 			_apply_move_request(data)
+		"mp_pins":
+			_apply_remote_pins(data.get("pins", []))
 
 
 func _apply_remote_card(data: Dictionary) -> void:
@@ -527,9 +557,14 @@ func _apply_remote_card(data: Dictionary) -> void:
 	if card.attachments.size() > 0:
 		card._organize_attachments()
 	_update_remote_zone_labels()
+	# The negation automation only runs on the client that applied the intent;
+	# that client sends its pins, and this side draws them as remote copies.
 	# Drag ticks repeat the same zone many times per second, so only a zone
 	# change is worth a line in the log.
-	if int(data.get("drag", 0)) == 0 and previous_zone != zone:
+	# The automatic opening of a turn is summarized in one shared line, so the
+	# cards it moves stay out of the log here too.
+	if int(data.get("drag", 0)) == 0 and previous_zone != zone \
+			and not Multiplayer.is_auto_turn_step():
 		GameEvents.record_remote_card(zone, card_name, face,
 				host.canonical_name if is_instance_valid(host) else "")
 
@@ -1272,6 +1307,8 @@ func _apply_remote_snapshot(data: Dictionary) -> void:
 			"hand": int(data.get("hand", 0)),
 			"deck": int(data.get("deck", 0)),
 		})
+	if data.has("pins"):
+		_apply_remote_pins(data.get("pins", []))
 	_update_remote_zone_labels()
 
 

@@ -451,6 +451,10 @@ func _process(delta) -> void:
 func _on_Card_mouse_entered() -> void:
 	if network_mirror:
 		return
+	# O pin do cenário fica desenhado sobre a carta; o hover da carta por baixo
+	# dele subiria a carta e o clique pegaria a carta em vez do pin.
+	if _pointer_over_negation_pin():
+		return
 	# This triggers the focus-in effect on the card
 	#print(state,":enter:",get_index(), ":", buttons._are_hovered()) # Debug
 	#print($Control/Tokens/Drawer/VBoxContainer.rect_size) # debug
@@ -594,12 +598,18 @@ func _process_more_card_inputs(_event) -> void:
 	pass
 
 
+# True while the pointer is over a negation pin (or dragging one). The pin
+# layer sits on top of the cards; the table must not focus the card underneath.
+func _pointer_over_negation_pin() -> bool:
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) \
+			or not board.has_method("pointer_over_negation_pin"):
+		return false
+	return bool(board.pointer_over_negation_pin())
+
+
 # Triggers the focus-out effect on the card
 func _on_Card_mouse_exited() -> void:
-	# On exiting this node, we wait a tiny bit to make sure the mouse didn't
-	# just enter a child button
-	# If it did, then that button will immediately set a variable to let us know
-	# not to restart the focus
 	#print(state,":exit:",get_index()) # debug
 	#print(buttons.are_hovered()) # debug
 	match state:
@@ -615,6 +625,8 @@ func _on_Card_mouse_exited() -> void:
 					# This will also set the state to IN_HAND afterwards
 					c.reorganize_self()
 		CardState.FOCUSED_ON_BOARD:
+			# The board keeps this card focused while the pointer is over its
+			# menu, so reaching a button does not close the menu mid-click.
 			# A focused attachment lifted its host and siblings too; dropping
 			# only this card would leave the pile floating over the hand.
 			if is_instance_valid(current_host_card):

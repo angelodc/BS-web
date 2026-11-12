@@ -312,6 +312,69 @@ func test_move_refuses_a_card_still_in_the_deck():
 	assert_eq(_error(result), "carta_no_deck")
 
 
+func test_move_sends_a_resource_to_the_top_of_the_deck():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	assert_true(_ok(actions.apply({
+		"op": "mover",
+		"card": _id(cards[0]),
+		"to": "p1:recursos:1",
+	})))
+	var deck_size := int(actions.state.zone_counts(1)["deck"])
+
+	var result = actions.apply({
+		"op": "mover",
+		"card": _id(cards[0]),
+		"to": "p1:deck:1",
+	})
+
+	assert_true(_ok(result), str(result))
+	assert_eq(actions.state.address_of(_id(cards[0])), "p1:deck:1")
+	assert_eq(actions.state.top_of_deck(1), _id(cards[0]))
+	assert_eq(int(actions.state.zone_counts(1)["deck"]), deck_size + 1)
+
+
+func test_move_sends_a_resource_to_the_base_of_the_deck():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	assert_true(_ok(actions.apply({
+		"op": "mover",
+		"card": _id(cards[0]),
+		"to": "p1:recursos:1",
+	})))
+	var deck_size := int(actions.state.zone_counts(1)["deck"])
+	var top = actions.state.top_of_deck(1)
+
+	var result = actions.apply({
+		"op": "mover",
+		"card": _id(cards[0]),
+		"to": "p1:deck:" + str(deck_size + 1),
+	})
+
+	assert_true(_ok(result), str(result))
+	assert_eq(actions.state.address_of(_id(cards[0])),
+			"p1:deck:" + str(deck_size + 1))
+	assert_eq(actions.state.top_of_deck(1), top,
+			"The top of the deck stays where it was")
+	assert_eq(int(actions.state.zone_counts(1)["deck"]), deck_size + 1)
+
+
+func test_move_refuses_a_deck_slot_past_the_base():
+	var cards = draw_test_cards(1)
+	actions.sync(1)
+	var deck_size := int(actions.state.zone_counts(1)["deck"])
+
+	var result = actions.apply({
+		"op": "mover",
+		"card": _id(cards[0]),
+		"to": "p1:deck:" + str(deck_size + 2),
+	})
+
+	assert_false(_ok(result))
+	assert_eq(_error(result), "slot_invalido")
+	assert_eq(actions.history.size(), 0)
+
+
 func test_move_refuses_a_field_row_that_does_not_exist():
 	var cards = draw_test_cards(1)
 	actions.sync(1)

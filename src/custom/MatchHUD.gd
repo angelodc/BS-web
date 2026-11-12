@@ -21,6 +21,9 @@ const MENU_SAVE := 0
 const MENU_LEAVE := 1
 const MENU_RECORD := 2
 const CARD_LINK_COLOR := "#ffd479"
+# Cenário que a mesa ainda não resolve sozinho: o texto da carta fica amarelo
+# para o jogador saber que aquele trecho espera por ele.
+const PENDING_LOG_COLOR := "#E8C24A"
 const ACTIVE_SEAT_COLOR := Color(1.0, 0.85, 0.45)
 const IDLE_SEAT_COLOR := Color(0.82, 0.86, 0.92)
 const PLAYMAT_UPLOAD_HINT := "Playmat: use uma imagem 16:9, de preferência 1920x1080."
@@ -70,6 +73,10 @@ const WEB_CHUNK_SIZE := 262144
 @onready var _prep_game_info: Label = $PrepGamePanel/Margin/VBox/Info
 @onready var _ready_button: Button = \
 		$PrepGamePanel/Margin/VBox/Buttons/ReadyButton
+@onready var _adjustment_panel: PanelContainer = $AdjustmentPanel
+@onready var _adjustment_info_label: Label = $AdjustmentPanel/Margin/VBox/Info
+
+const GATE_PANEL_SCALE := 1.2
 
 var _saved_deck_list := []
 var _playmat_list := []
@@ -118,6 +125,13 @@ func _ready() -> void:
 	_keep_hand_button.pressed.connect(_on_keep_hand_pressed)
 	_mulligan_button.pressed.connect(_on_mulligan_pressed)
 	_ready_button.pressed.connect(_on_prep_ready_pressed)
+	# A longer waiting text resizes the gate dialogs, which have to stay centered.
+	_mulligan_panel.resized.connect(
+			_place_gate_panel.bind(_mulligan_panel))
+	_prep_game_panel.resized.connect(
+			_place_gate_panel.bind(_prep_game_panel))
+	_adjustment_panel.resized.connect(
+			_place_gate_panel.bind(_adjustment_panel))
 	_reconnect_button.pressed.connect(_on_reconnect_pressed)
 	_leave_button.pressed.connect(_on_leave_pressed)
 	_link_dialog = LinkDeckScene.instantiate()
@@ -131,6 +145,7 @@ func _ready() -> void:
 	Multiplayer.phase_changed.connect(_refresh)
 	Multiplayer.mulligan_changed.connect(_refresh)
 	Multiplayer.prep_game_changed.connect(_refresh)
+	Multiplayer.adjustment_changed.connect(_refresh)
 	Multiplayer.match_started.connect(_on_match_started)
 	Multiplayer.checkpoint_saved.connect(_on_checkpoint_saved)
 	Multiplayer.checkpoint_error.connect(_on_checkpoint_error)
@@ -713,8 +728,13 @@ func _refresh() -> void:
 	# has discarded what it wants (AUTOTURNO.md §3.3).
 	var prep := _prep_game_is_open()
 	_prep_game_panel.visible = prep
+	# The adjustment gate is manual: it stands while the seat on the table still
+	# owes energy and releases the advance button when the excess is gone.
+	var adjusting := _adjustment_is_open()
+	_adjustment_panel.visible = adjusting
 	_advance_button.visible = Multiplayer.is_playing() \
-			and Multiplayer.is_my_phase() and not mulligan and not prep
+			and Multiplayer.is_my_phase() and not mulligan and not prep \
+			and not adjusting and not Multiplayer.is_auto_turn_running()
 	_swap_seat_button.visible = Multiplayer.is_solo() \
 			and Multiplayer.is_playing()
 	if _swap_seat_button.visible:
@@ -730,6 +750,10 @@ func _refresh() -> void:
 	_refresh_overlay()
 	_refresh_mulligan()
 	_refresh_prep_game()
+	_refresh_adjustment()
+	_place_gate_panel(_mulligan_panel)
+	_place_gate_panel(_prep_game_panel)
+	_place_gate_panel(_adjustment_panel)
 
 
 func _mulligan_is_open() -> bool:
@@ -738,6 +762,27 @@ func _mulligan_is_open() -> bool:
 
 func _prep_game_is_open() -> bool:
 	return Multiplayer.is_prep_game_open() and Multiplayer.is_playing()
+
+
+func _adjustment_is_open() -> bool:
+	return Multiplayer.is_adjustment_open() and Multiplayer.is_playing()
+
+
+# The gate dialogs hold the whole table, so they sit on the exact center of the
+# screen and read 20% larger than authored. The growth is taken around the
+# center of the owned box, which is what `pivot_offset` does.
+# Their info labels carry a fixed minimum width in the scene: a gate opens
+# before the hidden panel was ever laid out, and an autowrap label measured at
+# 1px stacks one letter per line until the dialog covers the whole table.
+func _place_gate_panel(panel: Control) -> void:
+	if not panel.visible:
+		return
+	var box := panel.size
+	panel.pivot_offset = box * 0.5
+	panel.scale = Vector2(GATE_PANEL_SCALE, GATE_PANEL_SCALE)
+	var centered := (size - box) * 0.5
+	if not panel.position.is_equal_approx(centered):
+		panel.position = centered
 
 
 func _refresh_texts() -> void:
@@ -904,6 +949,14 @@ func _prep_game_waiting_text() -> String:
 	return "Suas cartas estão prontas. Aguardando o oponente descartar."
 
 
+func _refresh_adjustment() -> void:
+	if not _adjustment_panel.visible:
+		return
+	var info := Multiplayer.get_adjustment_info()
+	_adjustment_info_label.text = str(info.get("text", "")) \
+			+ "\nA fase libera quando o excesso sair."
+
+
 func _on_display_changed() -> void:
 	var summary := Multiplayer.get_display_summary()
 	if summary != _last_display_summary:
@@ -920,13 +973,14 @@ func _on_action_logged(text: String) -> void:
 func _on_game_event(entry) -> void:
 	if typeof(entry) != TYPE_DICTIONARY:
 		return
-	_append_log(str(entry.get("text", "")), str(entry.get("card", "")))
+	_append_log(str(entry.get("text", "")), str(entry.get("card", "")),
+			str(entry.get("tone", "")))
 
 
-func _append_log(text: String, card_name := "") -> void:
+func _append_log(text: String, card_name := "", tone := "") -> void:
 	if text.is_empty():
 		return
-	_logs.append({"text": text, "card": card_name})
+	_logs.append({"text": text, "card": card_name, "tone": tone})
 	while _logs.size() > MAX_LOG_LINES:
 		_logs.pop_front()
 	_render_logs()
@@ -947,15 +1001,17 @@ func _line_bbcode(index: int) -> String:
 	var entry: Dictionary = _logs[index]
 	var text := str(entry["text"])
 	var card_name := str(entry.get("card", ""))
-	if card_name.is_empty():
-		return _escape_bbcode(text)
-	var position := text.find(card_name)
-	if position < 0:
-		return _escape_bbcode(text)
-	return _escape_bbcode(text.substr(0, position)) \
-			+ "[color=" + CARD_LINK_COLOR + "][url=" + str(index) + "]" \
-			+ _escape_bbcode(card_name) + "[/url][/color]" \
-			+ _escape_bbcode(text.substr(position + card_name.length()))
+	var line := _escape_bbcode(text)
+	if not card_name.is_empty():
+		var position := text.find(card_name)
+		if position >= 0:
+			line = _escape_bbcode(text.substr(0, position)) \
+					+ "[color=" + CARD_LINK_COLOR + "][url=" + str(index) + "]" \
+					+ _escape_bbcode(card_name) + "[/url][/color]" \
+					+ _escape_bbcode(text.substr(position + card_name.length()))
+	if str(entry.get("tone", "")) == "pending":
+		return "[color=" + PENDING_LOG_COLOR + "]" + line + "[/color]"
+	return line
 
 
 func _escape_bbcode(text: String) -> String:

@@ -187,6 +187,7 @@ theme_override_fonts/font = SubResource( 1 )
 text = "Mulligan"
 
 [node name="Info" type="Label" parent="MulliganPanel/Margin/VBox"]
+custom_minimum_size = Vector2( 460, 0 )
 theme_override_fonts/font = SubResource( 3 )
 theme_override_colors/font_color = Color( 0.78, 0.82, 0.9, 1 )
 text = "Mão 10 · Recursos 0"
@@ -231,6 +232,7 @@ theme_override_fonts/font = SubResource( 1 )
 text = "Preparação"
 
 [node name="Info" type="Label" parent="PrepGamePanel/Margin/VBox"]
+custom_minimum_size = Vector2( 460, 0 )
 theme_override_fonts/font = SubResource( 3 )
 theme_override_colors/font_color = Color( 0.78, 0.82, 0.9, 1 )
 text = "Mão 7 · Recursos 0"
@@ -243,6 +245,41 @@ theme_override_constants/separation = 12
 [node name="ReadyButton" type="Button" parent="PrepGamePanel/Margin/VBox/Buttons"]
 custom_minimum_size = Vector2( 190, 40 )
 text = "Pronto"
+
+[node name="AdjustmentPanel" type="PanelContainer" parent="."]
+visible = false
+mouse_filter = 2
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -250.0
+offset_right = 250.0
+offset_bottom = -175.0
+theme_override_styles/panel = SubResource( 5 )
+
+[node name="Margin" type="MarginContainer" parent="AdjustmentPanel"]
+mouse_filter = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="AdjustmentPanel/Margin"]
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="AdjustmentPanel/Margin/VBox"]
+theme_override_fonts/font = SubResource( 1 )
+text = "Ajuste de Energia"
+
+[node name="Info" type="Label" parent="AdjustmentPanel/Margin/VBox"]
+custom_minimum_size = Vector2( 460, 0 )
+theme_override_fonts/font = SubResource( 3 )
+theme_override_colors/font_color = Color( 0.78, 0.82, 0.9, 1 )
+text = "Retire 1 carta de Personagem."
+autowrap_mode = 3
 
 [node name="PreparePanel" type="PanelContainer" parent="."]
 anchor_left = 0.5

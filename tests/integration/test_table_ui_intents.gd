@@ -39,17 +39,6 @@ func test_the_board_keeps_one_runner_for_the_whole_match():
 	assert_eq(runner.history.size(), first_size + 1)
 
 
-func test_flip_button_goes_through_the_intent_log():
-	var card = _play_one()
-	var buttons = card.get_node("Control/ManipulationButtons")
-	var before: bool = card.is_faceup
-
-	buttons._on_Flip_pressed()
-
-	assert_ne(card.is_faceup, before)
-	assert_eq(_last_op(), "virar")
-
-
 func test_shield_button_goes_through_the_intent_log():
 	var card = _play_one()
 	var buttons = card.get_node("Control/ManipulationButtons")

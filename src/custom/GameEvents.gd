@@ -57,7 +57,8 @@ func _record_card(card: Card, trigger: String, details: Dictionary) -> void:
 	if not is_instance_valid(card) or card.network_mirror:
 		return
 	var tags = details.get("tags", [])
-	if typeof(tags) == TYPE_ARRAY and tags.has("net"):
+	if typeof(tags) == TYPE_ARRAY \
+			and (tags.has("net") or tags.has("Clarividência")):
 		return
 	var destination := zone_for_card(card)
 	var source := _zone_from_container(str(details.get("source", "")), card)
@@ -138,9 +139,44 @@ func record_system(text: String) -> void:
 	_push(0, "system", "", "", "", true, text)
 
 
+# The peek shows its own cards to the player who opened it; the table only
+# learns that it happened and how many cards went back, never their names. The
+# individual moves carry the "Clarividência" tag and are left out of the log.
+func record_clarividencia(count: int) -> void:
+	if not enabled or suppressed or count <= 0:
+		return
+	_push(_actor_slot(), "clarividencia", "", "", "", true, "", count)
+
+
+func record_clarividencia_returns(count: int) -> void:
+	if not enabled or suppressed or count <= 0:
+		return
+	_push(_actor_slot(), "returned_deck", "deck", "", "", false, "", count)
+
+
+# One line for an automated scenario effect, e.g.
+# "P1 · Aranhaverso — comprou 1 carta (entrada)". The card name is public (the
+# scenario is in the shared slot), so the HUD can link it like any other card.
+# `tone` is "real" for what the table executed and "pending" for the fragment
+# the player still has to resolve; the HUD colors the pending lines yellow.
+func record_scenario(card_name: String, text: String, tone := "real") -> void:
+	if not enabled or suppressed or card_name.is_empty() or text.is_empty():
+		return
+	var slot := _actor_slot()
+	var actor := actor_name(slot)
+	var line := card_name + " — " + text
+	if not actor.is_empty():
+		line = actor + " · " + line
+	_push(slot, "scenario_effect", "scenario", card_name, "", true, line, 0, tone)
+
+
+func record_scenario_pending(card_name: String, text: String) -> void:
+	record_scenario(card_name, text, "pending")
+
+
 func _push(slot: int, action: String, zone: String, card_name: String,
 		host: String, revealed: bool, text_override := "",
-		amount := 0) -> void:
+		amount := 0, tone := "") -> void:
 	var entry := {
 		"slot": slot,
 		"actor": actor_name(slot),
@@ -151,6 +187,7 @@ func _push(slot: int, action: String, zone: String, card_name: String,
 		"amount": amount,
 		"public": revealed,
 		"text": text_override,
+		"tone": tone,
 	}
 	if entry["text"].is_empty():
 		entry["text"] = _sentence(entry)
@@ -194,6 +231,11 @@ func _sentence(entry: Dictionary) -> String:
 		"placed_prizes":
 			return prefix + "colocou " + subject + " nos Prêmios"
 		"returned_deck":
+			if card.is_empty() and int(entry.get("amount", 0)) > 0:
+				var returned := int(entry.get("amount", 0))
+				return prefix + "devolveu " + str(returned) \
+						+ (" carta" if returned == 1 else " cartas") \
+						+ " ao Deck"
 			return prefix + "devolveu " + subject + " ao Deck"
 		"moved_pile":
 			return prefix + "moveu " + subject + " para " \
@@ -210,6 +252,9 @@ func _sentence(entry: Dictionary) -> String:
 					+ (" de " + host if not host.is_empty() else "")
 		"shuffled":
 			return prefix + "embaralhou o " + zone_label(str(entry["zone"]))
+		"clarividencia":
+			return prefix + "fez Clarividência " \
+					+ str(int(entry.get("amount", 0)))
 		"sent_to_prizes":
 			return prefix + "enviou " + subject \
 					+ " para os Prêmios do adversário"

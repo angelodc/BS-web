@@ -62,7 +62,20 @@ func _start_match() -> void:
 	Multiplayer.set_solo_pick_slot(2)
 	Multiplayer.select_deck(_character_deck())
 	assert_true(Multiplayer.request_start(), "Two full decks start the solo match")
+	await yield_for(0.4)
+	# The mulligan and the preparation window stand between the start and the
+	# table: until both seats answer, the only accepted intent is a discard to
+	# the resources, so the knockout would be refused as "fora_da_preparacao".
+	assert_true(Multiplayer.accept_local_hand(), "The first seat keeps its hand")
 	await yield_for(0.3)
+	assert_true(Multiplayer.accept_local_hand(), "The second seat keeps its hand")
+	await yield_for(0.1)
+	assert_false(Multiplayer.is_mulligan_open(), "The mulligan closed")
+	assert_true(Multiplayer.ready_local_prep_game(), "The visible seat ends the preparation")
+	await yield_for(0.3)
+	assert_true(Multiplayer.ready_local_prep_game(), "The other seat ends the preparation")
+	await yield_for(0.1)
+	assert_false(Multiplayer.is_prep_game_open(), "The preparation closed")
 
 
 func _take_hand_card() -> Card:
@@ -175,6 +188,9 @@ func test_last_energy_knocks_the_character_into_the_opponent_prizes():
 
 func test_prizes_reaching_fifteen_win_the_match():
 	await _start_match()
+	# The dice decide who starts, so the seat whose characters are knocked out
+	# follows the table; both go to the other seat's prize pile.
+	var receiving_slot: int = 3 - Multiplayer.my_slot
 
 	var first := _place_character()
 	_attach_energy(first)
@@ -187,8 +203,8 @@ func test_prizes_reaching_fifteen_win_the_match():
 	_attach_energy(second)
 	board.damage_character(second, 1)
 	await yield_for(0.1)
-	assert_eq(board._victory_slot, 2,
-			"Twenty energy in the seat two prizes wins the match for seat two")
+	assert_eq(board._victory_slot, receiving_slot,
+			"Twenty energy in a prize pile wins the match for its owner")
 
 
 func test_only_the_first_side_to_reach_fifteen_wins():

@@ -103,6 +103,27 @@ func test_net_tagged_changes_are_ignored():
 			"A network replay does not log the same move twice")
 
 
+func test_clarividencia_moves_keep_the_names_out_of_the_log():
+	var card: Card = cards[0]
+	card.move_to(board, -1, null, ["Clarividência"])
+	await yield_for(0.3)
+	assert_eq(GameEvents.entries.size(), 0,
+			"A peek move never names the card in the log")
+
+
+func test_clarividencia_entries_are_anonymous_counts():
+	GameEvents.record_clarividencia(3)
+	GameEvents.record_clarividencia_returns(2)
+	var peek: Dictionary = GameEvents.entries[GameEvents.entries.size() - 2]
+	var returned: Dictionary = GameEvents.entries.back()
+	assert_eq(str(peek["text"]), "P1 fez Clarividência 3",
+			"The table learns that the peek happened")
+	assert_eq(peek["card"], "", "The peek line carries no card name")
+	assert_eq(str(returned["text"]), "P1 devolveu 2 cartas ao Deck",
+			"The returns are counted, not named")
+	assert_eq(returned["card"], "", "The return line carries no card name")
+
+
 func test_remote_entry_uses_the_opponent_slot():
 	GameEvents.record_remote_card("board", "Carta Remota", true)
 	var entry: Dictionary = GameEvents.entries.back()

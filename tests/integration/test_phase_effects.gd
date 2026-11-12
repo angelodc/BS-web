@@ -113,6 +113,21 @@ func _start_match(entries: Dictionary) -> void:
 	Multiplayer.ready_local_prep_game()
 	await yield_for(0.1)
 	assert_false(Multiplayer.is_prep_game_open(), "A preparação fechou")
+	# The match opens on the automatic countdown and draw; settling on Preparação
+	# keeps the step poking below from racing the opening timer.
+	assert_true(await _wait_for_auto_phase("PREP"),
+			"A abertura da partida parou em Preparação")
+
+
+func _wait_for_auto_phase(wanted: String, timeout := 5.0) -> bool:
+	var waited := 0.0
+	while waited < timeout:
+		if Multiplayer.phase == wanted \
+				and not Multiplayer.is_auto_turn_running():
+			return true
+		await get_tree().create_timer(0.05).timeout
+		waited += 0.05
+	return false
 
 
 func test_the_countdown_runs_when_the_prep_window_closes():
@@ -202,7 +217,7 @@ func test_a_player_with_a_character_draws_two():
 
 # --- Fase de Ajuste ------------------------------------------------------
 
-func test_the_adjustment_unloads_the_excess_energy():
+func test_the_adjustment_opens_a_gate_instead_of_unloading():
 	await _start_match({CHEAP_CHAR: 30, SUP: 30})
 	var host = _hand_cards()[0]
 	assert_true(_play_from_hand(host), "O personagem entrou em cena")
@@ -211,13 +226,27 @@ func test_the_adjustment_unloads_the_excess_energy():
 	assert_eq(host._live_attachments().size(), 2, "Dois anexos sobre a energia 1")
 	var before := _pile_size("discard")
 	_open_phase(3)
-	assert_true(Multiplayer.run_phase_effects(), "O ajuste descarregou")
+	assert_false(Multiplayer.run_phase_effects(), "O ajuste não descarrega sozinho")
+	assert_true(Multiplayer.is_adjustment_open(), "A mensagem do ajuste abriu")
+	assert_eq(Multiplayer.get_adjustment_info().get("text"),
+			"Retire 1 carta de " + str(host.canonical_name) + ".",
+			"A mensagem pede o excesso pelo nome")
+	assert_false(Multiplayer.advance_phase(),
+			"O botão da fase fica preso enquanto o excesso estiver lá")
 	# The card template only clears the host link when the move finishes.
 	await yield_for(0.6)
-	assert_eq(host._live_attachments().size(), 1,
-			"O excesso voltou para os recursos")
-	assert_eq(_pile_size("discard") - before, 1,
-			"A carta excedente está em Recursos")
+	assert_eq(host._live_attachments().size(), 2,
+			"O excesso continua no personagem")
+	assert_eq(_pile_size("discard"), before, "Nada foi descartado")
+
+	var excess = host.attachments.back()
+	var discarded: Dictionary = board.apply_intent(
+			{"op": "descartar", "card": excess})
+	assert_true(bool(discarded.get("ok", false)), "O jogador retirou a carta")
+	assert_false(Multiplayer.is_adjustment_open(),
+			"A mensagem some quando o excesso sai")
+	assert_true(Multiplayer.advance_phase(),
+			"A fase fica liberada para o próximo clique")
 
 
 func test_the_adjustment_leaves_a_legal_stack_alone():
@@ -229,6 +258,7 @@ func test_the_adjustment_leaves_a_legal_stack_alone():
 	var before := _pile_size("discard")
 	_open_phase(3)
 	assert_false(Multiplayer.run_phase_effects(), "Nada a descarregar")
+	assert_false(Multiplayer.is_adjustment_open(), "A pilha legal não abre a mensagem")
 	assert_eq(host._live_attachments().size(), 1, "O anexo ficou")
 	assert_eq(_pile_size("discard"), before, "Nada foi descartado")
 

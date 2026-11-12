@@ -112,6 +112,19 @@ func _close_prep_window() -> void:
 	assert_false(Multiplayer.is_prep_game_open(), "As duas respostas fecharam a janela")
 
 
+# A abertura do primeiro turno não pede clique: a mesa paga Contagem Regressiva
+# e Compra e para na Preparação.
+func _wait_for_auto_phase(wanted: String, timeout := 5.0) -> bool:
+	var waited := 0.0
+	while waited < timeout:
+		if Multiplayer.phase == wanted \
+				and not Multiplayer.is_auto_turn_running():
+			return true
+		await get_tree().create_timer(0.05).timeout
+		waited += 0.05
+	return false
+
+
 # --- The window ----------------------------------------------------------
 
 func test_the_window_opens_when_the_mulligan_closes():
@@ -204,7 +217,11 @@ func test_the_public_state_carries_the_window():
 func test_the_first_turn_opens_when_both_have_answered():
 	await _open_prep_window({CHAR: 60})
 	await _close_prep_window()
-	assert_true(Multiplayer.advance_phase(), "A primeira fase está liberada")
+	assert_true(await _wait_for_auto_phase("PREP"),
+			"A Contagem Regressiva e a Compra passaram sozinhas")
+	assert_eq(Multiplayer.phase, "PREP", "A mesa para na Preparação")
+	assert_eq(Multiplayer.step_index, 2,
+			"O primeiro turno abre no passo da Preparação")
 
 
 # Decisão 11a: the step the match opens on was owed to this window, not to the

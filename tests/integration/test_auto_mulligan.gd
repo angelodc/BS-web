@@ -71,6 +71,19 @@ func _start(same_deck: Dictionary, opponent_deck: Dictionary) -> void:
 	await yield_for(0.4)
 
 
+# A abertura do turno (inclusive a do início da partida) paga Contagem Regressiva
+# e Compra sozinha e para na Preparação.
+func _wait_for_auto_phase(wanted: String, timeout := 5.0) -> bool:
+	var waited := 0.0
+	while waited < timeout:
+		if Multiplayer.phase == wanted \
+				and not Multiplayer.is_auto_turn_running():
+			return true
+		await get_tree().create_timer(0.05).timeout
+		waited += 0.05
+	return false
+
+
 func _hand_cards() -> Array:
 	var cards := []
 	for child in cfc.NMAP.hand.get_children():
@@ -227,7 +240,34 @@ func test_the_window_holds_the_first_phase():
 	assert_true(Multiplayer.ready_local_prep_game(), "The second seat is ready")
 
 	assert_false(Multiplayer.is_prep_game_open(), "Both seats answered")
-	assert_true(Multiplayer.advance_phase(), "The first turn is open")
+	# The countdown and the draw of the opening pay themselves; the table stops
+	# on Preparação without asking for a click.
+	assert_true(await _wait_for_auto_phase("PREP"),
+			"The automatic opening reached Preparação")
+	assert_eq(Multiplayer.step_index, 2, "REG and DRAW were passed by themselves")
+
+
+# While a seat has not answered, the table only accepts the hand card going to
+# the resources: everything else would change the board before the first turn.
+func test_the_mulligan_blocks_every_action_but_hand_to_resources():
+	await _start(_deck(60, 0), _deck(60, 0))
+	assert_true(Multiplayer.is_mulligan_open(), "The deal opens the window")
+
+	var character = _hand_cards()[0]
+	var played: Dictionary = board.apply_intent({
+			"op": "jogar", "card": character})
+	assert_false(bool(played.get("ok", false)),
+			"Nada entra em cena durante o mulligan")
+	assert_eq(str(played.get("error", "")), "fora_da_preparacao",
+			"O motivo é a janela do mulligan")
+
+	var resources_before: int = cfc.NMAP.discard.get_card_count()
+	var discarded: Dictionary = board.apply_intent({
+			"op": "descartar", "card": character})
+	assert_true(bool(discarded.get("ok", false)),
+			"Enviar uma carta da mão para os Recursos continua liberado")
+	assert_eq(resources_before + 1, cfc.NMAP.discard.get_card_count(),
+			"A carta da mão chegou aos Recursos")
 
 
 # The hotseat hands the table to the seat that still owes an answer, so the

@@ -211,12 +211,13 @@ func test_draw_operations():
 			{"is_first_turn": true}).size(), 0)
 
 
-func test_adj_operations():
+func test_adj_operations_are_manual():
+	# The adjustment no longer pays itself: the phase only opens the gate, so it
+	# has no automatic operation even with excess energy.
 	var operations := Rules.operations_for_phase(Rules.PHASE_ADJ, {
 		"characters": [{"name": "A", "attached": 4, "energy": 1}],
 	})
-	assert_eq(operations.size(), 1)
-	assert_eq(operations[0]["count"], 3)
+	assert_eq(operations.size(), 0)
 
 
 func test_unknown_phase_has_no_operations():

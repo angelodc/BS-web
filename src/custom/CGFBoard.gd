@@ -3,9 +3,12 @@ extends Board
 
 const PlaymatCatalog = preload("res://src/custom/PlaymatCatalog.gd")
 const MatchRecorderScript = preload("res://src/custom/MatchRecorder.gd")
+const NegationPinLayerScript = preload("res://src/custom/NegationPinLayer.gd")
+const ScenarioAutomationScript = preload("res://src/custom/cards/ScenarioAutomation.gd")
 const TableActionsScript = preload("res://src/core/table/TableActions.gd")
 const TableRendererScript = preload("res://src/core/table/TableRenderer.gd")
 const TableSnapshotScript = preload("res://src/core/table/TableSnapshot.gd")
+const TableStateScript = preload("res://src/core/table/TableState.gd")
 
 # The playmat covers the whole play area edge to edge; the TextureRect uses the
 # cover stretch mode, so a window whose ratio differs from the artwork's crops a
@@ -23,8 +26,15 @@ var _deck_control_size := Vector2.ZERO
 var _resources_base_width := 156.0
 var pending_resource_host: Card
 var pending_resource_swap_card: Card
+var pending_resource_add_card: Card
 var pending_resource_count := 0
 var pending_resource_swap_active := false
+# Add perso: same pick as the swap, but the resource lands under the character
+# without replacing the one already there.
+var pending_resource_add_active := false
+# "deck" or "mao" while the resources viewer waits for the card to send. Empty
+# means no send is armed.
+var pending_resource_send_side := ""
 # Materializar: the button right of the hand arms the mode and the next click on
 # a hand card sends it to the scene with life from the top of the deck.
 var materialize_mode := false
@@ -32,6 +42,7 @@ var _resource_message_serial := 0
 var _resource_selection_completed := false
 var _table_actions = null
 var _match_recorder = null
+var _negation_pins = null
 
 # The match is won by the first player whose prize area reaches this much
 # printed energy.
@@ -66,6 +77,11 @@ func _ready() -> void:
 	$ScalingFocusOptions.selected = cfc.game_settings.focus_style
 	$Debug.button_pressed = cfc._debug
 	apply_playmat(PlaymatCatalog.selected_id())
+	_negation_pins = NegationPinLayerScript.new()
+	_negation_pins.name = "NegationPins"
+	add_child(_negation_pins)
+	child_entered_tree.connect(_on_board_child_entered)
+	child_order_changed.connect(_on_board_child_order_changed)
 	call_deferred("_apply_battle_scenes_layout")
 	get_viewport().size_changed.connect(_on_board_viewport_size_changed)
 	var multiplayer_session := Multiplayer.is_session_active()
@@ -180,6 +196,8 @@ func _apply_battle_scenes_layout() -> void:
 	var hand: Hand = get_node("Hand")
 	# warning-ignore:return_value_discarded
 	hand.re_place()
+	if is_instance_valid(_negation_pins):
+		_negation_pins.place_tools()
 
 
 # The pile slots and the mirrored resources width are authored in the scene, so
@@ -501,6 +519,64 @@ func apply_intent(intent : Dictionary) -> Dictionary:
 	return result
 
 
+# After an intent lands, the shared scenario slot may have changed: a scenario
+# entered, or left because it was replaced, discarded or removed. The diff comes
+# from the addresses the runner already kept, so no signal is needed and the
+# order is the same on every client that executes the intent.
+func on_table_intent_applied(actions, entry : Dictionary) -> void:
+	ScenarioAutomationScript.on_intent_applied(self, actions, entry)
+	# Removing the excess energy is a hand move, so the Ajuste gate has to look
+	# at the table again after every intent.
+	Multiplayer.refresh_adjustment()
+
+
+# A negation scenario pins itself over the scene as soon as it enters. The pin
+# is local (it never goes through the relay); `key` dedupes the repeated remote
+# snapshots on the client that receives the mirror.
+func add_negation_pin(card: Card, key := "") -> void:
+	if is_instance_valid(_negation_pins):
+		_negation_pins.add_negation_pin(card, key)
+
+
+# Pins do outro jogador: a camada desenha cópias não interativas, presas às
+# mesmas cartas pelo id de rede ou no ponto espelhado do tabuleiro.
+func apply_remote_pins(entries: Array) -> void:
+	if is_instance_valid(_negation_pins):
+		_negation_pins.apply_remote_pins(entries)
+
+
+# A carta consulta isto antes de assumir o hover: o pin fica por cima dela e o
+# clique precisa chegar ao pin.
+func pointer_over_negation_pin() -> bool:
+	return is_instance_valid(_negation_pins) \
+			and _negation_pins.pointer_over_pin()
+
+
+# O Godot escolhe o Control do clique pela ordem da árvore, não pelo z_index.
+# A camada dos pins precisa ser a última filha do tabuleiro para receber o
+# clique antes da carta que está debaixo; cada carta nova entra no fim.
+func _on_board_child_entered(child: Node) -> void:
+	if not is_instance_valid(_negation_pins) or child == _negation_pins:
+		return
+	if child is Card:
+		call_deferred("_raise_negation_pins")
+
+
+# A pilha de recursos do personagem reordena as filhas do tabuleiro
+# (`arrange_attachment_stack` manda o hospedeiro para o fim), então a camada
+# precisa se recolocar no fim depois de qualquer reordenação, não só na entrada.
+func _on_board_child_order_changed() -> void:
+	if is_instance_valid(_negation_pins) \
+			and _negation_pins.get_index() != get_child_count() - 1:
+		call_deferred("_raise_negation_pins")
+
+
+func _raise_negation_pins() -> void:
+	if is_instance_valid(_negation_pins) \
+			and _negation_pins.get_index() != get_child_count() - 1:
+		move_child(_negation_pins, -1)
+
+
 # Rewrites the scene from the current state, which is what a script uses after
 # changing something outside an intent. It is the same reconcile every intent
 # already runs at the end.
@@ -600,7 +676,7 @@ func get_available_resource_count() -> int:
 
 
 func show_resource_message(message: String) -> void:
-	var label: Label = get_node_or_null("ResourceSelectionLabel")
+	var label: Label = _resource_message_target()
 	if not label:
 		return
 	# A newer message cancels the auto-clear of the older one.
@@ -611,7 +687,7 @@ func show_resource_message(message: String) -> void:
 # Shows a message that clears itself. `seconds` 0 keeps it until the next
 # message; the serial makes an older timer give up when a newer line appears.
 func show_transient_resource_message(message: String, seconds := 3.0) -> void:
-	var label: Label = get_node_or_null("ResourceSelectionLabel")
+	var label: Label = _resource_message_target()
 	if not label:
 		return
 	_resource_message_serial += 1
@@ -622,7 +698,20 @@ func show_transient_resource_message(message: String, seconds := 3.0) -> void:
 	await get_tree().create_timer(seconds).timeout
 	if not is_instance_valid(self) or serial != _resource_message_serial:
 		return
-	label.text = ""
+	if is_instance_valid(label):
+		label.text = ""
+
+
+# The resources viewer covers the board while it is open, so the answer to a
+# click there has to be written under the card box. The board label also sits
+# under the hand, which is why it was barely visible.
+func _resource_message_target() -> Label:
+	var discard = cfc.NMAP.get("discard", null)
+	if is_instance_valid(discard) \
+			and discard.has_method("viewer_message_label") \
+			and (discard.is_popup_open or discard.pile_popup.visible):
+		return discard.viewer_message_label()
+	return get_node_or_null("ResourceSelectionLabel")
 
 
 # The resource popup is drawn over the field, so the card under the pointer is a
@@ -658,6 +747,7 @@ func _set_board_pointer_active(active: bool) -> void:
 
 
 func begin_resource_selection(host: Card, required_count: int) -> void:
+	pending_resource_send_side = ""
 	pending_resource_host = host
 	pending_resource_count = required_count
 	_resource_selection_completed = false
@@ -676,7 +766,8 @@ func begin_resource_selection(host: Card, required_count: int) -> void:
 func _auto_pay_resources() -> void:
 	cfc.NMAP.discard.populate_popup()
 	var payment := []
-	for slot in cfc.NMAP.discard.get_node("ViewPopup/CardView").get_children():
+	for slot in cfc.NMAP.discard.get_node(
+			"ViewPopup/PopupContent/CardView").get_children():
 		for node in slot.get_children():
 			if node is Card:
 				payment.append(node)
@@ -722,11 +813,13 @@ func begin_resource_swap() -> void:
 		show_resource_message("Troca cancelada.")
 		_set_board_pointer_active(true)
 		return
-	if pending_resource_host or cfc.NMAP.discard.is_popup_open:
+	if pending_resource_host or pending_resource_add_card \
+			or cfc.NMAP.discard.is_popup_open:
 		return
 	if get_available_resource_count() == 0:
 		show_resource_message("Não há cartas disponíveis para a troca.")
 		return
+	pending_resource_send_side = ""
 	pending_resource_swap_active = true
 	pending_resource_swap_card = null
 	show_resource_message("Escolha uma carta da pilha para a troca.")
@@ -777,6 +870,186 @@ func swap_attached_resource(resource: Card) -> bool:
 	return true
 
 
+# Add perso follows the swap step by step, but the picked resource is attached
+# to the character instead of replacing the one already under it.
+func begin_resource_add() -> void:
+	if pending_resource_add_active:
+		pending_resource_add_active = false
+		pending_resource_add_card = null
+		show_resource_message("Adição cancelada.")
+		# Same rule as the send: the board pointer only comes back once the
+		# viewer is gone, as it covers the field.
+		if not cfc.NMAP.discard.pile_popup.visible:
+			_set_board_pointer_active(true)
+		return
+	if pending_resource_host or pending_resource_swap_card:
+		return
+	if get_available_resource_count() == 0:
+		show_resource_message("Não há cartas disponíveis para adicionar.")
+		return
+	pending_resource_send_side = ""
+	pending_resource_swap_active = false
+	pending_resource_add_active = true
+	pending_resource_add_card = null
+	_set_board_pointer_active(false)
+	# The viewer usually opens with the button; if it is already showing, the
+	# pick simply starts on the cards that are on screen.
+	if not cfc.NMAP.discard.is_popup_open:
+		cfc.NMAP.discard.populate_popup()
+
+
+func select_resource_for_add(resource: Card) -> bool:
+	if not pending_resource_add_active \
+			or pending_resource_add_card \
+			or resource.current_host_card \
+			or not "CardPopUpSlot" in resource.get_parent().name:
+		return false
+	pending_resource_add_card = resource
+	cfc.NMAP.discard.pile_popup.hide()
+	_set_board_pointer_active(true)
+	return true
+
+
+func add_resource_to_character(character: Card) -> bool:
+	if not pending_resource_add_active \
+			or not pending_resource_add_card \
+			or character.current_host_card \
+			or character.get_parent() != self \
+			or not character.is_battle_scenes_character():
+		return false
+
+	var resource: Card = pending_resource_add_card
+	pending_resource_add_active = false
+	pending_resource_add_card = null
+	show_resource_message("")
+	resource.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
+	resource.attachment_offset = \
+			Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+	resource.attach_to_host(character)
+	# Same as the swap: the added resource comes from the popup and lands above
+	# the pile until the character is organized again.
+	character._organize_attachments()
+	cfc.NMAP.discard.card_count_label.text = \
+			str(get_available_resource_count())
+	return true
+
+
+# -----------------------------------------------------------------------------
+# Sending resources to the deck
+# -----------------------------------------------------------------------------
+
+# Opens the resources viewer without arming anything: the viewer row carries the
+# destinations, so the pile button only brings the menu on screen.
+func open_resource_send_viewer() -> void:
+	if get_available_resource_count() == 0:
+		show_transient_resource_message(
+				"Não há cartas nos Recursos para enviar.", 3.0)
+		return
+	if not cfc.NMAP.discard.is_popup_open:
+		cfc.NMAP.discard.populate_popup()
+
+
+# Arms the send mode and opens the resources viewer. The next click on one of
+# its cards runs the move to the top or the base of the deck, or to the hand;
+# the button pressed again cancels. The move goes through the table so it
+# reaches the log and undo.
+func begin_resource_send(side: String) -> void:
+	if not side in ["topo", "base", "mao"]:
+		return
+	if pending_resource_send_side == side:
+		cancel_resource_send()
+		return
+	if pending_resource_host or pending_resource_swap_card \
+			or pending_resource_add_card:
+		return
+	if get_available_resource_count() == 0:
+		show_transient_resource_message(
+				"Não há cartas nos Recursos para enviar.", 3.0)
+		return
+	pending_resource_swap_active = false
+	# The viewer offers the send and the add side by side, so arming one has to
+	# drop the other even before a card was picked.
+	pending_resource_add_active = false
+	pending_resource_add_card = null
+	pending_resource_send_side = side
+	_set_board_pointer_active(false)
+	# The window opens first so the instruction lands under the card box.
+	if not cfc.NMAP.discard.is_popup_open:
+		cfc.NMAP.discard.populate_popup()
+	show_resource_message("Enviar para " + _send_target(side)
+			+ ": clique numa carta dos Recursos.")
+
+
+func cancel_resource_send() -> void:
+	if pending_resource_send_side.is_empty():
+		return
+	pending_resource_send_side = ""
+	show_resource_message("")
+	if not cfc.NMAP.discard.pile_popup.visible:
+		_set_board_pointer_active(true)
+
+
+# Called by the popup card when a send is armed. The card leaves the viewer
+# through a table intent, so it is validated, logged and can be undone.
+func send_resource_from_popup(resource: Card) -> bool:
+	if pending_resource_send_side.is_empty() or not is_instance_valid(resource):
+		return false
+	if resource.current_host_card \
+			or not "CardPopUpSlot" in str(resource.get_parent().name):
+		return false
+	var side := pending_resource_send_side
+	var seat := int(table_actions().get_seat())
+	var slot := 1
+	var target := ""
+	var message := ""
+	match side:
+		"mao":
+			var hand = cfc.NMAP.get("hand", null)
+			if not is_instance_valid(hand):
+				show_transient_resource_message("A mão não está na mesa.", 3.0)
+				return true
+			slot = hand.get_card_count() + 1
+			target = TableStateScript.hand_address(seat, slot)
+			message = resource.canonical_name + " foi para a Mão."
+		"base":
+			var base_deck = cfc.NMAP.get("deck", null)
+			if not is_instance_valid(base_deck):
+				show_transient_resource_message("O deck não está na mesa.", 3.0)
+				return true
+			# Any slot past the first is the base: the move inserts the card
+			# before the current bottom card of the pile.
+			target = TableStateScript.deck_address(seat, 2)
+			message = resource.canonical_name + " foi para a base do Deck."
+		_:
+			var deck = cfc.NMAP.get("deck", null)
+			if not is_instance_valid(deck):
+				show_transient_resource_message("O deck não está na mesa.", 3.0)
+				return true
+			target = TableStateScript.deck_address(seat, slot)
+			message = resource.canonical_name + " foi para o topo do Deck."
+	pending_resource_send_side = ""
+	var result := apply_intent({
+		"op": "mover",
+		"to": target,
+		"card": resource,
+		"tags": ["Manual"],
+	})
+	if not bool(result.get("ok", false)):
+		report_intent(result)
+		return true
+	show_transient_resource_message(message, 3.0)
+	return true
+
+
+func _send_target(side: String) -> String:
+	match side:
+		"mao":
+			return "a Mão"
+		"base":
+			return "a base do Deck"
+	return "o topo do Deck"
+
+
 # -----------------------------------------------------------------------------
 # Materializar
 # -----------------------------------------------------------------------------
@@ -792,7 +1065,7 @@ func start_materialize() -> void:
 	_update_materialize_button()
 	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
 	show_transient_resource_message(
-			"Materializar: clique numa carta da mão.", 0)
+			"Materializar: clique 2 vezes numa carta da mão.", 0)
 
 
 func stop_materialize() -> void:
@@ -875,6 +1148,11 @@ func materialize_hand_card(card: Card) -> Dictionary:
 
 
 func _on_resource_popup_closed() -> void:
+	if not pending_resource_send_side.is_empty():
+		pending_resource_send_side = ""
+		show_resource_message("")
+		_set_board_pointer_active(true)
+		return
 	if pending_resource_swap_active:
 		if pending_resource_swap_card:
 			show_resource_message(
@@ -884,7 +1162,20 @@ func _on_resource_popup_closed() -> void:
 			show_resource_message("Troca cancelada.")
 			_set_board_pointer_active(true)
 		return
+	if pending_resource_add_active:
+		if pending_resource_add_card:
+			show_resource_message(
+					"Clique no Personagem que vai receber o Recurso.")
+		else:
+			pending_resource_add_active = false
+			show_resource_message("Adição cancelada.")
+			_set_board_pointer_active(true)
+		return
 	if not pending_resource_host or _resource_selection_completed:
+		# The send mode disables the pointer and clears its state before the
+		# card reaches the deck, so a viewer that closes after the send lands
+		# here with nothing pending: the field still has to answer the mouse.
+		_set_board_pointer_active(true)
 		return
 	var host := pending_resource_host
 	pending_resource_host = null

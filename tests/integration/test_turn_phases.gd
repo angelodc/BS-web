@@ -118,32 +118,106 @@ func _start_and_keep_both_hands() -> void:
 	await yield_for(0.1)
 
 
+func _wait_for_auto_phase(wanted: String, timeout := 5.0) -> bool:
+	var waited := 0.0
+	while waited < timeout:
+		if Multiplayer.phase == wanted \
+				and not Multiplayer.is_auto_turn_running():
+			return true
+		await get_tree().create_timer(0.05).timeout
+		waited += 0.05
+	return false
+
+
+var _logged_lines := []
+
+
+func _on_action_logged(text: String) -> void:
+	_logged_lines.append(text)
+
+
 func test_the_turn_walks_the_six_phases_and_alternates():
 	await _start_and_keep_both_hands()
 
 	var starter := Multiplayer.starting_slot
 	var other := 3 - starter
-	var expected: Array[String] = ["REG", "DRAW", "PREP", "ADJ", "ANT", "ATK"]
-	assert_eq(Multiplayer.phase, "REG", "The match opens on Contagem Regressiva")
+	# The preparation window closes on the countdown and the draw; the match
+	# pays both and stops on Preparação like any other turn opening.
+	assert_true(await _wait_for_auto_phase("PREP"),
+			"A abertura da partida chegou a Preparação")
+	assert_eq(Multiplayer.step_index, 2, "REG e DRAW passaram sozinhos")
 	assert_eq(Multiplayer.round_number, 1)
-	assert_eq(Multiplayer.my_slot, Multiplayer.get_actor_slot(),
-			"The hotseat opens on the seat that acts")
+	assert_eq(Multiplayer.phase, "PREP")
+	assert_eq(Multiplayer.get_actor_slot(), starter)
+	assert_eq(Multiplayer.my_slot, starter, "O hotseat segue quem age")
 
-	for step in range(Multiplayer.get_steps_per_round() - 1):
-		assert_true(Multiplayer.advance_phase(), "The step " + str(step) + " ran")
-		await yield_for(0.1)
-		var wanted := expected[(step + 1) % expected.size()]
-		assert_eq(Multiplayer.phase, wanted, "Phase after step " + str(step))
-		var owner := starter if (step + 1) < 6 else other
-		var wanted_actor := (3 - owner) if wanted == "ANT" else owner
-		assert_eq(Multiplayer.get_actor_slot(), wanted_actor,
-				"Actor of " + wanted)
-		assert_eq(Multiplayer.my_slot, wanted_actor,
-				"The hotseat follows the actor of " + wanted)
-
-	# The twelfth step closes the round and the counter starts again at REG.
-	assert_true(Multiplayer.advance_phase(), "The round wrapped")
+	# The Ajuste has nothing to adjust on this turn, so it passes by itself;
+	# Antecipação is the first step that needs the human again.
+	assert_true(Multiplayer.advance_phase(), "A Preparação avançou")
 	await yield_for(0.1)
-	assert_eq(Multiplayer.step_index, 0, "The round ended on the last step")
-	assert_eq(Multiplayer.round_number, 2, "Both turns make one round")
-	assert_eq(Multiplayer.phase, "REG", "The next round opens on REG")
+	assert_eq(Multiplayer.phase, "ADJ", "O Ajuste abriu")
+	assert_true(await _wait_for_auto_phase("ANT"), "O Ajuste vazio passou sozinho")
+	assert_eq(Multiplayer.step_index, 4, "O Ajuste foi pulado")
+	assert_eq(Multiplayer.get_actor_slot(), other, "Antecipação é do oponente")
+	assert_eq(Multiplayer.my_slot, other, "O hotseat segue o oponente")
+
+	assert_true(Multiplayer.advance_phase(), "A Antecipação passou")
+	await yield_for(0.1)
+	assert_eq(Multiplayer.phase, "ATK", "O primeiro turno chega a Ataque")
+	assert_eq(Multiplayer.my_slot, starter)
+
+	# Ataque closes the first turn; the other seat's countdown and draw are paid
+	# and passed on their own, and the table stops on Preparação.
+	assert_true(Multiplayer.advance_phase(), "Ataque fecha o primeiro turno")
+	assert_true(await _wait_for_auto_phase("PREP"), "A abertura automática chegou a PREP")
+	assert_eq(Multiplayer.step_index, 8, "REG e DRAW foram passados por si")
+	assert_eq(Multiplayer.phase, "PREP", "A mesa para na Preparação")
+	assert_eq(Multiplayer.round_number, 1)
+	assert_eq(Multiplayer.get_actor_slot(), other)
+	assert_eq(Multiplayer.my_slot, other, "O hotseat segue o outro assento")
+
+	# The rest of the turn walks the same way up to the round wrap.
+	assert_true(Multiplayer.advance_phase(), "A Preparação do outro assento passou")
+	await yield_for(0.1)
+	assert_true(await _wait_for_auto_phase("ANT"), "O Ajuste vazio passou sozinho")
+	assert_eq(Multiplayer.get_actor_slot(), starter, "Antecipação é do oponente")
+	assert_true(Multiplayer.advance_phase(), "A Antecipação passou")
+	await yield_for(0.1)
+	assert_eq(Multiplayer.phase, "ATK", "O segundo turno chega a Ataque")
+
+	# The twelfth step closes the round; the next round opens with the same
+	# automatic countdown and draw.
+	assert_true(Multiplayer.advance_phase(), "A rodada virou")
+	assert_true(await _wait_for_auto_phase("PREP"), "A rodada nova chegou a PREP")
+	assert_eq(Multiplayer.step_index, 2, "REG e DRAW foram passados")
+	assert_eq(Multiplayer.round_number, 2, "Os dois turnos fazem uma rodada")
+	assert_eq(Multiplayer.phase, "PREP", "A rodada nova para na Preparação")
+	assert_eq(Multiplayer.get_actor_slot(), starter,
+			"O iniciante abre a rodada nova")
+
+
+func test_the_automatic_opening_logs_both_phases_in_one_line():
+	_logged_lines = []
+	Multiplayer.action_logged.connect(_on_action_logged)
+	await _start_and_keep_both_hands()
+	assert_true(await _wait_for_auto_phase("PREP"),
+			"A abertura da partida chegou a Preparação")
+	# The first turn of the match draws nothing, so only the countdown moves a
+	# card — and the two phases still share one line.
+	assert_true(_logged_lines.has(
+			"Contagem Regressiva e Compra: 1 carta para os Recursos + 0 compras."),
+			"A abertura da partida é uma linha só")
+
+	# The next opening pays the draw of a seat without characters in play.
+	_logged_lines = []
+	assert_true(Multiplayer.advance_phase(), "A Preparação passou")
+	await yield_for(0.1)
+	assert_true(await _wait_for_auto_phase("ANT"), "O Ajuste vazio passou")
+	assert_true(Multiplayer.advance_phase(), "A Antecipação passou")
+	await yield_for(0.1)
+	assert_true(Multiplayer.advance_phase(), "Ataque fecha o primeiro turno")
+	assert_true(await _wait_for_auto_phase("PREP"), "A segunda abertura chegou a PREP")
+	Multiplayer.action_logged.disconnect(_on_action_logged)
+	assert_true(_logged_lines.has(
+			"Contagem Regressiva e Compra: 1 carta para os Recursos + 1 compra."),
+			"A abertura é uma linha com as duas contagens")

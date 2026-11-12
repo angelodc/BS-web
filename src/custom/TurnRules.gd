@@ -176,5 +176,8 @@ static func operations_for_phase(phase: String, state: Dictionary) -> Array:
 			if draws > 0:
 				return [{"op": "draw", "count": draws}]
 		PHASE_ADJ:
-			return adjustment_operations(state.get("characters", []))
+			# The adjustment is not automatic: the seat that owns the cards has to
+			# remove the excess itself while the gate is open. The authority only
+			# needs to wait, so the phase has nothing to play here.
+			return []
 	return []

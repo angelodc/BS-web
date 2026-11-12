@@ -21,6 +21,7 @@ signal display_changed()
 signal lobby_ready()
 signal mulligan_changed()
 signal prep_game_changed()
+signal adjustment_changed()
 
 const CheckpointStore = preload("res://src/custom/CheckpointStore.gd")
 
@@ -68,8 +69,13 @@ const VALID_ZONES := [
 	"board", "scenario", "hand", "deck", "resources", "prizes",
 ]
 # Phases whose first step the game plays by itself when they open
-# (AUTOTURNO.md §3.4): the countdown, the draw and the energy adjustment.
-const EFFECT_PHASES := ["REG", "DRAW", "ADJ"]
+# (AUTOTURNO.md §3.4): the countdown and the draw. The adjustment is manual: it
+# opens a gate that waits for the owner to remove the excess energy.
+const EFFECT_PHASES := ["REG", "DRAW"]
+# A turn that opens on the countdown pays both automatic phases and moves on by
+# itself. The pause lets the cards land and the log show each phase before the
+# table stops on Preparação.
+const AUTO_TURN_SECONDS := 1.0
 
 var state = State.IDLE
 var mode = Mode.NONE
@@ -108,6 +114,18 @@ var _prep_game_open := false
 var _prep_game_local_choice := false
 ## Slots that clicked "Pronto".
 var _prep_game_accepts := {}
+## The adjustment gate: open during the Ajuste phase while the seat on the table
+## carries more energy than its characters accept. The player removes the excess
+## by hand and the gate closes on its own; until then the phase cannot advance.
+var _adjustment_open := false
+var _adjustment_operations := []
+## The automatic opening of a turn: after an Ataque the next seat's countdown and
+## draw are played and passed without a click. Only the seat that owns the cards
+## runs this part, so the flags live on whichever client is holding them.
+var _auto_turn_active := false
+var _auto_advance_pending := false
+var _auto_turn_resources := 0
+var _auto_turn_draws := 0
 ## Steps whose automatic effect this client already played, keyed by
 ## "round:step". A seat swap can open a phase for the seat that was not on the
 ## table, so the marker is what keeps a draw from happening twice.
@@ -480,7 +498,11 @@ func request_start() -> bool:
 func advance_phase() -> bool:
 	if state != State.PLAYING:
 		return false
-	if _mulligan_open or _prep_game_open:
+	# The automatic opening is already on its way to the next phase; a click in
+	# the middle of it would skip Preparação.
+	if _auto_advance_pending:
+		return false
+	if _mulligan_open or _prep_game_open or _adjustment_open:
 		return false
 	if mode != Mode.SOLO and get_actor_slot() != my_slot:
 		return false
@@ -810,6 +832,8 @@ func _on_network_message(data: Dictionary) -> void:
 			_on_mp_mulligan_accept(data)
 		"mp_prep_game_ready":
 			_on_mp_prep_game_ready(data)
+		"mp_log":
+			_on_mp_log(data)
 		"mp_state":
 			_on_mp_state(data)
 		"mp_private":
@@ -1273,7 +1297,7 @@ func manual_mulligan_local() -> bool:
 	hand.re_place()
 	hand.call_deferred("re_place")
 	resources.reorganize_stack()
-	_log("Mulligan manual " + str(repetition) + ": " + str(cost)
+	_log_shared("Mulligan manual " + str(repetition) + ": " + str(cost)
 			+ " carta(s) para Recursos/Descarte, comprou " + str(draw) + ".")
 	emit_signal("display_changed")
 	emit_signal("mulligan_changed")
@@ -1290,7 +1314,7 @@ func accept_local_hand() -> bool:
 	if not _mulligan_open or _mulligan_local_choice:
 		return false
 	_mulligan_local_choice = true
-	_log(get_my_username() + " ficou com a mão de "
+	_log_shared(get_my_username() + " ficou com a mão de "
 			+ str(_hand_size_of(my_slot)) + " cartas.")
 	if is_authority():
 		_record_mulligan_accept(my_slot)
@@ -1319,7 +1343,7 @@ func _record_mulligan_accept(slot: int) -> void:
 	_mulligan_accepts[str(slot)] = true
 	if _mulligan_accepts.has("1") and _mulligan_accepts.has("2"):
 		_mulligan_open = false
-		_log("Os dois jogadores ficaram com a mão. A partida vai começar.")
+		_log_shared("Os dois jogadores ficaram com a mão. A partida vai começar.")
 		# The match opens on Contagem Regressiva, but the preparation window comes
 		# first: the owed step is paid when that one closes (decision 11a).
 		_open_prep_game_window()
@@ -1359,7 +1383,7 @@ func _open_prep_game_window() -> void:
 	_prep_game_open = true
 	_prep_game_local_choice = false
 	_prep_game_accepts = {}
-	_log("Preparação: descartem quantas cartas quiserem e cliquem em Pronto.")
+	_log_shared("Preparação: descartem quantas cartas quiserem e cliquem em Pronto.")
 
 
 ## The seat has nothing left to throw away. The first turn only opens after both
@@ -1368,7 +1392,7 @@ func ready_local_prep_game() -> bool:
 	if not _prep_game_open or _prep_game_local_choice:
 		return false
 	_prep_game_local_choice = true
-	_log(get_my_username() + " terminou a preparação com "
+	_log_shared(get_my_username() + " terminou a preparação com "
 			+ str(_hand_size_of(my_slot)) + " carta(s) na mão.")
 	if is_authority():
 		_record_prep_game_ready(my_slot)
@@ -1387,12 +1411,18 @@ func _record_prep_game_ready(slot: int) -> void:
 		emit_signal("prep_game_changed")
 		return
 	_prep_game_open = false
-	_log("Os dois jogadores terminaram a preparação.")
+	_log_shared("Os dois jogadores terminaram a preparação.")
 	# Contagem Regressiva is the step the match opens on, and it is the one this
 	# window was standing in front of (decision 11a). The hotseat gives the table
 	# to whoever opens the turn before paying it, so the step uses that seat's deck.
 	_follow_turn_in_solo()
+	# The opening of the match pays the countdown and the draw on its own, like
+	# every other turn: the table stops on Preparação.
+	_update_auto_turn()
 	run_phase_effects()
+	# The skip of an empty Ajuste is a decision of the table: it is armed before
+	# the state is announced so the advance button never shows for that step.
+	_schedule_auto_advance()
 	_broadcast_public_state(false)
 	emit_signal("prep_game_changed")
 
@@ -1403,6 +1433,49 @@ func _on_mp_prep_game_ready(data: Dictionary) -> void:
 	if str(data.get("game_id", game_id)) != game_id:
 		return
 	_record_prep_game_ready(opponent_slot)
+
+
+# --- Ajuste de Energia (AUTOTURNO.md §3.4) -------------------------------
+
+## True while the seat on the table still has to take energy off a character.
+func is_adjustment_open() -> bool:
+	return _adjustment_open
+
+
+## What the HUD needs to draw the adjustment panel.
+func get_adjustment_info() -> Dictionary:
+	var lines := PackedStringArray()
+	for operation in _adjustment_operations:
+		var count := int(operation.get("count", 0))
+		lines.append("Retire " + str(count) + " carta"
+				+ ("" if count == 1 else "s") + " de "
+				+ str(operation.get("target", "")) + ".")
+	return {
+		"pending": _adjustment_open,
+		"operations": _adjustment_operations.duplicate(true),
+		"text": "\n".join(lines),
+	}
+
+
+## Recomputes the gate from the real cards of the seat on the table. It opens
+## only on the Ajuste step, for the seat that owns the cards, and closes as
+## soon as every character is back to its Energia Inicial — which is what
+## releases the advance button again.
+func refresh_adjustment() -> bool:
+	var operations: Array = []
+	var should_open := false
+	if state == State.PLAYING and phase == TurnRules.PHASE_ADJ \
+			and not _mulligan_open and not _prep_game_open \
+			and my_slot > 0 and get_actor_slot() == my_slot:
+		operations = TurnRules.adjustment_operations(
+				_turn_facts().get("characters", []))
+		should_open = not operations.is_empty()
+	var changed := should_open != _adjustment_open
+	_adjustment_open = should_open
+	_adjustment_operations = operations
+	if changed:
+		emit_signal("adjustment_changed")
+	return _adjustment_open
 
 
 #-----------------------------------------------------------------------------
@@ -1431,10 +1504,17 @@ func _phase_effect_key() -> String:
 
 ## Plays the automatic step of the open phase. Called by everything that can
 ## open a phase for the local seat: a step, a seat swap or the mulligan gate.
+## The Ajuste step has no automatic move; this is where its gate is recomputed.
 func run_phase_effects() -> bool:
 	if not has_pending_phase_effect():
+		refresh_adjustment()
 		return false
 	_effects_applied[_phase_effect_key()] = true
+	# The automatic opening is summarized in one shared line, so the cards it
+	# moves stay out of the event log instead of filling it with one line each.
+	var keep_suppressed := GameEvents.suppressed
+	if _auto_turn_active:
+		GameEvents.suppressed = true
 	var facts := _turn_facts()
 	facts["is_first_turn"] = is_first_turn_of_match()
 	var operations: Array = TurnRules.operations_for_phase(phase, facts)
@@ -1444,8 +1524,103 @@ func run_phase_effects() -> bool:
 		# follow it belong to a turn that is not being played anymore.
 		if state != State.PLAYING:
 			break
-		applied += _apply_turn_operation(operation, facts)
+		applied += _apply_turn_operation(operation)
+	GameEvents.suppressed = keep_suppressed
+	refresh_adjustment()
 	return applied > 0
+
+
+# The countdown and the draw are the only phases with nothing for the seat to
+# decide, so the table pays them and moves on — including the one the match
+# opens on, right after the preparation window closes.
+func _is_auto_turn_opening() -> bool:
+	return phase == TurnRules.PHASE_REG
+
+
+# Marks the automatic opening for the seat that owns the cards. The other client
+# leaves the flags off and only mirrors: it has no Card nodes to move for a
+# turn that is not its own.
+func _update_auto_turn() -> void:
+	if _is_auto_turn_opening() \
+			and (mode == Mode.SOLO or get_actor_slot() == my_slot):
+		if not _auto_turn_active:
+			_auto_turn_active = true
+			_auto_turn_resources = 0
+			_auto_turn_draws = 0
+	elif not phase in EFFECT_PHASES:
+		_auto_turn_active = false
+		_auto_advance_pending = false
+
+
+## True while the table is paying or skipping a step on its own; the HUD hides
+## the advance button for that stretch.
+func is_auto_turn_running() -> bool:
+	if _auto_advance_pending:
+		return true
+	return _auto_turn_active and phase in EFFECT_PHASES
+
+
+## True while the open step is one of the automatic phases of a turn opening.
+## The sync reads it to leave the mirrored cards of that opening out of the log.
+func is_auto_turn_step() -> bool:
+	return _is_auto_state({"round": round_number, "step": step_index})
+
+
+# A public state that opens a turn on the automatic phases. Both clients can
+# tell it from the step alone, which is what keeps the mirrored moves of that
+# opening out of the opponent's log too.
+func _is_auto_state(public_state: Dictionary) -> bool:
+	return phase_for_step(int(public_state.get("step", -1))) in EFFECT_PHASES
+
+
+# The opening pays itself and moves on. The Ajuste has nothing automatic to play
+# either, so it is skipped the same way — but only while every character is back
+# to its Energia Inicial: with the gate open the seat has a decision to make and
+# the table waits for it.
+func _can_auto_advance() -> bool:
+	if state != State.PLAYING:
+		return false
+	if _mulligan_open or _prep_game_open or _adjustment_open:
+		return false
+	if mode != Mode.SOLO and get_actor_slot() != my_slot:
+		return false
+	if phase in EFFECT_PHASES:
+		return _auto_turn_active and _effects_applied.has(_phase_effect_key())
+	return phase == TurnRules.PHASE_ADJ
+
+
+# Pays the rest of the automatic opening and moves the table to Preparação. Each
+# client schedules its own turn because only the seat holding the cards can move
+# them; the guest asks the authority for the step like any other advance.
+func _schedule_auto_advance() -> void:
+	if _auto_advance_pending or not _can_auto_advance():
+		return
+	var key := _phase_effect_key()
+	_auto_advance_pending = true
+	await get_tree().create_timer(AUTO_TURN_SECONDS).timeout
+	_auto_advance_pending = false
+	# A phase that changed in the meantime is not the one this timer was for.
+	if _phase_effect_key() != key or not _can_auto_advance():
+		return
+	if phase == TurnRules.PHASE_DRAW:
+		_log_auto_turn()
+	advance_phase()
+
+
+# One line summarizes the two automatic phases, so the top of every turn does not
+# cost one log line per card moved. It is shared: both seats read the same story.
+func _log_auto_turn() -> void:
+	if not _auto_turn_active:
+		return
+	_auto_turn_active = false
+	var resources := _auto_turn_resources
+	var draws := _auto_turn_draws
+	_auto_turn_resources = 0
+	_auto_turn_draws = 0
+	_log_shared("Contagem Regressiva e Compra: " + str(resources)
+			+ (" carta" if resources == 1 else " cartas")
+			+ " para os Recursos + " + str(draws)
+			+ (" compra" if draws == 1 else " compras") + ".")
 
 
 func _turn_facts() -> Dictionary:
@@ -1461,47 +1636,25 @@ func _turn_facts() -> Dictionary:
 
 # Every automatic move runs through the intent runner, so it is validated,
 # logged and mirrored exactly like the same move made by hand.
-func _apply_turn_operation(operation: Dictionary, facts: Dictionary) -> int:
+func _apply_turn_operation(operation: Dictionary) -> int:
 	var count := int(operation.get("count", 0))
 	match str(operation.get("op", "")):
 		"top_to_resources":
 			if count > 0 and _apply_intent({
 					"op": "mandar_topo_para_recursos", "quantity": count}):
-				_log("Contagem Regressiva: " + str(count)
-						+ " carta(s) do topo do deck viraram Recursos.")
+				if _auto_turn_active:
+					_auto_turn_resources += count
+				else:
+					_log("Contagem Regressiva: " + str(count)
+							+ " carta(s) do topo do deck viraram Recursos.")
 				return 1
 		"draw":
 			if count > 0 and _apply_intent({"op": "comprar", "quantity": count}):
-				_log("Compra: " + str(count) + " carta(s) comprada(s).")
+				if _auto_turn_active:
+					_auto_turn_draws += count
+				else:
+					_log("Compra: " + str(count) + " carta(s) comprada(s).")
 				return 1
-		"unload":
-			return _unload_excess(str(operation.get("target", "")), count, facts)
-	return 0
-
-
-# Ajuste de Energia: what sits above the printed Energia Inicial goes back to
-# the pool, last attached first — the order the damage recovery already uses.
-func _unload_excess(target: String, count: int, facts: Dictionary) -> int:
-	if count <= 0:
-		return 0
-	for entry in facts.get("characters", []):
-		if str(entry.get("name", "")) != target:
-			continue
-		var dropped := 0
-		var attachments: Array = entry.get("attachments", [])
-		for index in range(attachments.size() - 1, -1, -1):
-			if dropped >= count:
-				break
-			var attachment = attachments[index]
-			if not is_instance_valid(attachment):
-				continue
-			if not _apply_intent({"op": "descartar", "card": attachment}):
-				break
-			dropped += 1
-		if dropped > 0:
-			_log("Ajuste: " + target + " descarregou " + str(dropped)
-					+ " energia(s) acima da Energia Inicial.")
-		return dropped
 	return 0
 
 
@@ -1815,12 +1968,16 @@ func _advance_as_authority() -> void:
 		# to remember the current turn so it does not grow with the match.
 		_effects_applied = {}
 	phase = phase_for_step(step_index)
+	_update_auto_turn()
 	# The step that just opened belongs to the other seat in the hotseat, so the
 	# table goes with it instead of waiting for a manual "Controlar P2"; the swap
 	# also pays that seat's automatic step with its own cards, before the state is
 	# published.
 	_follow_turn_in_solo()
 	run_phase_effects()
+	# Armed before the announcement so the HUD never offers a button for a step
+	# the table is already passing by itself.
+	_schedule_auto_advance()
 	_broadcast_public_state()
 
 
@@ -1868,7 +2025,12 @@ func _on_mp_state(data: Dictionary) -> void:
 	round_number = int(public_state.get("round", round_number))
 	step_index = int(public_state.get("step", step_index))
 	starting_slot = int(public_state.get("starting_slot", starting_slot))
+	_update_auto_turn()
+	var keep_suppressed := GameEvents.suppressed
+	if _is_auto_state(public_state):
+		GameEvents.suppressed = true
 	_absorb_turn_state(public_state)
+	GameEvents.suppressed = keep_suppressed
 	var new_rolls = public_state.get("rolls", rolls)
 	if typeof(new_rolls) == TYPE_ARRAY:
 		rolls = [int(new_rolls[0]), int(new_rolls[1])] if new_rolls.size() == 2 else rolls
@@ -1878,6 +2040,7 @@ func _on_mp_state(data: Dictionary) -> void:
 	# for the checkpoint.
 	run_phase_effects()
 	_send_private_envelope(sequence)
+	_schedule_auto_advance()
 	emit_signal("phase_changed")
 	emit_signal("mulligan_changed")
 	emit_signal("prep_game_changed")
@@ -2062,16 +2225,44 @@ func _on_mp_private(data: Dictionary) -> void:
 	var envelope := str(data.get("envelope", ""))
 	if seq < 0 or envelope.is_empty():
 		return
-	var payload := CheckpointStore.unprotect_payload(
-			envelope, Rede.opponent_username)
-	if payload.is_empty():
+	# The envelope is sealed with the sender's `Rede.player_username`. The name
+	# this client knows for the opponent can differ in case or come from the
+	# participant list on a resumed match, so every known name is tried before
+	# declaring the payload unreadable. Our own names never open it.
+	var opener := ""
+	for key in _opponent_envelope_keys(data):
+		if not CheckpointStore.unprotect_payload(envelope, key).is_empty():
+			opener = key
+			break
+	if opener.is_empty():
 		_log("Dados privados do oponente não puderam ser verificados.")
 		return
 	if not _private_envelopes.has(seq):
 		_private_envelopes[seq] = {}
-	_private_envelopes[seq][Rede.opponent_username] = envelope
+	# The checkpoint is looked up by seat name, so the envelope is filed under
+	# every name that may stand for the opponent, plus the one that opened it.
+	for key in [opener, Rede.opponent_username, get_slot_username(opponent_slot)]:
+		var name := str(key)
+		if not name.is_empty():
+			_private_envelopes[seq][name] = envelope
 	_prune_private_envelopes()
 	_try_save_checkpoint(seq)
+
+
+# Candidate usernames for opening the opponent's envelope: the one the relay
+# attached to the message, the room's opponent name and both seats, minus our
+# own names.
+func _opponent_envelope_keys(data: Dictionary) -> Array:
+	var own := [Rede.player_username, get_my_username()]
+	var keys := []
+	for candidate in [str(data.get("username", "")),
+			Rede.opponent_username, get_opponent_username(),
+			p1_username, p2_username]:
+		var key := str(candidate)
+		if key.is_empty() or own.has(key) or keys.has(key):
+			continue
+		keys.append(key)
+	return keys
 
 
 func _prune_private_envelopes() -> void:
@@ -2837,6 +3028,12 @@ func _clear_session_fields() -> void:
 	_prep_game_open = false
 	_prep_game_local_choice = false
 	_prep_game_accepts = {}
+	_adjustment_open = false
+	_adjustment_operations = []
+	_auto_turn_active = false
+	_auto_advance_pending = false
+	_auto_turn_resources = 0
+	_auto_turn_draws = 0
 	_effects_applied = {}
 	waiting_message = ""
 	ended_message = ""
@@ -2929,3 +3126,21 @@ func _aspect_ratio(display: Dictionary) -> float:
 
 func _log(message: String) -> void:
 	emit_signal("action_logged", message)
+
+
+# A decision line belongs to both logs: the table must not tell two stories
+# about the mulligan and the preparation, which each seat sees in its own HUD.
+func _log_shared(message: String) -> void:
+	_log(message)
+	if is_solo():
+		return
+	Rede.send_message({"t": "mp_log", "game_id": game_id, "text": message})
+
+
+func _on_mp_log(data: Dictionary) -> void:
+	if str(data.get("game_id", game_id)) != game_id:
+		return
+	var text := str(data.get("text", ""))
+	if text.is_empty():
+		return
+	_log(text)

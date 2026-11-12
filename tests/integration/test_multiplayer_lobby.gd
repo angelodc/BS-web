@@ -97,6 +97,119 @@ func test_private_envelopes_are_pruned():
 	Multiplayer._private_envelopes = previous
 
 
+func _snapshot_private_context() -> Dictionary:
+	return {
+		"mode": Multiplayer.mode,
+		"my_slot": Multiplayer.my_slot,
+		"opponent_slot": Multiplayer.opponent_slot,
+		"p1": Multiplayer.p1_username,
+		"p2": Multiplayer.p2_username,
+		"player": Rede.player_username,
+		"opponent": Rede.opponent_username,
+		"envelopes": Multiplayer._private_envelopes,
+	}
+
+
+func _restore_private_context(saved: Dictionary) -> void:
+	Multiplayer.mode = saved["mode"]
+	Multiplayer.my_slot = saved["my_slot"]
+	Multiplayer.opponent_slot = saved["opponent_slot"]
+	Multiplayer.p1_username = saved["p1"]
+	Multiplayer.p2_username = saved["p2"]
+	Rede.player_username = saved["player"]
+	Rede.opponent_username = saved["opponent"]
+	Multiplayer._private_envelopes = saved["envelopes"]
+
+
+# The envelope is sealed with the sender's own username, which this client may
+# know by a different spelling (case, or the participant list of a resumed
+# match). Any known name for the opponent opens it.
+func test_opponent_envelope_opens_with_a_known_username_variant():
+	var saved := _snapshot_private_context()
+	Multiplayer.mode = Multiplayer.Mode.MATCH
+	Multiplayer.my_slot = 1
+	Multiplayer.opponent_slot = 2
+	Multiplayer.p1_username = "Bob"
+	Multiplayer.p2_username = "Alice"
+	Rede.player_username = "Bob"
+	Rede.opponent_username = "Alice"
+	Multiplayer._private_envelopes = {}
+	watch_signals(Multiplayer)
+
+	var seq := 987650
+	var envelope := CheckpointStore.protect_payload({
+		"hand": [],
+		"deck": [],
+	}, "alice")
+	Multiplayer._on_mp_private({
+		"game_id": Multiplayer.game_id,
+		"sequence": seq,
+		"envelope": envelope,
+		"username": "alice",
+	})
+
+	assert_signal_not_emitted(Multiplayer, "action_logged")
+	assert_true(Multiplayer._private_envelopes.has(seq))
+	var filed: Dictionary = Multiplayer._private_envelopes[seq]
+	assert_eq(str(filed.get("Alice", "")), envelope,
+			"The envelope is filed under the seat name the checkpoint looks up")
+	assert_false(filed.has("Bob"), "Our own seat never holds the opponent envelope")
+	_restore_private_context(saved)
+
+
+func test_unknown_envelope_sender_is_still_reported():
+	var saved := _snapshot_private_context()
+	Multiplayer.mode = Multiplayer.Mode.MATCH
+	Multiplayer.my_slot = 1
+	Multiplayer.opponent_slot = 2
+	Multiplayer.p1_username = "Bob"
+	Multiplayer.p2_username = "Alice"
+	Rede.player_username = "Bob"
+	Rede.opponent_username = "Alice"
+	Multiplayer._private_envelopes = {}
+	watch_signals(Multiplayer)
+
+	var seq := 987651
+	# The relay says Alice sent it, but no known spelling of Alice opens the
+	# envelope, so the payload is corrupt.
+	Multiplayer._on_mp_private({
+		"game_id": Multiplayer.game_id,
+		"sequence": seq,
+		"envelope": CheckpointStore.protect_payload({
+			"hand": [],
+			"deck": [],
+		}, "Charlie"),
+		"username": "Alice",
+	})
+
+	assert_signal_emitted_with_parameters(Multiplayer, "action_logged",
+			["Dados privados do oponente não puderam ser verificados."])
+	assert_false(Multiplayer._private_envelopes.has(seq))
+	_restore_private_context(saved)
+
+
+# The mulligan and preparation decisions are made by one seat but shown in both
+# HUD logs, and each client writes its own copy exactly once.
+func test_shared_decision_lines_reach_both_logs():
+	watch_signals(Multiplayer)
+	Multiplayer._log_shared(
+			"Preparação: descartem quantas cartas quiserem e cliquem em Pronto.")
+	assert_eq(get_signal_emit_count(Multiplayer, "action_logged"), 1,
+			"The line is written once, not once locally and once from the relay")
+
+	Multiplayer._on_mp_log({
+		"game_id": Multiplayer.game_id,
+		"text": "Alice terminou a preparação com 10 carta(s) na mão.",
+	})
+	assert_eq(get_signal_emit_count(Multiplayer, "action_logged"), 2)
+	assert_signal_emitted_with_parameters(Multiplayer, "action_logged",
+			["Alice terminou a preparação com 10 carta(s) na mão."])
+
+	Multiplayer._on_mp_log({"game_id": "outro_jogo", "text": "não deve aparecer"})
+	assert_eq(get_signal_emit_count(Multiplayer, "action_logged"), 2,
+			"A line from another match never lands in this log")
+
+
 func test_unreadable_checkpoint_stays_joinable():
 	CheckpointStore.ensure_root()
 	var game_id := "gtest_corrupt_" + str(Time.get_ticks_usec())
@@ -317,6 +430,81 @@ func test_match_hud_exposes_preparation_controls():
 	assert_true(hud.has_node("PreparePanel/Margin/VBox/StartButton"))
 	assert_true(hud.has_node("Overlay/Center/VBox/Buttons/ReconnectButton"))
 	hud.free()
+
+
+# The gate dialogs read 20% larger and sit on the exact center of the screen.
+# The growth is taken around the center of the box, so the dialog does not
+# drift when its text changes the size.
+func test_gate_dialogs_are_centered_and_enlarged():
+	var hud: Control = add_child_autofree(
+			load("res://src/custom/MatchHUD.tscn").instantiate())
+	await yield_for(0.1)
+	hud.size = Vector2(1280, 720)
+	var panel: Control = hud.get_node("MulliganPanel")
+	panel.visible = true
+
+	hud._place_gate_panel(panel)
+	assert_gate_panel_centered(hud, panel)
+
+	# A different box must stay centered too: the position is recomputed, not
+	# set once for the authored size.
+	panel.size = panel.size + Vector2(80, 40)
+	hud._place_gate_panel(panel)
+	assert_gate_panel_centered(hud, panel)
+	panel.visible = false
+
+
+func test_adjustment_gate_does_not_swallow_the_board_clicks():
+	var hud: Control = add_child_autofree(
+			load("res://src/custom/MatchHUD.tscn").instantiate())
+	var panel: Control = hud.get_node("AdjustmentPanel")
+	assert_eq(panel.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			"The adjustment message lets the player touch the characters")
+	assert_eq(panel.get_node("Margin").mouse_filter,
+			Control.MOUSE_FILTER_IGNORE,
+			"The margin lets the click through as well")
+	assert_eq(panel.get_node("Margin/VBox").mouse_filter,
+			Control.MOUSE_FILTER_IGNORE,
+			"The text box lets the click through as well")
+
+
+# A gate opens before the hidden panel was ever laid out. The info label must
+# still be measured at the dialog width: at 1px autowrap stacks one letter per
+# line and the dialog covers the whole table.
+func test_gate_panels_keep_their_height_when_opened_before_layout():
+	var hud: Control = add_child_autofree(
+			load("res://src/custom/MatchHUD.tscn").instantiate())
+	var gates := [
+		["MulliganPanel", "Mão 10 · Recursos 0 · Mulligan 0/2\n"
+				+ "2 cartas vão para os Recursos e você compra 8."],
+		["PrepGamePanel", "Mão 7 · Recursos 0\n"
+				+ "Descarte quantas cartas quiser para os Recursos e clique "
+				+ "em Pronto."],
+		["AdjustmentPanel", "Retire 1 carta de Personagem.\n"
+				+ "A fase libera quando o excesso sair."],
+	]
+	for gate in gates:
+		var panel: Control = hud.get_node(gate[0])
+		var info: Label = panel.get_node("Margin/VBox/Info")
+		panel.visible = true
+		info.text = gate[1]
+		hud._place_gate_panel(panel)
+	await yield_for(0.3)
+	for gate in gates:
+		var panel: Control = hud.get_node(gate[0])
+		var info: Label = panel.get_node("Margin/VBox/Info")
+		assert_lt(panel.size.y, 220.0,
+				"The dialog keeps its authored height")
+		assert_gt(info.size.x, 400.0,
+				"The info label spans the dialog width")
+
+
+func assert_gate_panel_centered(hud: Control, panel: Control) -> void:
+	assert_eq(panel.scale, Vector2(1.2, 1.2), "The dialog reads 20% larger")
+	assert_true(panel.pivot_offset.is_equal_approx(panel.size * 0.5),
+			"The growth is taken around the center of the box")
+	assert_true(panel.position.is_equal_approx(
+			(hud.size - panel.size) * 0.5), "The dialog sits on the screen center")
 
 
 func test_match_hud_link_dialog_starts_hidden():

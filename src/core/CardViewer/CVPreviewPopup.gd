@@ -4,6 +4,12 @@ class_name CVPreviewPopup
 extends Control
 
 signal placement_initialized
+
+# The preview is kept inside the host window so it is never cropped. The top
+# margin keeps it clear of the embedded window title bar.
+const PLACEMENT_MARGIN := 12.0
+const PLACEMENT_TOP_MARGIN := 34.0
+
 # The card currently being shown in a popup.
 var preview_card: Card
 var _tween_wait := 0
@@ -16,7 +22,8 @@ var _visible = true
 func _ready() -> void:
 	# The preview is placed in viewport coordinates so it follows the cursor
 	# instead of inheriting the grid cell that owns it. Inside a Window (the
-	# card selection dialog) those coordinates are the window's own.
+	# card selection dialog) those coordinates are the window's own, so the
+	# placement below is clamped to that window's visible rect.
 	top_level = true
 	# warning-ignore:return_value_discarded
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -62,41 +69,63 @@ func _set_placement() -> void:
 	
 # Figures out where to place the card preview in respect to the player's mouse.
 func get_preview_placement() -> Vector2:
-	# warning-ignore:unassigned_variable
-	var ret : Vector2
-	var focus_panel_offset = 0
-	var card_size : Vector2 = preview_card.canonical_size * preview_card.preview_scale * cfc.curr_scale
+	if not is_instance_valid(preview_card):
+		return position
+	var screen := get_viewport().get_visible_rect().size
+	var card_size := _preview_card_size()
+	# A narrow dialog has no room for the info panels beside the card; showing
+	# the card alone keeps both from being cropped by the window.
+	if focus_info.visible\
+			and card_size.x + focus_info.size.x > screen.x - 2.0 * PLACEMENT_MARGIN:
+		focus_info.visible = false
+	var panel_size: Vector2 = focus_info.size if focus_info.visible else Vector2.ZERO
 	# A Viewport has no get_global_mouse_position(); the CanvasItem helper keeps
 	# working both in the game viewport and in the selection dialog's window.
-	var mouse := get_global_mouse_position()
-	# If the card width is to small, we will place the info panels instead to the left of the card preview
-	if focus_info.visible:
-		focus_panel_offset = focus_info.size.x
-	if mouse.x\
-			+ card_size.x\
-			+ 20\
-			+ focus_panel_offset\
-			> get_viewport().get_visible_rect().size.x:
-		ret.x = mouse.x - card_size.x - 20 - focus_panel_offset
-	else:
-		ret.x = mouse.x + 20
-	var card_offscreen_y = mouse.y\
-			+ card_size.y
-	var focus_offscreen_y = mouse.y + focus_info.size.y
-	if card_offscreen_y > focus_offscreen_y\
-			and is_instance_valid(preview_card)\
-			and card_offscreen_y > get_viewport().get_visible_rect().size.y:
-		ret.y = get_viewport().get_visible_rect().size.y\
-				- card_size.y\
-				+ 30
-	elif card_offscreen_y < focus_offscreen_y\
-			and focus_offscreen_y > get_viewport().get_visible_rect().size.y:
-		ret.y = get_viewport().get_visible_rect().size.y\
-				- focus_info.size.y + 30
-	else:
-		ret.y = mouse.y + 30
-#	print_debug(ret)
-	return(ret)
+	return compute_preview_position(
+			get_global_mouse_position(), screen, card_size, panel_size)
+
+
+# Places the card and its panels around the mouse, then clamps the whole block
+# into the host window. Inside a Window (the card selection dialog) anything
+# past the window edge would be clipped, so the preview has to stay inside it.
+static func compute_preview_position(
+		mouse: Vector2, screen: Vector2, card_size: Vector2,
+		panel_size: Vector2) -> Vector2:
+	var total := Vector2(
+			card_size.x + panel_size.x,
+			max(card_size.y, panel_size.y))
+	var max_x: float = max(PLACEMENT_MARGIN, screen.x - PLACEMENT_MARGIN - total.x)
+	var max_y: float = max(PLACEMENT_TOP_MARGIN, screen.y - PLACEMENT_MARGIN - total.y)
+	var ret := Vector2(mouse.x + 20.0, mouse.y + 30.0)
+	# The card moves to the other side of the cursor only when it would not fit
+	# on the preferred side.
+	if ret.x + total.x > screen.x - PLACEMENT_MARGIN:
+		ret.x = mouse.x - 20.0 - total.x
+	if ret.y + total.y > screen.y - PLACEMENT_MARGIN:
+		ret.y = screen.y - PLACEMENT_MARGIN - total.y
+	ret.x = clamp(ret.x, PLACEMENT_MARGIN, max_x)
+	ret.y = clamp(ret.y, PLACEMENT_TOP_MARGIN, max_y)
+	return ret
+
+
+# In a small dialog even the card alone would be cropped, so the preview scale
+# is reduced just enough to fit the host window.
+static func fit_preview_scale(
+		requested: float, screen: Vector2, canonical_size: Vector2,
+		curr_scale := 1.0) -> float:
+	if requested <= 0.0 or canonical_size.x <= 0.0 or canonical_size.y <= 0.0:
+		return requested
+	var available := Vector2(
+			screen.x - 2.0 * PLACEMENT_MARGIN,
+			screen.y - PLACEMENT_TOP_MARGIN - PLACEMENT_MARGIN)
+	var fit: float = min(
+			available.x / (canonical_size.x * curr_scale),
+			available.y / (canonical_size.y * curr_scale))
+	return min(requested, fit)
+
+
+func _preview_card_size() -> Vector2:
+	return preview_card.canonical_size * preview_card.preview_scale * cfc.curr_scale
 
 
 # Instances a card object. Populates it with the card details
@@ -112,6 +141,11 @@ func show_preview_card(card) -> void:
 			preview_card.position = Vector2(0,0)
 			preview_card.scale = Vector2(1,1)
 		add_child(preview_card)
+		preview_card.preview_scale = fit_preview_scale(
+				preview_card.preview_scale,
+				get_viewport().get_visible_rect().size,
+				preview_card.canonical_size,
+				cfc.curr_scale)
 		# It's necessary we do this here because if we only we it during
 		# the process, the card will appear to teleport
 		if CFConst.VIEWPORT_FOCUS_ZOOM_TYPE == "resize":

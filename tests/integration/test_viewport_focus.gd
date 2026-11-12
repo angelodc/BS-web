@@ -146,16 +146,81 @@ func test_FocusInfoPanel():
 		assert_true(main.focus_info.existing_details["Clarification A"].visible,
 				"Clarification visible")
 
-func test_card_text_panel_errata_replaces_ability():
+func test_card_text_panel_shows_each_action_as_its_own_block():
 	var card : Card = cards[0]
+	card.properties["Abilities"] = "Texto impresso."
+	card.properties["_actions"] = [{
+		"name": "SOCO DEMOLIDOR",
+		"text": "SOCO DEMOLIDOR causa 4 pontos de dano no alvo.",
+		"power": "Super Força",
+		"cost": "1",
+		"type": "Normal",
+	}]
+	await move_mouse(card.global_position)
+	await yield_to(main._focus_tween, "tween_all_completed", 1)
+	var panel: Control = main.focus_info.existing_details['card_text']
+	assert_true(panel.visible, "Card text panel visible")
+	var details: RichTextLabel = panel.get_node("Details")
+	assert_eq(details.text,
+			"Texto impresso.\n\n"
+			+ "[color=#f0c96a][b]SOCO DEMOLIDOR[/b][/color]\n"
+			+ "[color=#8f97a8][font_size=11]Normal • Custo 1 • Super Força"
+			+ "[/font_size][/color]\n"
+			+ "SOCO DEMOLIDOR causa 4 pontos de dano no alvo.",
+			"Each action has its name, metadata and text in its own block")
+
+
+func test_card_text_panel_keeps_errata_out_of_the_hover():
+	var card : Card = cards[0]
+	card.properties["Abilities"] = "Texto impresso."
 	card.properties["_errata"] = "Texto oficial da errata."
 	await move_mouse(card.global_position)
 	await yield_to(main._focus_tween, "tween_all_completed", 1)
 	var panel: Control = main.focus_info.existing_details['card_text']
 	assert_true(panel.visible, "Card text panel visible")
 	var details: RichTextLabel = panel.get_node("Details")
-	assert_eq(details.text, "[b]Errata:[/b] Texto oficial da errata.",
-			"Errata replaces the ability text and is flagged as errata")
+	assert_eq(details.text, "Texto impresso.",
+			"Errata waits in its own menu instead of replacing the text")
+
+
+func test_faq_button_only_shows_where_the_card_can_be_read():
+	var card : Card = cards[0]
+	card.properties["_faq"] = "Pergunta? R. Resposta."
+	var faq_button: Button = card.get_node("Control/FaqButton")
+	card._refresh_faq_button()
+	assert_false(faq_button.visible, "The button stays hidden in the hand")
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+	assert_true(faq_button.visible, "The button appears on the field")
+	card.set_state(Card.CardState.DRAGGED)
+	assert_false(faq_button.visible, "The button hides while the card is dragged")
+	card.set_state(Card.CardState.IN_POPUP)
+	assert_true(faq_button.visible, "The button appears in the pile inspection")
+	card.properties.erase("_faq")
+	card._refresh_faq_button()
+	assert_false(faq_button.visible, "A card without FAQ or errata has no button")
+
+func test_faq_dialog_opens_with_the_card_text():
+	var card : Card = cards[0]
+	card.canonical_name = "Abutre"
+	card.properties["Name"] = "Abutre"
+	card.properties["_faq"] = "Pergunta? R. Resposta."
+	card.properties["_errata"] = "Texto oficial da errata."
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+	card._open_faq_dialog()
+	var dialog = main.get_node_or_null("CardFaqDialog")
+	assert_not_null(dialog, "The single dialog is hosted by the game main")
+	assert_true(dialog.get_node("Root").visible, "The dialog covers the screen")
+	var title: Label = dialog.get_node("Root/Center/Box/VBox/Header/Title")
+	assert_eq(title.text, "Abutre", "The title names the card")
+	var body: RichTextLabel = dialog.get_node(
+			"Root/Center/Box/VBox/Scroll/Body")
+	assert_true(body.text.contains("Pergunta? R. Resposta."),
+			"FAQ text is shown")
+	assert_true(body.text.contains("Texto oficial da errata."),
+			"Errata text is shown")
+	dialog.close()
+	assert_false(dialog.get_node("Root").visible, "Closing hides the dialog")
+
 
 func test_preview_centers_on_screen():
 	var card: Card = cards[0]

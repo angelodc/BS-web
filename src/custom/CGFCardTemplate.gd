@@ -1,6 +1,16 @@
 extends Card
 
 const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
+const _FAQ_DIALOG_SCENE = preload("res://src/custom/CardFaqDialog.tscn")
+# The states in which the card is big and settled enough for the player to read
+# it and press the question mark: on the table (field or scenario) and while
+# the cards of a pile are open for inspection.
+const _FAQ_BUTTON_STATES := [
+	CardState.ON_PLAY_BOARD,
+	CardState.FOCUSED_ON_BOARD,
+	CardState.IN_POPUP,
+	CardState.FOCUSED_IN_POPUP,
+]
 
 
 func _ready() -> void:
@@ -8,6 +18,38 @@ func _ready() -> void:
 	var image_path: String = properties.get("_bsdb_image_path", "")
 	if image_path and not cfc.ut:
 		card_front.load_card_image(image_path)
+	var faq_button: Button = $Control/FaqButton
+	if not faq_button.pressed.is_connected(_open_faq_dialog):
+		faq_button.pressed.connect(_open_faq_dialog)
+	if not state_changed.is_connected(_refresh_faq_button):
+		state_changed.connect(_refresh_faq_button)
+	_refresh_faq_button()
+
+
+func has_faq_or_errata() -> bool:
+	return not str(properties.get("_faq", "")).strip_edges().is_empty() \
+			or not str(properties.get("_errata", "")).strip_edges().is_empty()
+
+
+func _refresh_faq_button(_card = null, _old_state = null, _new_state = null) -> void:
+	var faq_button: Button = get_node_or_null("Control/FaqButton")
+	if is_instance_valid(faq_button):
+		faq_button.visible = has_faq_or_errata() \
+				and state in _FAQ_BUTTON_STATES
+
+
+# The single FAQ/Errata menu lives on the game main, outside the board
+# SubViewport, so the text covers the screen and scrolls there instead of
+# inside the card.
+func _open_faq_dialog() -> void:
+	var host = cfc.NMAP.get("main", null)
+	if not is_instance_valid(host):
+		return
+	var dialog = host.get_node_or_null("CardFaqDialog")
+	if not is_instance_valid(dialog):
+		dialog = _FAQ_DIALOG_SCENE.instantiate()
+		host.add_child(dialog)
+	dialog.show_card(self)
 
 # Sample code on how to ensure costs are paid when a card
 # is dragged from hand to the table

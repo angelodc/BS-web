@@ -1,6 +1,7 @@
 # Game-specific extension of the core OverridableUtils, plugged in through
-# CFConst.PATH_OVERRIDABLE_UTILS. Adds the card text panel (header + ability,
-# or errata replacing the ability) to the focus previews.
+# CFConst.PATH_OVERRIDABLE_UTILS. Adds the card text panel (name, metadata and
+# the printed text with one block per action) to the focus previews.
+# FAQ and errata are not shown here: they open from the card's "?" button.
 extends OVUtils
 
 const TEXT_PANEL_SCENE := preload("res://src/custom/CGFTextPanel.tscn")
@@ -30,19 +31,63 @@ func _add_card_text_panel(card: Card, focus_info: DetailPanels) -> void:
 	if not bool(cfc.game_settings.get("card_text_enabled", true)):
 		return
 	var abilities := _property_text(card, "Abilities")
-	var errata := _property_text(card, "_errata")
-	if abilities.is_empty() and errata.is_empty():
+	var actions := _card_actions(card)
+	if abilities.is_empty() and actions.is_empty():
 		return
 	focus_info.add_info("card_text", "", TEXT_PANEL_SCENE, true)
 	var panel: Control = focus_info.existing_details["card_text"]
 	panel.get_node("Header").text = _property_text(card, "Name")
 	panel.get_node("Meta").text = _meta_line(card)
 	var details: RichTextLabel = panel.get_node("Details")
-	if not errata.is_empty():
-		# Cards with an errata show only the errata, flagged as such.
-		details.text = "[b]Errata:[/b] " + _escape_bbcode(errata)
-	else:
-		details.text = _escape_bbcode(abilities)
+	details.text = _details_bbcode(abilities, actions)
+
+
+# Errata and FAQ live behind the question-mark button on the card, so the hover
+# panel keeps showing only what is printed on the card.
+func _card_actions(card: Card) -> Array:
+	var value = card.get_property("_actions")
+	if typeof(value) != TYPE_ARRAY:
+		return []
+	var actions: Array = []
+	for action in value:
+		if typeof(action) == TYPE_DICTIONARY and not _action_bbcode(action).is_empty():
+			actions.append(action)
+	return actions
+
+
+func _details_bbcode(abilities: String, actions: Array) -> String:
+	var blocks: Array[String] = []
+	if not abilities.is_empty():
+		blocks.append(_escape_bbcode(abilities))
+	for action in actions:
+		blocks.append(_action_bbcode(action))
+	return "\n\n".join(blocks)
+
+
+# One action reads as its own block: name, the metadata chips and the text.
+func _action_bbcode(action: Dictionary) -> String:
+	var lines: Array[String] = []
+	var title := str(action.get("name", "")).strip_edges()
+	if not title.is_empty():
+		lines.append("[color=#f0c96a][b]"
+				+ _escape_bbcode(title) + "[/b][/color]")
+	var bits: Array[String] = []
+	var action_type := str(action.get("type", "")).strip_edges()
+	if not action_type.is_empty():
+		bits.append(action_type)
+	var cost := str(action.get("cost", "")).strip_edges()
+	if not cost.is_empty() and cost != "0":
+		bits.append("Custo " + cost)
+	var power := str(action.get("power", "")).strip_edges()
+	if not power.is_empty():
+		bits.append(power)
+	if not bits.is_empty():
+		lines.append("[color=#8f97a8][font_size=11]"
+				+ _escape_bbcode(" • ".join(bits)) + "[/font_size][/color]")
+	var text := str(action.get("text", "")).strip_edges()
+	if not text.is_empty():
+		lines.append(_escape_bbcode(text))
+	return "\n".join(lines)
 
 
 func _meta_line(card: Card) -> String:
@@ -73,4 +118,15 @@ func _property_text(card: Card, property_name: String) -> String:
 
 
 func _escape_bbcode(text: String) -> String:
-	return text.replace("[", "[lb]").replace("]", "[rb]")
+	# One pass only: `[lb]` and `[rb]` contain the opposite bracket, so two
+	# sequential replaces would escape the escapes.
+	var escaped := ""
+	for index in text.length():
+		var character := text[index]
+		if character == "[":
+			escaped += "[lb]"
+		elif character == "]":
+			escaped += "[rb]"
+		else:
+			escaped += character
+	return escaped

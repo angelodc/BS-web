@@ -28,7 +28,7 @@ var _has_cards := false
 
 # The popup node
 @onready var pile_popup := $ViewPopup
-@onready var _popup_grid := $ViewPopup/CardView
+@onready var _popup_grid := $ViewPopup/PopupContent/CardView
 # Popup View button for Piles
 @onready var view_button := $Control/ManipulationButtons/View
 @onready var view_sorted_button := $Control/ManipulationButtons/ViewSorted
@@ -71,7 +71,7 @@ func _process(_delta) -> void:
 	pass
 	# This performs a bit of garbage collection to make sure no Control temp objects
 	# are leftover empty in the popup
-	for obj in $ViewPopup/CardView.get_children():
+	for obj in _popup_grid.get_children():
 		if not obj.get_child_count():
 			obj.queue_free()
 	# We make sure to adjust our popup if cards were removed from it while it's open
@@ -355,7 +355,7 @@ func _slot_card_into_popup(card: Card) -> void:
 	# We set the control container size to be equal
 	# to the card size to which the card will scale.
 	card_slot.custom_minimum_size = card.get_node("Control").custom_minimum_size * card.scale
-	$ViewPopup/CardView.add_child(card_slot)
+	_popup_grid.add_child(card_slot)
 	# Finally, the card is added to the temporary control node parent.
 	card_slot.add_child(card)
 	# warning-ignore:return_value_discarded

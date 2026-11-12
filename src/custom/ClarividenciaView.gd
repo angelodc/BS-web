@@ -64,6 +64,9 @@ func start(deck: Pile, cards: Array) -> void:
 	_cards = cards.duplicate()
 	_capture_pointer()
 	_build_header()
+	# The table only logs that the peek happened and how many cards went back:
+	# the names stay with the player who looked at them.
+	GameEvents.record_clarividencia(_cards.size())
 	await _reveal()
 
 
@@ -324,6 +327,7 @@ func _finish() -> void:
 	_cards.clear()
 	for index in range(remaining.size() - 1, -1, -1):
 		_return_to_deck(remaining[index])
+	GameEvents.record_clarividencia_returns(remaining.size())
 	await get_tree().create_timer(0.4).timeout
 	if is_instance_valid(_deck) and _deck.has_method("finish_clarividencia"):
 		_deck.finish_clarividencia(self)

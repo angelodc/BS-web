@@ -309,12 +309,28 @@ func _on_Card_gui_input(event) -> void:
 		if cfc.NMAP.board.pending_resource_swap_active \
 				and cfc.NMAP.board.select_resource_for_swap(self):
 			return
+		if cfc.NMAP.board.pending_resource_add_active \
+				and cfc.NMAP.board.select_resource_for_add(self):
+			return
+		var send_side = cfc.NMAP.board.get("pending_resource_send_side")
+		if send_side is String and send_side != "" \
+				and cfc.NMAP.board.send_resource_from_popup(self):
+			return
 	if event is InputEventMouseButton \
 			and event.is_pressed() \
 			and event.get_button_index() == MOUSE_BUTTON_LEFT \
 			and cfc.NMAP.has("board") \
 			and cfc.NMAP.board.pending_resource_swap_card \
 			and cfc.NMAP.board.swap_attached_resource(self):
+		return
+	# Add perso: after the resource is picked in the viewer, the click names the
+	# character that receives it.
+	if event is InputEventMouseButton \
+			and event.is_pressed() \
+			and event.get_button_index() == MOUSE_BUTTON_LEFT \
+			and cfc.NMAP.has("board") \
+			and cfc.NMAP.board.pending_resource_add_card \
+			and cfc.NMAP.board.add_resource_to_character(self):
 		return
 	super._on_Card_gui_input(event)
 	if event is InputEventMouseButton:
@@ -357,11 +373,17 @@ func _play_card_to_scene() -> void:
 
 
 func _play_card_to_scenario_area() -> void:
-	var grid: BoardPlacementGrid = cfc.NMAP.board.get_node_or_null(
-			"ModifiedLabelGrid")
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		return
+	var grid: BoardPlacementGrid = board.get_node_or_null("ModifiedLabelGrid")
 	if not grid or grid.get_slot_count() == 0:
 		return
-	move_to(cfc.NMAP.board, -1, grid.get_slot(0))
+	# The scenario follows the same intent as a drag, so a replacement and the
+	# automation it triggers behave the same on both paths.
+	var result: Dictionary = board.apply_intent({"op": "jogar", "card": self})
+	if not bool(result.get("ok", false)):
+		board.report_intent(result)
 
 
 func send_to_opponent_prizes() -> void:

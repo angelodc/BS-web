@@ -27,11 +27,34 @@ func _ready() -> void:
 # mais largas que 16:9) ate alguem redimensionar a janela. Mexer 1px no canvas
 # obriga o engine a recalcular a escala sem mudar o layout final.
 func _fit_web_canvas() -> void:
+	_install_web_canvas_fixups()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_nudge_web_canvas()
 	await get_tree().create_timer(1.0).timeout
 	_nudge_web_canvas()
+
+
+# Chrome restores the page from the back/forward cache when it reopens a window.
+# No resize reaches the engine on that path, so the canvas keeps the size of the
+# old window and the table is cropped in the new one.
+func _install_web_canvas_fixups() -> void:
+	JavaScriptBridge.eval(
+			"(() => { if (window.__bsCanvasFix) return;"
+			+ " window.__bsCanvasFix = true;"
+			+ " const fit = () => {"
+			+ " const c = document.getElementById('canvas');"
+			+ " if (!c) return;"
+			+ " window.dispatchEvent(new Event('resize'));"
+			+ " const h = c.style.height;"
+			+ " c.style.height = 'calc(100% - 1px)';"
+			+ " void c.offsetHeight;"
+			+ " c.style.height = h; };"
+			+ " window.addEventListener('pageshow', (event) => {"
+			+ " if (!event.persisted) return;"
+			+ " setTimeout(fit, 50);"
+			+ " setTimeout(fit, 700); });"
+			+ " });", true)
 
 
 func _nudge_web_canvas() -> void:

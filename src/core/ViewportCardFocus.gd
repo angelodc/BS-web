@@ -8,6 +8,10 @@ const RenderResolution = preload("res://src/custom/RenderResolution.gd")
 
 @export var board_scene: PackedScene
 @export var info_panel_scene: PackedScene
+# Gap between a hovered card and its preview, and the margin kept from the
+# screen edge when the preview is placed beside the card.
+const BESIDE_GAP := 18.0
+const SCREEN_MARGIN := 8.0
 # This array holds all the previously focused cards.
 var _previously_focused_cards := {}
 # This var hold the currently focused card duplicate.
@@ -15,6 +19,10 @@ var _current_focus_source : Card = null
 # Hand previews keep following the cursor; every other hover centers on the
 # screen, no matter whether the closeup image is shown alongside the panels.
 var _current_is_hand := false
+# A preview opened from a window (the resources viewer) is drawn on the table
+# instead, beside the pointer, because the window would clip it. The source card
+# marks the mode so the card's own hover cannot pull the closeup back to center.
+var _pinned_source : Card = null
 
 @onready var card_focus := $VBC/FocusBox/Focus
 @onready var focus_info := $VBC/FocusInfo
@@ -66,6 +74,68 @@ func _apply_render_density() -> void:
 	_focus_viewport.size_2d_override_stretch = true
 
 
+# Where the preview of a card on the table goes: beside the hovered card, on
+# the side with room, never on top of it. The board is drawn inside its own
+# SubViewport at the 1280x720 design size, so a card point maps to the main
+# scene through the host container, which carries the render density scale.
+func beside_card_position(card: Card, panel: Vector2) -> Vector2:
+	var area := get_viewport().get_visible_rect().size
+	var rect := _source_screen_rect(card)
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return (area - panel) * 0.5
+	var right_x := rect.end.x + BESIDE_GAP
+	var left_x := rect.position.x - BESIDE_GAP - panel.x
+	var right_room := area.x - rect.end.x
+	var fits_right := right_x + panel.x + SCREEN_MARGIN <= area.x
+	var fits_left := left_x >= SCREEN_MARGIN
+	var x: float
+	if fits_right and (not fits_left or right_room >= rect.position.x):
+		x = right_x
+	elif fits_left:
+		x = left_x
+	elif right_room >= rect.position.x:
+		x = clampf(right_x, SCREEN_MARGIN,
+				maxf(SCREEN_MARGIN, area.x - panel.x - SCREEN_MARGIN))
+	else:
+		x = clampf(left_x, SCREEN_MARGIN,
+				maxf(SCREEN_MARGIN, area.x - panel.x - SCREEN_MARGIN))
+	var y := clampf(rect.get_center().y - panel.y * 0.5, SCREEN_MARGIN,
+			maxf(SCREEN_MARGIN, area.y - panel.y - SCREEN_MARGIN))
+	return Vector2(x, y)
+
+
+func _source_screen_rect(card: Card) -> Rect2:
+	var control = card.get_node_or_null("Control") if card else null
+	if not (control is Control) or not is_instance_valid(control):
+		return Rect2()
+	var transform: Transform2D = control.get_global_transform()
+	var corners: Array[Vector2] = [
+		Vector2.ZERO,
+		Vector2(control.size.x, 0.0),
+		control.size,
+		Vector2(0.0, control.size.y),
+	]
+	var min_point := Vector2(INF, INF)
+	var max_point := Vector2(-INF, -INF)
+	for corner in corners:
+		var screen: Vector2 = _board_host.position \
+				+ (transform * corner) * _board_host.scale
+		min_point = min_point.min(screen)
+		max_point = max_point.max(screen)
+	return Rect2(min_point, max_point - min_point)
+
+
+# The HBox starts empty after each focus; before it lays itself out, the panel
+# is measured from the closeup and the text panel.
+func _preview_panel_size() -> Vector2:
+	var panel: Vector2 = $VBC.size
+	if panel.x > 1.0:
+		return panel
+	var preview_width := 300.0 if _focus_box.visible else 0.0
+	return Vector2(preview_width + focus_info.size.x,
+			450.0 if _focus_box.visible else focus_info.size.y)
+
+
 # Where the hand's text panel goes: beside the cursor, flipping to the other
 # side when the right edge is near, and always fully inside the screen.
 static func hand_panel_position(mouse: Vector2, panel: Vector2, area: Vector2) -> Vector2:
@@ -93,13 +163,15 @@ func _process(_delta) -> void:
 	# The below positions the preview: hand previews keep following the
 	# cursor, everything else is centered on the screen.
 	if _current_focus_source and is_instance_valid(_current_focus_source):
-		if _current_is_hand:
+		if _pinned_source == _current_focus_source:
+			$VBC.position = _pinned_position($VBC.size)
+		elif _current_is_hand:
 			$VBC.position = hand_panel_position(
 					get_global_mouse_position(), focus_info.size,
 					get_viewport().get_visible_rect().size)
 		else:
-			$VBC.position = (get_viewport().get_visible_rect().size \
-					- $VBC.size) / 2
+			$VBC.position = beside_card_position(
+					_current_focus_source, _preview_panel_size())
 	# The below performs some garbage collection on previously focused cards.
 	for c in _previously_focused_cards:
 		if not is_instance_valid(_previously_focused_cards[c]):
@@ -126,6 +198,8 @@ func _preview_faceup(card: Card) -> bool:
 
 # Displays the card closeup in the Focus viewport
 func focus_card(card: Card, show_preview := true) -> void:
+	if _pinned_source != card:
+		_pinned_source = null
 	_current_is_hand = card.get_parent() and \
 			card.get_parent().is_in_group("hands")
 	# A different card taking over (for instance a hand card after hovering a
@@ -227,8 +301,32 @@ func focus_card(card: Card, show_preview := true) -> void:
 
 
 
+# Opens the closeup beside the pointer instead of centering it. The resources
+# viewer is a window of its own, so a closeup drawn inside it would be clipped
+# at the border; on the table it is drawn whole and can hang over the window.
+func focus_card_pinned(card: Card) -> void:
+	_pinned_source = card
+	focus_card(card)
+
+
+# Beside the pointer, on the half opposite the hovered card: a card on the right
+# half opens its closeup on the left, and the other way round.
+func _pinned_position(panel: Vector2) -> Vector2:
+	var area := get_viewport().get_visible_rect().size
+	var mouse := get_global_mouse_position()
+	var gap := 24.0
+	var x := mouse.x + gap
+	if mouse.x >= area.x * 0.5:
+		x = mouse.x - gap - panel.x
+	return Vector2(
+			clampf(x, 0.0, maxf(0.0, area.x - panel.x)),
+			clampf(mouse.y - panel.y * 0.5, 0.0, maxf(0.0, area.y - panel.y)))
+
+
 # Hides the focus viewport when we're done looking at it
 func unfocus(card: Card) -> void:
+	if _pinned_source == card:
+		_pinned_source = null
 	if _current_focus_source == card:
 		_current_focus_source = null
 		_focus_tween.remove_all()

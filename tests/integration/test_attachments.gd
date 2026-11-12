@@ -312,7 +312,7 @@ class TestBattleScenesAttachmentStack:
 				"Discard keeps its View button for browsing resources")
 		assert_false(discard.view_sorted_button.visible)
 		assert_false(discard.shuffle_button.visible)
-		assert_true(discard.get_node("Control/ManipulationButtons/SwapResource").visible)
+		assert_true(discard.find_child("SwapResource", true, false).visible)
 
 	func test_discard_swap_replaces_selected_character_attachment() -> void:
 		var host_card: Card = cards[0]
@@ -329,7 +329,7 @@ class TestBattleScenesAttachmentStack:
 		attached_card.attach_to_host(host_card)
 		await replacement_card.move_to(discard)
 
-		discard.get_node("Control/ManipulationButtons/SwapResource") \
+		discard.find_child("SwapResource", true, false) \
 				.emit_signal("pressed")
 		assert_true(discard.is_popup_open)
 		assert_true(board.select_resource_for_swap(replacement_card))
@@ -346,6 +346,43 @@ class TestBattleScenesAttachmentStack:
 		assert_eq(discard, attached_card.get_parent())
 		assert_true(host_card.attachments.has(replacement_card))
 		assert_false(board.pending_resource_swap_active)
+
+	# Add perso runs the swap pick, but the resource attaches under the character
+	# without replacing the one already there.
+	func test_add_perso_stacks_one_more_resource_on_the_character() -> void:
+		var host_card: Card = cards[0]
+		var attached_card: Card = cards[1]
+		var added_card: Card = cards[2]
+		await table_move(host_card, Vector2(300, 200))
+		await table_move(attached_card, Vector2(300, 200))
+		await table_move(added_card, Vector2(300, 200))
+
+		host_card.properties["_tipo"] = "Personagem"
+		attached_card.attachment_mode = Card.AttachmentMode.ATTACH_BEHIND
+		attached_card.attachment_offset = \
+				Card.AttachmentOffset.BATTLE_SCENES_BOTTOM
+		attached_card.attach_to_host(host_card)
+		await added_card.move_to(discard)
+
+		discard._add_perso_panel.emit_signal("pressed")
+		assert_true(discard.is_popup_open)
+		assert_true(board.select_resource_for_add(added_card))
+		await yield_for(0.7)
+
+		var click_event := InputEventMouseButton.new()
+		click_event.button_index = MOUSE_BUTTON_LEFT
+		click_event.pressed = true
+		host_card._on_Card_gui_input(click_event)
+		await yield_for(0.7)
+
+		assert_eq(host_card, added_card.current_host_card)
+		assert_true(host_card.attachments.has(attached_card),
+				"The resource already under the character stays")
+		assert_true(host_card.attachments.has(added_card),
+				"The picked resource is added under the character")
+		assert_eq(2, host_card.attachments.size(),
+				"Add perso puts exactly one card more on the character")
+		assert_false(board.pending_resource_add_active)
 
 	# The resource popup is opened with the board pointer switched off, so the
 	# cards inside it never receive the hover focus that the click used to wait
@@ -393,7 +430,7 @@ class TestBattleScenesAttachmentStack:
 
 	func _popup_cards() -> Array:
 		var popup_cards := []
-		for slot in discard.get_node("ViewPopup/CardView").get_children():
+		for slot in discard.get_node("ViewPopup/PopupContent/CardView").get_children():
 			for node in slot.get_children():
 				if node is Card:
 					popup_cards.append(node)

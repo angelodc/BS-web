@@ -57,11 +57,13 @@ class TestBattleScenesCapacity:
 		assert_true(card.buttons.get_node("Capacitar").visible)
 		assert_true(card.buttons.get_node("Incapacitar").visible)
 		assert_false(card.buttons.get_node("Rot90").visible)
-		assert_true(card.buttons.get_node("Flip").visible)
 		assert_true(card.buttons.get_node("Escudo").visible)
 		assert_false(card.buttons.has_node("View"))
 		assert_false(card.buttons.has_node("Rot180"))
-		assert_eq("Flip", card.buttons.get_node("Flip").text)
+		assert_false(card.buttons.has_node("Flip"),
+				"O menu não oferece mais virar")
+		assert_false(card.buttons.has_node("Dano"),
+				"O menu não oferece mais dano")
 
 		card.incapacitar()
 		card.buttons.set_active(true)
@@ -80,16 +82,34 @@ class TestBattleScenesCapacity:
 
 	func test_non_character_does_not_receive_capacity_actions() -> void:
 		var card = cards[0]
-		_put_card_on_board(card, "Cenário")
+		_put_card_on_board(card, "Suporte")
 		card.buttons.set_active(true)
 
 		assert_false(card.buttons.get_node("Capacitar").visible)
 		assert_false(card.buttons.get_node("Incapacitar").visible)
 		assert_true(card.buttons.get_node("Rot90").visible)
-		assert_true(card.buttons.get_node("Flip").visible)
+		assert_false(card.buttons.has_node("Flip"))
 		assert_false(card.buttons.get_node("Escudo").visible)
 		assert_false(card.buttons.has_node("View"))
 		assert_false(card.buttons.has_node("Rot180"))
+		assert_eq(CFConst.ReturnCode.FAILED, card.incapacitar())
+		assert_eq(0, card.get_incapacitation_stage())
+
+
+	# The scenario menu carries the printed options only: a scenario does not
+	# turn, so those actions are not offered even when it is available.
+	func test_scenario_does_not_offer_turning_or_flipping() -> void:
+		var card = cards[0]
+		_put_card_on_board(card, "Cenário")
+		card.buttons.set_active(true)
+
+		assert_false(card.buttons.get_node("Capacitar").visible)
+		assert_false(card.buttons.get_node("Incapacitar").visible)
+		assert_false(card.buttons.get_node("Rot90").visible,
+				"O cenário não gira")
+		assert_false(card.buttons.has_node("Flip"),
+				"O cenário não vira")
+		assert_false(card.buttons.get_node("Escudo").visible)
 		assert_eq(CFConst.ReturnCode.FAILED, card.incapacitar())
 		assert_eq(0, card.get_incapacitation_stage())
 

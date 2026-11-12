@@ -288,9 +288,26 @@ func _on_search_pressed() -> void:
 	var selection_window = SELECTION_WINDOW_SCENE.instantiate()
 	cfc.NMAP.board.add_child(selection_window)
 	selection_window.card_selected.connect(_on_search_card_selected)
+	selection_window.confirmed.connect(_on_search_window_closed.bind(selection_window))
 	selection_window.confirmed.connect(selection_window.queue_free)
 	selection_window.close_on_selection = true
 	selection_window.initiate_selection(card_options, 1, "equal", true)
+
+
+# Closing the search without a card leaves the deck in the order the player just
+# browsed, so it is shuffled right away. A chosen card keeps the deck untouched
+# until it finally reaches the hand, or the slow reveal would lose its point.
+func _on_search_window_closed(window) -> void:
+	if is_instance_valid(window) and window.is_cancelled:
+		_shuffle_search_deck()
+
+
+func _shuffle_search_deck() -> void:
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board) or not board.has_method("apply_intent"):
+		shuffle_cards(false)
+		return
+	board.report_intent(board.apply_intent({"op": "embaralhar", "pile": "deck"}))
 
 
 func _on_search_card_selected(
@@ -313,12 +330,21 @@ func _reveal_searched_card(card: Card) -> void:
 			-1,
 			_get_reveal_position(0, 1),
 			["Procurar"])
+	var reached_board: bool = card.get_parent() == cfc.NMAP.board
 	await get_tree().create_timer(3.0).timeout
-	if not is_instance_valid(card) or card.get_parent() != cfc.NMAP.board:
+	if not is_instance_valid(card):
 		_deck_action_in_progress = false
+		return
+	# The board can refuse the card and send it back to the deck (a scenario
+	# only enters its own slot). It stays revealed face up over the deck for
+	# the same three seconds and then goes to the hand as any other search.
+	if reached_board and card.get_parent() != cfc.NMAP.board:
+		_deck_action_in_progress = false
+		_shuffle_search_deck()
 		return
 	var move_to_hand = await card.move_to(cfc.NMAP.hand, -1, null, ["Procurar"])
 	_deck_action_in_progress = false
+	_shuffle_search_deck()
 
 
 func _on_Deck_input_event(event) -> void:

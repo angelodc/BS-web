@@ -157,20 +157,31 @@ func test_card_text_panel_errata_replaces_ability():
 	assert_eq(details.text, "[b]Errata:[/b] Texto oficial da errata.",
 			"Errata replaces the ability text and is flagged as errata")
 
-func test_preview_centers_on_screen():
+# The closeup and the text panel open beside the hovered card, on the side with
+# room, so neither covers the card being read.
+func test_preview_sits_beside_the_hovered_card():
 	var card: Card = cards[0]
 	hand.remove_child(card)
 	board.add_child(card)
 	card.network_mirror = true
 	card.set_state(Card.CardState.ON_PLAY_BOARD)
 	card.preview_locked = true
+	card.position = Vector2(200, 300)
 	main.focus_card(card)
 	await yield_for(0.5)
 	var vbc: Control = main.get_node("VBC")
-	var expected: Vector2 = (main.get_viewport().get_visible_rect().size - vbc.size) / 2
-	assert_true(abs(vbc.position.x - expected.x) <= 2.0
-			and abs(vbc.position.y - expected.y) <= 2.0,
-			"The preview centers on the screen")
+	var rect: Rect2 = main._source_screen_rect(card)
+	assert_gt(rect.size.x, 0.0, "The hovered card has a screen rect")
+	assert_gt(vbc.position.x, rect.end.x,
+			"The preview opens to the right of the hovered card")
+	assert_false(vbc.get_global_rect().intersects(rect),
+			"The preview does not cover the hovered card")
+	# Near the right edge the preview flips to the other side of the card.
+	card.position = Vector2(1000, 300)
+	await yield_for(0.1)
+	rect = main._source_screen_rect(card)
+	assert_lt(vbc.get_global_rect().end.x, rect.position.x,
+			"The preview flips to the left near the right edge")
 
 # The preview and the table rasterise at the chosen density but keep the
 # 1280x720 (and 300x450) design coordinates. The containers must keep `stretch`

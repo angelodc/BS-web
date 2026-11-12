@@ -47,11 +47,12 @@ func spawn_manipulation_buttons() -> void:
 #
 # Returns true if the mouse is hovering any of the buttons, else false
 func are_hovered() -> bool:
+	# The alpha is not part of the test: a menu that is still fading in is
+	# already under the pointer, and treating it as absent closed the menu
+	# while the player was reaching for a button.
 	var ret = false
 	for button in get_children():
-		if button as Button \
-				and button.is_hovered() \
-				and button.modulate.a == 1:
+		if button as Button and button.is_hovered():
 			ret = true
 	return(ret)
 

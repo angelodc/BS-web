@@ -12,7 +12,7 @@ func before_each():
 
 func _popup_cards() -> Array:
 	var popup_cards := []
-	for slot in discard.get_node("ViewPopup/CardView").get_children():
+	for slot in discard.get_node("ViewPopup/PopupContent/CardView").get_children():
 		for node in slot.get_children():
 			if node is Card:
 				popup_cards.append(node)

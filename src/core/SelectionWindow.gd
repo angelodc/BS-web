@@ -137,6 +137,9 @@ func initiate_selection(
 			# This prevents the card from being scripted with the
 			# signal propagator and other things going via groups
 			dupe_selection.remove_from_group("cards")
+			# The card may read under its printed name while its definition is
+			# stored under the catalog key; the preview needs that key.
+			dupe_selection.definitions_key = card.definition_key()
 			dupe_selection.canonical_name = card.canonical_name
 			dupe_selection.properties = card.properties.duplicate()
 		dupe_selection.thumbnail_scale = SEARCH_CARD_SCALE

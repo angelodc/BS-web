@@ -318,6 +318,64 @@ func test_search_selection_preview_placement():
 	assert_almost_eq(preview_popup.position, placement, Vector2(30,30),
 			"Preview follows its computed placement instead of the grid cell")
 	selection_window.queue_free()
+
+
+# A Window crops its children, so the preview has to stay inside the selection
+# dialog. Hovering a central card used to push it past the left edge, where it
+# was cut in half.
+func test_search_preview_stays_inside_the_window():
+	var screen := Vector2(1000, 600)
+	var card := Vector2(225, 315)
+	var panel := Vector2(300, 280)
+	for mouse in [Vector2(20, 20), Vector2(500, 300), Vector2(980, 580)]:
+		var placement = CVPreviewPopup.compute_preview_position(
+				mouse, screen, card, panel)
+		assert_between(placement.x, 12.0, screen.x - 12.0 - card.x - panel.x,
+				"Preview stays inside the window horizontally")
+		assert_between(placement.y, 34.0, screen.y - 12.0 - panel.y,
+				"Preview stays inside the window vertically")
+	var right_edge = CVPreviewPopup.compute_preview_position(
+			Vector2(990, 300), screen, card, panel)
+	assert_true(right_edge.x + card.x + panel.x <= screen.x - 12.0,
+			"A preview at the right edge moves left instead of overflowing")
+	assert_between(right_edge.x, 12.0, screen.x - 12.0 - card.x - panel.x,
+			"The preview at the right edge is fully inside the window")
+
+
+# Small dialogs (a single row of choices) are shorter than the full preview, so
+# the card is scaled down just enough to fit instead of being cropped.
+func test_search_preview_scales_down_to_a_small_dialog():
+	var canonical := Vector2(150, 210)
+	assert_eq(CVPreviewPopup.fit_preview_scale(1.5, Vector2(1280, 720), canonical),
+			1.5, "The game viewport keeps the full preview scale")
+	var small := CVPreviewPopup.fit_preview_scale(1.5, Vector2(400, 230), canonical)
+	assert_true(small < 1.5, "A small dialog shrinks the preview")
+	assert_almost_eq(small * canonical.y, 230.0 - 46.0, 0.01,
+			"The scaled card fits the dialog height")
+
+
+# Imported decks rename the cards to their printed names while the definition
+# stays under its catalog key. The grid preview has to instance by that key, as
+# the printed name is not a card_definitions entry.
+func test_search_preview_uses_the_definition_key():
+	var card: Card = hand.draw_card()
+	var key := card.definition_key()
+	card.set_card_name("Nome Impresso")
+	assert_ne(card.canonical_name, key,
+			"The printed name differs from the catalog key")
+	var selection_window = load(
+			"res://src/core/SelectionWindow.tscn").instantiate()
+	board.add_child(selection_window)
+	selection_window.initiate_selection([card], 1, "max", true)
+	await yield_to(selection_window, "selection_window_opened", 2)
+	var grid_card_obj = selection_window.get_node("GridContainer").get_child(0)
+	grid_card_obj._on_GridCardObject_mouse_entered()
+	await yield_for(0.2)
+	assert_true(grid_card_obj.preview_popup.has_preview_card(),
+			"The grid hover instances the preview card")
+	assert_eq(grid_card_obj.preview_popup.preview_card.definition_key(), key,
+			"The preview is instanced by the definition key")
+	selection_window.queue_free()
 # Clarividência keeps the row on screen until the player closes it. The old
 # reveal closed itself three seconds after showing the cards, which never left
 # time to read the row, let alone reorder it.

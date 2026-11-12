@@ -355,7 +355,32 @@ func _ready() -> void:
 	if not $Control.is_connected("tree_exiting", Callable(self, "_on_tree_exiting")):
 		# warning-ignore:return_value_discarded
 		$Control.tree_exiting.connect(_on_tree_exiting)
+	# Cards inside a pile popup live in a Window with its own physics world, so
+	# the board pointer never reaches them; the GUI hover is the only signal
+	# available there.
+	if not $Control.is_connected("mouse_entered", Callable(self, "_on_Control_mouse_entered")):
+		# warning-ignore:return_value_discarded
+		$Control.mouse_entered.connect(_on_Control_mouse_entered)
+	if not $Control.is_connected("mouse_exited", Callable(self, "_on_Control_mouse_exited")):
+		# warning-ignore:return_value_discarded
+		$Control.mouse_exited.connect(_on_Control_mouse_exited)
 	cfc.signal_propagator.connect_new_card(self)
+
+
+func _on_Control_mouse_entered() -> void:
+	if state == CardState.IN_POPUP:
+		_on_Card_mouse_entered()
+
+
+func _on_Control_mouse_exited() -> void:
+	if state != CardState.FOCUSED_IN_POPUP:
+		return
+	# Moving onto a child control (such as the FAQ button) leaves this control
+	# without leaving the card, so only a pointer outside the card ends the hover.
+	if Rect2(Vector2.ZERO, $Control.size).has_point(
+			$Control.get_local_mouse_position()):
+		return
+	_on_Card_mouse_exited()
 
 func _init_card_layout() -> void:
 	# Inherited card scenes can deliver the ready notification twice, which

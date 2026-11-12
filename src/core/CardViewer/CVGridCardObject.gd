@@ -34,7 +34,9 @@ func setup(card) -> Card:
 
 
 func _on_GridCardObject_mouse_entered() -> void:
-	preview_popup.show_preview_card(display_card.canonical_name)
+	# The preview instances a fresh copy by definition key; the display name is
+	# not a card_definitions key for imported decks.
+	preview_popup.show_preview_card(display_card.definition_key())
 
 
 func _on_GridCardObject_mouse_exited() -> void:

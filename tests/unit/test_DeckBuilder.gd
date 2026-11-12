@@ -135,7 +135,11 @@ func test_bsdb_card_data_mapping():
 	assert_eq(card["_tipo"], "Personagem")
 	assert_eq(card["ENERGIA"], "3")
 	assert_eq(card["Requirements"], "Aliados do Homem-Aranha")
-	assert_eq(card["Abilities"], "Texto de teste.\n\nAção de teste.")
+	assert_eq(card["Abilities"], "Texto de teste.",
+			"Action text stays out of the printed ability text")
+	assert_eq(card["_actions"].size(), 1,
+			"Each BSDB action becomes one structured entry")
+	assert_eq(card["_actions"][0]["text"], "Ação de teste.")
 	assert_eq(card["_bsdb_image_path"], "/bsca/BSCA_006.png")
 
 	var null_fields_card = importer.make_card_properties({
@@ -192,6 +196,33 @@ func test_bsdb_card_text_extras_mapping():
 	assert_eq(upper["ENERGIA"], "",
 			"Suporte keeps the empty ENERGIA default")
 
+func test_bsdb_action_fields_mapping():
+	var importer = load(
+			"res://src/custom/BSDBDeckImportDialog.gd")
+	var card = importer.make_card_properties({
+		"nome": "Abominável",
+		"tipo": "Personagem",
+		"imagem": "/bsca/BSCA_010.png",
+		"dados": {
+			"PODERES": [],
+			"ACOES": [
+				{"NOME": "SOCO DEMOLIDOR", "TEXTO": "Causa 4 pontos de dano.",
+					"PODER_DA_ACAO": "Super Força", "CUSTO": "1",
+					"TIPO": "Normal"},
+				{"NOME": "", "TEXTO": "", "CUSTO": "2"},
+			],
+		},
+	})
+	assert_eq(card["_actions"].size(), 1,
+			"Actions without a name and text are dropped")
+	var action: Dictionary = card["_actions"][0]
+	assert_eq(action["name"], "SOCO DEMOLIDOR")
+	assert_eq(action["text"], "Causa 4 pontos de dano.")
+	assert_eq(action["power"], "Super Força")
+	assert_eq(action["cost"], "1")
+	assert_eq(action["type"], "Normal")
+
+
 func test_bsdb_repo_card_mapping():
 	var importer = load(
 			"res://src/custom/BSDBDeckImportDialog.gd")
@@ -216,7 +247,11 @@ func test_bsdb_repo_card_mapping():
 	assert_eq(card["_tipo"], "Personagem")
 	assert_eq(card["ENERGIA"], "3")
 	assert_eq(card["Requirements"], "Aliados do Homem-Aranha")
-	assert_eq(card["Abilities"], "Texto de teste.\n\nAção de teste.")
+	assert_eq(card["Abilities"], "Texto de teste.",
+			"Action text stays out of the printed ability text")
+	assert_eq(card["_actions"].size(), 1,
+			"Each BSDB action becomes one structured entry")
+	assert_eq(card["_actions"][0]["text"], "Ação de teste.")
 	assert_eq(card["_bsdb_image_path"], "/bsca/BSCA_006.png")
 	assert_eq(card["_bsdb_shield"], "1")
 

@@ -451,18 +451,26 @@ static func make_card_properties(record: Dictionary) -> Dictionary:
 		push_warning("BSDB card without a valid type: " + category)
 	var energy_default: String = "" if category in ENERGY_CARD_TYPES else "0"
 	var ability_text := _string_or_default(data, "TEXTO", "")
-	var actions = data.get("ACOES", [])
-	if typeof(actions) == TYPE_NIL:
-		actions = []
-	elif typeof(actions) != TYPE_ARRAY:
+	var raw_actions = data.get("ACOES", [])
+	if typeof(raw_actions) == TYPE_NIL:
+		raw_actions = []
+	elif typeof(raw_actions) != TYPE_ARRAY:
 		return {}
-	for action in actions:
-		if typeof(action) == TYPE_DICTIONARY:
-			var action_text := _string_or_default(action, "TEXTO", "")
-			if action_text:
-				if ability_text:
-					ability_text += "\n\n"
-				ability_text += action_text
+	var actions: Array = []
+	for action in raw_actions:
+		if typeof(action) != TYPE_DICTIONARY:
+			continue
+		var action_name := _string_or_default(action, "NOME", "")
+		var action_text := _string_or_default(action, "TEXTO", "")
+		if action_name.is_empty() and action_text.is_empty():
+			continue
+		actions.append({
+			"name": action_name,
+			"text": action_text,
+			"power": _string_or_default(action, "PODER_DA_ACAO", ""),
+			"cost": _string_or_default(action, "CUSTO", ""),
+			"type": _string_or_default(action, "TIPO", ""),
+		})
 	var evolution_text := _string_or_default(data, "TEXTO_EV", "")
 	if evolution_text:
 		if ability_text:
@@ -486,6 +494,7 @@ static func make_card_properties(record: Dictionary) -> Dictionary:
 		"Tags": tags,
 		"Requirements": _string_or_default(data, "AFILIACAO", ""),
 		"Abilities": ability_text,
+		"_actions": actions,
 		"Cost": 0,
 		"Power": 0,
 		"_bsdb_id": str(data.get("ID_CARD", record.get("id_card", ""))),

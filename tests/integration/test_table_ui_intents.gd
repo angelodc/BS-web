@@ -79,7 +79,7 @@ func test_a_refused_button_click_logs_nothing():
 	# The card is a character: rotating it is refused by the rules.
 	var size_before: int = runner.history.size()
 
-	buttons._on_Rot90_pressed()
+	buttons._apply({"op": "girar", "degree": 90, "toggle": true})
 
 	assert_eq(runner.history.size(), size_before)
 	assert_eq(int(card.card_rotation), 0)

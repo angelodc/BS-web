@@ -56,7 +56,8 @@ class TestBattleScenesCapacity:
 
 		assert_true(card.buttons.get_node("Capacitar").visible)
 		assert_true(card.buttons.get_node("Incapacitar").visible)
-		assert_false(card.buttons.get_node("Rot90").visible)
+		assert_false(card.buttons.has_node("Rot90"),
+				"O menu não oferece mais o giro manual")
 		assert_true(card.buttons.get_node("Escudo").visible)
 		assert_false(card.buttons.has_node("View"))
 		assert_false(card.buttons.has_node("Rot180"))
@@ -87,7 +88,8 @@ class TestBattleScenesCapacity:
 
 		assert_false(card.buttons.get_node("Capacitar").visible)
 		assert_false(card.buttons.get_node("Incapacitar").visible)
-		assert_true(card.buttons.get_node("Rot90").visible)
+		assert_false(card.buttons.has_node("Rot90"),
+				"O suporte não oferece mais o botão de girar")
 		assert_false(card.buttons.has_node("Flip"))
 		assert_false(card.buttons.get_node("Escudo").visible)
 		assert_false(card.buttons.has_node("View"))
@@ -105,7 +107,7 @@ class TestBattleScenesCapacity:
 
 		assert_false(card.buttons.get_node("Capacitar").visible)
 		assert_false(card.buttons.get_node("Incapacitar").visible)
-		assert_false(card.buttons.get_node("Rot90").visible,
+		assert_false(card.buttons.has_node("Rot90"),
 				"O cenário não gira")
 		assert_false(card.buttons.has_node("Flip"),
 				"O cenário não vira")

@@ -20,7 +20,6 @@ func _ready() -> void:
 		"Capacitar": "Incapacitar",
 		"Incapacitar": "Capacitar",
 		"Escudo": "Escudo",
-		"Rot90": "T",
 		"Premios": "Prêmios",
 		"Nocaute": "Nocaute",
 	}
@@ -71,11 +70,8 @@ func set_active(value = true) -> void:
 func _update_action_visibility(is_available: bool, is_character: bool) -> void:
 	var stage: int = owner_node.get_incapacitation_stage()
 	var is_support: bool = owner_node.is_battle_scenes_support()
-	# A scenario is not a character and does not turn: its menu only carries the
-	# printed options.
-	var is_scenario: bool = owner_node.is_battle_scenes_scenario()
-	set_button_visible("Rot90",
-			is_available and not is_character and not is_scenario)
+	# Supports no longer carry the manual turn button: their menu keeps only
+	# the knockout action.
 	set_button_visible("Escudo", is_available and is_character)
 	set_button_visible("Premios",
 			is_available and is_character and Multiplayer.is_session_active())
@@ -148,10 +144,6 @@ func _on_Premios_pressed() -> void:
 
 func _on_Nocaute_pressed() -> void:
 	_apply({"op": "nocautear"})
-
-
-func _on_Rot90_pressed() -> void:
-	_apply({"op": "girar", "degree": 90, "toggle": true})
 
 
 func _on_Escudo_pressed() -> void:

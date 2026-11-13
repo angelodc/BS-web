@@ -160,6 +160,15 @@ text = "Sessão multiplayer iniciada."
 text = "Sessão multiplayer iniciada."
 scroll_following = true
 
+[node name="PeekHandButton" type="Button" parent="."]
+visible = false
+offset_left = 306.0
+offset_top = 6.0
+offset_right = 398.0
+offset_bottom = 42.0
+tooltip_text = "Pede ao oponente para mostrar a mão."
+text = "Ver mão"
+
 [node name="MulliganPanel" type="PanelContainer" parent="."]
 visible = false
 anchor_left = 0.5

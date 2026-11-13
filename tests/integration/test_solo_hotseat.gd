@@ -787,6 +787,40 @@ func test_solo_swap_restores_cards_imported_under_another_key():
 			"Swap two restores the first seat with its cards")
 
 
+# The hand peek is answered, not broadcast: a denied request opens nothing and
+# an allowed one opens the display viewer with the cards the owner sent.
+func test_hand_peek_answer_needs_permission_and_opens_the_viewer():
+	await _start_solo_match()
+	var sync = board.get_node("MultiplayerSync")
+	var windows_before := _grid_panel_count()
+
+	sync._hand_peek_pending = true
+	sync._apply_hand_peek_answer({"t": "mp_hand_peek_answer", "allow": 0})
+	assert_false(sync._hand_peek_pending, "The denied request stops waiting")
+	assert_eq(_grid_panel_count(), windows_before,
+			"A denied request opens nothing")
+
+	var key := "Test Card 1"
+	sync._hand_peek_pending = true
+	sync._apply_hand_peek_answer({
+		"t": "mp_hand_peek_answer",
+		"allow": 1,
+		"cards": [key],
+		"definitions": {key: cfc.card_definitions[key]},
+	})
+	assert_false(sync._hand_peek_pending, "The allowed request stops waiting")
+	assert_eq(_grid_panel_count(), windows_before + 1,
+			"An allowed request opens the hand viewer")
+
+
+func _grid_panel_count() -> int:
+	var count := 0
+	for child in board.get_children():
+		if child is CardGridPanel:
+			count += 1
+	return count
+
+
 func _live_hidden_count(map_key: String) -> int:
 	var pile = cfc.NMAP.get(map_key, null)
 	if not pile:

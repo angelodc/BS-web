@@ -64,6 +64,8 @@ var _resource_preview: Card = null
 var _pointer_pos := Vector2.ZERO
 var _pointer_known := false
 var _hand_placeholders := []
+var _hand_peek_pending := false
+var _hand_peek_prompt: ConfirmationDialog = null
 var _lens: Panel
 var _lens_time := 0.0
 var _remote_zone := ""
@@ -128,6 +130,7 @@ func stop_mirroring() -> void:
 	_remote_drag_card = null
 	_clear_remote_cards()
 	_clear_hand_placeholders()
+	_clear_hand_peek()
 	_remote_zone = ""
 	_sent_zone = ""
 	_solo_preview = false
@@ -443,6 +446,10 @@ func _on_network_message(data: Dictionary) -> void:
 			_apply_move_request(data)
 		"mp_pins":
 			_apply_remote_pins(data.get("pins", []))
+		"mp_hand_peek":
+			_on_hand_peek_request()
+		"mp_hand_peek_answer":
+			_apply_hand_peek_answer(data)
 
 
 func _apply_remote_card(data: Dictionary) -> void:
@@ -1023,6 +1030,119 @@ func _show_remote_zone_cards(zone: String) -> void:
 	})
 
 
+# The hand is the only zone that never travels on its own: the cards leave the
+# owner only as the answer to a request, and the viewer forgets them when it
+# closes. That is why the names never reach `_remote_meta`.
+func request_hand_peek() -> void:
+	if not _can_send() or Multiplayer.is_solo():
+		return
+	if _hand_peek_pending:
+		Multiplayer.log_action("Aguardando o oponente responder ao pedido.")
+		return
+	_hand_peek_pending = true
+	Rede.send_message({"t": "mp_hand_peek"})
+	Multiplayer.log_action("Pedido para ver a mão do oponente enviado.")
+
+
+func _on_hand_peek_request() -> void:
+	if not _can_send():
+		return
+	# Only one prompt stands at a time; a newer request fails politely so its
+	# sender never waits on an answer that will not come.
+	if is_instance_valid(_hand_peek_prompt):
+		Rede.send_message({"t": "mp_hand_peek_answer", "allow": 0})
+		return
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Ver mão"
+	dialog.dialog_text = Multiplayer.get_opponent_username() \
+			+ " quer ver as cartas da sua mão.\nPermitir?"
+	dialog.ok_button_text = "Sim"
+	dialog.get_cancel_button().text = "Não"
+	dialog.confirmed.connect(_answer_hand_peek.bind(true, dialog))
+	dialog.canceled.connect(_answer_hand_peek.bind(false, dialog))
+	_hand_peek_prompt = dialog
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+func _answer_hand_peek(allow: bool, dialog: Window) -> void:
+	if dialog != _hand_peek_prompt:
+		return
+	_hand_peek_prompt = null
+	if is_instance_valid(dialog):
+		dialog.queue_free()
+	if not _can_send():
+		return
+	var payload := {"t": "mp_hand_peek_answer", "allow": 1 if allow else 0}
+	if allow:
+		payload.merge(_hand_peek_payload())
+	Rede.send_message(payload)
+
+
+func _hand_peek_payload() -> Dictionary:
+	var names := []
+	var definitions := {}
+	var hand = cfc.NMAP.get("hand", null)
+	if hand and hand.has_method("get_all_cards"):
+		for card in hand.get_all_cards():
+			if not (card is Card) or not is_instance_valid(card):
+				continue
+			var key: String = card.definition_key()
+			if key.is_empty() or not cfc.card_definitions.has(key):
+				continue
+			names.append(key)
+			definitions[key] = cfc.card_definitions[key]
+	return {"cards": names, "definitions": definitions}
+
+
+func _apply_hand_peek_answer(data: Dictionary) -> void:
+	if not _hand_peek_pending:
+		return
+	_hand_peek_pending = false
+	if not Multiplayer.is_playing():
+		return
+	if int(data.get("allow", 0)) != 1:
+		Multiplayer.log_action("O oponente não permitiu ver a mão.")
+		return
+	var definitions = data.get("definitions", {})
+	if typeof(definitions) == TYPE_DICTIONARY:
+		for key in definitions.keys():
+			var definition = definitions[key]
+			if typeof(definition) == TYPE_DICTIONARY:
+				cfc.card_definitions[str(key)] = definition
+	var names := []
+	var cards = data.get("cards", [])
+	if cards is Array:
+		for entry in cards:
+			var key := str(entry)
+			# A name without a definition cannot be instanced by the viewer, so
+			# it is dropped instead of breaking the whole window.
+			if cfc.card_definitions.has(key):
+				names.append(key)
+	if names.is_empty():
+		Multiplayer.log_action("O oponente está sem cartas na mão.")
+		return
+	_show_hand_viewer(names)
+
+
+func _show_hand_viewer(names: Array) -> void:
+	var board: Control = cfc.NMAP.board
+	if not board:
+		return
+	var panel := CARD_GRID_PANEL.new()
+	board.add_child(panel)
+	panel.open(names, {
+		"title": "Mão de " + Multiplayer.get_opponent_username(),
+	})
+
+
+func _clear_hand_peek() -> void:
+	_hand_peek_pending = false
+	if is_instance_valid(_hand_peek_prompt):
+		_hand_peek_prompt.queue_free()
+	_hand_peek_prompt = null
+
+
 func _update_remote_zone_labels() -> void:
 	var board: Control = cfc.NMAP.board
 	if not board:
@@ -1448,6 +1568,7 @@ func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
 
 func _on_peer_disconnected() -> void:
 	_remote_zone = ""
+	_clear_hand_peek()
 	_hide_lens()
 
 

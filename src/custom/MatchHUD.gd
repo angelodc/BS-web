@@ -38,6 +38,7 @@ const WEB_CHUNK_SIZE := 262144
 @onready var _info_label: Label = $TopBar/Margin/VBox/InfoLabel
 @onready var _match_menu: MenuButton = $MatchMenu
 @onready var _advance_button: Button = $AdvanceButton
+@onready var _peek_hand_button: Button = $PeekHandButton
 @onready var _swap_seat_button: Button = $SwapSeatButton
 @onready var _checkpoint_label: Label = $CheckpointLabel
 @onready var _log_panel: PanelContainer = $LogPanel
@@ -121,6 +122,7 @@ func _ready() -> void:
 	_start_button.pressed.connect(_on_start_pressed)
 	_cancel_button.pressed.connect(_on_leave_pressed)
 	_advance_button.pressed.connect(_on_advance_pressed)
+	_peek_hand_button.pressed.connect(_on_peek_hand_pressed)
 	_swap_seat_button.pressed.connect(_on_swap_seat_pressed)
 	_keep_hand_button.pressed.connect(_on_keep_hand_pressed)
 	_mulligan_button.pressed.connect(_on_mulligan_pressed)
@@ -558,6 +560,15 @@ func _on_swap_seat_pressed() -> void:
 				"Não foi possível trocar de assento agora.")))
 
 
+func _on_peek_hand_pressed() -> void:
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board):
+		return
+	var sync = board.get_node_or_null("MultiplayerSync")
+	if sync and sync.has_method("request_hand_peek"):
+		sync.request_hand_peek()
+
+
 func _on_mulligan_pressed() -> void:
 	if not Multiplayer.manual_mulligan_local():
 		_append_log("Não foi possível fazer o mulligan agora.")
@@ -737,6 +748,11 @@ func _refresh() -> void:
 			and not adjusting and not Multiplayer.is_auto_turn_running()
 	_swap_seat_button.visible = Multiplayer.is_solo() \
 			and Multiplayer.is_playing()
+	# The hand peek needs a peer to ask, so it has no use on the hotseat; it
+	# waits for the same gates that hold the advance button.
+	_peek_hand_button.visible = Multiplayer.is_playing() \
+			and not Multiplayer.is_solo() and not mulligan and not prep \
+			and not adjusting
 	if _swap_seat_button.visible:
 		_swap_seat_button.text = "Controlar " \
 				+ Multiplayer.get_opponent_username()

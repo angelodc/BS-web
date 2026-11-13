@@ -154,3 +154,31 @@ func test_resource_cells_stay_below_the_opponent_label():
 				"Resource cell " + str(index) + " leaves the label band alone")
 		assert_true(cell.position.y >= label_band.end.y,
 				"Resource cell " + str(index) + " starts below the label band")
+
+
+# The scenario that loses the dispute goes to its owner's resources and can come
+# back under a character. The mirror read the card type alone, so that play kept
+# the scenario box: the mirror drew it at the scenario scale and treated it as
+# the active scenario. A card under a host is a field card like any other.
+func test_attached_scenario_card_is_mirrored_as_a_field_card():
+	await setup_board()
+	var sync = _add_sync()
+	var cards := draw_test_cards(2)
+	for card in cards:
+		card.get_parent().remove_child(card)
+		board.add_child(card)
+		card.state = Card.CardState.ON_PLAY_BOARD
+	var scenario_card: Card = cards[1]
+	scenario_card.properties["_tipo"] = "Cenário"
+	await yield_for(0.1)
+	assert_eq(sync._zone_for_card(scenario_card), "scenario",
+			"A scenario card standing alone is the scenario")
+
+	scenario_card.attach_to_host(cards[0])
+	await yield_for(0.2)
+	assert_eq(sync._zone_for_card(scenario_card), "board",
+			"An attached scenario card is a field card")
+	assert_almost_eq(
+			sync._scale_for_zone(sync._zone_for_card(scenario_card)),
+			CFConst.PLAY_AREA_SCALE, 0.001,
+			"The mirror draws it at the field scale")

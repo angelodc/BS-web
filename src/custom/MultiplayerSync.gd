@@ -1533,10 +1533,14 @@ func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
 	var tags = details.get("tags", [])
 	if typeof(tags) == TYPE_ARRAY and "net" in tags:
 		return
+	# A card revealed by the deck search passes through the field before going
+	# to the hand. The scenario reveal is the same display: it must not claim
+	# the arena or travel as the active scenario.
+	var is_reveal: bool = typeof(tags) == TYPE_ARRAY and "Procurar" in tags
 	# The hotseat has no peer to send to, but it still needs the claim: the
 	# opponent's scenario is a mirror here and only this step takes it off the
 	# arena, the same move the other client would echo back.
-	if _active and trigger == "card_moved_to_board" \
+	if _active and not is_reveal and trigger == "card_moved_to_board" \
 			and _zone_for_card(card) == "scenario":
 		_register_local_scenario(card)
 	if not _can_send():
@@ -1555,7 +1559,7 @@ func _on_card_signal(card, trigger: String, details: Dictionary) -> void:
 			# The scenario claim has to travel at once: it is what settles which
 			# side keeps the arena. Everything else can wait for the snapshot.
 			var board_zone := _zone_for_card(card)
-			if board_zone == "scenario":
+			if board_zone == "scenario" and not is_reveal:
 				_send_card_state(card, board_zone)
 			_mark_snapshot_dirty()
 		"card_rotated", "card_flipped", "card_attached", "card_unattached":
@@ -1750,7 +1754,12 @@ func _zone_for_card(card: Card) -> String:
 		if pile:
 			return _pile_zone(str(pile.name))
 	if parent == cfc.NMAP.board:
-		if str(card.properties.get("_tipo", "")) == "Cenário":
+		# A scenario card that was attached under a character (the loser of the
+		# dispute goes to the owner's resources and can be played again) is a
+		# field card: only the card standing alone as the active scenario keeps
+		# the scenario box, its claim and its smaller mirror scale.
+		if str(card.properties.get("_tipo", "")) == "Cenário" \
+				and not card.current_host_card:
 			return "scenario"
 		return "board"
 	if parent == cfc.NMAP.hand:

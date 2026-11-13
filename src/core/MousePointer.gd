@@ -39,6 +39,13 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_drop_settled_kept_focus()
+	# While the pointer is switched off a window or the resources viewer owns the
+	# mouse, but a press inside it still arms `card_drag_ongoing`. Adopting that
+	# card here focuses something the player is not hovering and, once it lands
+	# on the board, promotes and keeps it in FOCUSED_ON_BOARD: its closeup then
+	# asks for the focus every frame and fights the card under the real mouse.
+	if is_disabled:
+		return
 	if current_focused_card:
 		# After a card has been dragged, it generally clears its
 		# focused state. This check ensures that if the mouse hovers over

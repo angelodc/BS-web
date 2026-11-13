@@ -52,6 +52,38 @@ func test_popup_card_gui_hover_opens_the_preview():
 	assert_null(main._current_focus_source, "The preview closes")
 
 
+# A press inside the viewer still arms `card_drag_ongoing` (the card state
+# machine arms it on every focused card press), even though the board pointer is
+# off while the viewer is open. The pointer must not adopt that card: once the
+# picked resource lands on the board it would be promoted to FOCUSED_ON_BOARD
+# and ask for the closeup every frame, fighting the card under the real mouse.
+func test_disabled_pointer_ignores_the_armed_card():
+	var pointer: MousePointer = board.mouse_pointer
+	pointer.disable()
+	cfc.card_drag_ongoing = cards[0]
+	await yield_for(0.2)
+	assert_null(pointer.current_focused_card,
+			"The disabled pointer never adopts the armed card")
+
+	# Even a focus kept from before the viewer opened must not be promoted once
+	# the picked card settles on the board.
+	var settled: Card = cards[1]
+	await settled.move_to(board, -1, Vector2(600, 300))
+	await yield_for(0.6)
+	assert_eq(settled.state, Card.CardState.ON_PLAY_BOARD,
+			"The card settles on the board")
+	pointer.current_focused_card = settled
+	await yield_for(0.2)
+	assert_eq(settled.state, Card.CardState.ON_PLAY_BOARD,
+			"The disabled pointer does not promote it to FOCUSED_ON_BOARD")
+	assert_null(main._current_focus_source,
+			"The settled card does not keep the closeup")
+
+	cfc.card_drag_ongoing = null
+	pointer.forget_focus()
+	pointer.enable()
+
+
 # The viewer used to be a Window, which hides itself when the table is clicked.
 # The panel keeps that through the outside click, and the cards go back to the
 # pile on the way out.

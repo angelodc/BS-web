@@ -55,9 +55,7 @@ func _ready():
 	# warning-ignore:return_value_discarded
 	view_sorted_button.pressed.connect(_on_ViewSorted_Button_pressed)
 	# warning-ignore:return_value_discarded
-	$ViewPopup.popup_hide.connect(_on_ViewPopup_popup_hide)
-	# warning-ignore:return_value_discarded
-	$ViewPopup.about_to_popup.connect(_on_ViewPopup_about_to_show)
+	$ViewPopup.visibility_changed.connect(_on_ViewPopup_visibility_changed)
 	set_pile_name(pile_name)
 	shuffle_completed.connect(cfc.signal_propagator._on_signal_received.bind(
 			"shuffle_completed",
@@ -75,7 +73,8 @@ func _process(_delta) -> void:
 		if not obj.get_child_count():
 			obj.queue_free()
 	# We make sure to adjust our popup if cards were removed from it while it's open
-	$ViewPopup.reset_size()
+	if $ViewPopup.visible:
+		_center_popup()
 	# cfc._setup_testing() clears NMAP between suites while the previous scene's
 	# piles still tick a frame, so the board may be gone by the time we get here.
 	if not cfc.NMAP.has("board"):
@@ -112,6 +111,33 @@ func _on_ViewPopup_about_to_show() -> void:
 	# Godot 4 PopupPanel is a Window and has no modulate, so the old fade-in
 	# tween is gone. The popup simply appears.
 	pass
+
+
+# The viewer is a panel of the table, not a Window: it reacts to plain
+# visibility instead of the window popup signals.
+func _on_ViewPopup_visibility_changed() -> void:
+	if $ViewPopup.visible:
+		_on_ViewPopup_about_to_show()
+	else:
+		_on_ViewPopup_popup_hide()
+
+
+# A Window hides itself when the table is clicked, and the viewer keeps that
+# here: a left press outside the panel closes it and is consumed so the field
+# does not act on the same click. A cover node behind the panel would work too,
+# but it competes with the panel for the mouse and ends up swallowing the clicks
+# meant for the viewer buttons.
+func _input(event: InputEvent) -> void:
+	if not pile_popup.visible:
+		return
+	if not (event is InputEventMouseButton) or not event.is_pressed() \
+			or event.get_button_index() != MOUSE_BUTTON_LEFT:
+		return
+	var panel_rect := Rect2(pile_popup.global_position, pile_popup.size)
+	if panel_rect.has_point(event.position):
+		return
+	pile_popup.hide()
+	get_viewport().set_input_as_handled()
 
 
 # Puts all [Card] objects to the root node once the popup view window closes
@@ -166,9 +192,19 @@ func populate_popup(sorted:= sorted_popup) -> void:
 		remove_child(card)
 		_slot_card_into_popup(card)
 	# Finally we Pop the Up :)
-	$ViewPopup.popup_centered()
+	$ViewPopup.show()
+	_center_popup()
 	is_popup_open = true
 	card_count_label.text = str(get_card_count())
+
+
+# The viewer draws on the table inside the board viewport, so it is sized to
+# its cards and centered in the design area. `top_level` drops the pile's own
+# transform, which keeps the panel centered whatever the pile layout is.
+func _center_popup() -> void:
+	$ViewPopup.reset_size()
+	var view: Vector2 = get_viewport().get_visible_rect().size
+	$ViewPopup.position = (view - $ViewPopup.size) * 0.5
 
 
 # Setter for pile_name.

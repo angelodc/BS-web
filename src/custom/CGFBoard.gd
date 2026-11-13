@@ -746,6 +746,14 @@ func _set_board_pointer_active(active: bool) -> void:
 		pointer.forget_focus()
 
 
+# A window opened over the field (the deck search, the resources viewer) owns
+# the mouse while it is up: the card pointer is a physics area and would keep
+# focusing the cards drawn under the window, showing their closeup above it and
+# stealing the click meant for the window.
+func set_table_input_blocked(blocked: bool) -> void:
+	_set_board_pointer_active(not blocked)
+
+
 func begin_resource_selection(host: Card, required_count: int) -> void:
 	pending_resource_send_side = ""
 	pending_resource_host = host

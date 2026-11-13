@@ -222,15 +222,12 @@ class TestDeckSearch:
 		return order
 
 	# Cancelling the search leaves the deck in the order the player browsed, so
-	# it has to be shuffled as soon as the window closes.
+	# it has to be shuffled as soon as the panel closes.
 	func test_cancelling_the_search_shuffles_the_deck():
-		var window = load("res://src/core/SelectionWindow.tscn").instantiate()
-		window.is_cancelled = true
 		var before := _deck_order()
-		deck._on_search_window_closed(window)
+		deck._on_search_panel_closed(false)
 		await yield_for(0.4)
 		assert_ne(_deck_order(), before, "Cancelar embaralha o deck")
-		window.free()
 
 
 class TestPileDisplayScale:

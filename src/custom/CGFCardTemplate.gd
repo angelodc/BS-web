@@ -221,7 +221,13 @@ func move_to(targetHost: Node,
 		if placement_slot:
 			is_scenario_slot = \
 					placement_slot.get_grid_name() == "Cenário Ativo"
-		if is_battle_scenes_scenario():
+		# The deck search reveals the chosen card at a free spot on the field
+		# before sending it to the hand. A scenario has no free slot for that
+		# reveal, so the position is accepted as a plain board move: the card is
+		# only being shown, not played.
+		var is_reveal: bool = "Procurar" in tags \
+				and typeof(board_position) == TYPE_VECTOR2
+		if is_battle_scenes_scenario() and not is_reveal:
 			if not is_scenario_slot:
 				var restore_scenario = await \
 						_restore_after_invalid_board_drop(tags)

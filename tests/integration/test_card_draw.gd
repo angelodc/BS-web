@@ -306,7 +306,8 @@ func test_search_selection_preview_placement():
 	board.add_child(selection_window)
 	selection_window.initiate_selection([card], 1, "max", true)
 	await yield_to(selection_window, "selection_window_opened", 2)
-	var grid_card_obj = selection_window.get_node("GridContainer").get_child(0)
+	var grid_card_obj = selection_window.get_node(
+			"ScrollContainer/GridContainer").get_child(0)
 	var preview_popup = grid_card_obj.preview_popup
 	preview_popup.show_preview_card(card.canonical_name)
 	await yield_for(0.3)
@@ -368,7 +369,8 @@ func test_search_preview_uses_the_definition_key():
 	board.add_child(selection_window)
 	selection_window.initiate_selection([card], 1, "max", true)
 	await yield_to(selection_window, "selection_window_opened", 2)
-	var grid_card_obj = selection_window.get_node("GridContainer").get_child(0)
+	var grid_card_obj = selection_window.get_node(
+			"ScrollContainer/GridContainer").get_child(0)
 	grid_card_obj._on_GridCardObject_mouse_entered()
 	await yield_for(0.2)
 	assert_true(grid_card_obj.preview_popup.has_preview_card(),
@@ -376,6 +378,82 @@ func test_search_preview_uses_the_definition_key():
 	assert_eq(grid_card_obj.preview_popup.preview_card.definition_key(), key,
 			"The preview is instanced by the definition key")
 	selection_window.queue_free()
+
+
+# The deck search closes on the card click, so its dialog has no use for OK;
+# every other selection still confirms with it. The grid scrolls inside the
+# dialog instead of pushing it past the design height.
+func test_search_window_drops_the_ok_button():
+	var options: Array = [hand.draw_card(), hand.draw_card()]
+	var search = load("res://src/core/SelectionWindow.tscn").instantiate()
+	board.add_child(search)
+	search.close_on_selection = true
+	search.initiate_selection(options, 1, "equal", true)
+	await yield_for(0.3)
+	assert_false(search.get_ok_button().visible,
+			"The search dialog drops the redundant OK button")
+	assert_true(search.get_node("ScrollContainer").is_visible_in_tree(),
+			"The cards live in a scroll container")
+	assert_true(search.size.y <= 720.0,
+			"The dialog stays inside the design height")
+	# The dialog is exclusive, so it must be gone before the next one opens.
+	search.free()
+	var other = load("res://src/core/SelectionWindow.tscn").instantiate()
+	board.add_child(other)
+	other.initiate_selection(options, 1, "min", true)
+	await yield_for(0.3)
+	assert_true(other.get_ok_button().visible,
+			"Selections confirmed by OK keep the button")
+	other.queue_free()
+
+
+# Selecting a card used to freeze the hover on it: the engine hover signals
+# stopped driving the preview after the click, so the pointer could no longer
+# reach the remaining choices. The window tracks the hover by hit-test and
+# resets the preview of the chosen card.
+func test_selection_hover_survives_card_selection():
+	var cards: Array = [hand.draw_card(), hand.draw_card(), hand.draw_card()]
+	var selection_window = load(
+			"res://src/core/SelectionWindow.tscn").instantiate()
+	board.add_child(selection_window)
+	selection_window.initiate_selection(cards, 3, "max", true)
+	await yield_to(selection_window, "selection_window_opened", 2)
+	# The frame-driven tracker reads the real pointer, which is not what the
+	# test moves; freeze it and drive the hover directly.
+	selection_window.set_process(false)
+	var grid = selection_window.get_node("ScrollContainer/GridContainer")
+	var obj_a: CVGridCardObject = grid.get_child(0)
+	var obj_b: CVGridCardObject = grid.get_child(1)
+
+	selection_window._update_hover(obj_a.get_global_rect().get_center())
+	await yield_for(0.3)
+	assert_eq(obj_a.preview_popup.modulate.a, 1.0,
+			"Hovering a choice shows its preview")
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	selection_window.on_selection_gui_input(
+			click, obj_a.display_card, cards[0])
+	assert_eq(selection_window.selected_cards, [cards[0]],
+			"The click selects the card")
+	assert_eq(obj_a.preview_popup.modulate.a, 0.0,
+			"Choosing the card resets its preview")
+
+	selection_window._update_hover(obj_b.get_global_rect().get_center())
+	await yield_for(0.3)
+	assert_eq(obj_a.preview_popup.modulate.a, 0.0,
+			"The chosen card keeps its preview hidden")
+	assert_eq(obj_b.preview_popup.modulate.a, 1.0,
+			"Moving on shows the next preview without engine hover signals")
+
+	selection_window._update_hover(obj_a.get_global_rect().get_center())
+	await yield_for(0.3)
+	assert_eq(obj_a.preview_popup.modulate.a, 1.0,
+			"Moving back to the chosen card shows its preview again")
+	selection_window.queue_free()
+
+
 # Clarividência keeps the row on screen until the player closes it. The old
 # reveal closed itself three seconds after showing the cards, which never left
 # time to read the row, let alone reorder it.

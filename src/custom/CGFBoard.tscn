@@ -458,9 +458,9 @@ autowrap_mode = 3
 
 [node name="OpponentResourcesView" type="Button" parent="OpponentFieldVisual" unique_id=1283374906]
 layout_mode = 0
-offset_left = 1216.0
+offset_left = 1126.0
 offset_top = 336.2
-offset_right = 1276.0
+offset_right = 1186.0
 offset_bottom = 363.2
 text = "Ver"
 

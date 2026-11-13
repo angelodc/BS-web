@@ -12,10 +12,10 @@ const _INFO_PANEL_SCENE_FILE = CFConst.PATH_CORE\
 		+ "CardViewer/CVInfoPanel.tscn"
 const _INFO_PANEL_SCENE = preload(_INFO_PANEL_SCENE_FILE)
 
-# The grid can hold dozens of choices, so its cards are drawn just above the
-# resource mini cards instead of at the full card-viewer thumbnail size.
-# The hover preview keeps its own scale.
-const SEARCH_CARD_SCALE := 0.55
+# The grid draws the choices at the hand card scale, the same size the
+# resources viewer uses. A long deck still fits because the grid scrolls inside
+# the window.
+const SEARCH_CARD_SCALE := CFConst.HAND_CARD_SCALE
 
 @export var grid_card_object_scene := _GRID_CARD_OBJECT_SCENE
 @export var info_panel_scene := _INFO_PANEL_SCENE
@@ -27,8 +27,11 @@ var is_selection_optional: bool
 var is_cancelled := false
 var close_on_selection := false
 var _card_dupe_map := {}
+# The grid object the pointer currently hovers, tracked by rect hit-test in
+# _process instead of relying on the engine mouse_entered/exited pair.
+var _hovered_grid_obj = null
 
-@onready var _card_grid = $GridContainer
+@onready var _card_grid = $ScrollContainer/GridContainer
 
 
 func _ready() -> void:
@@ -63,6 +66,34 @@ func _process(_delta):
 				get_ok_button().disabled = true
 			else:
 				get_ok_button().disabled = false
+	# A Window is a Viewport, not a CanvasItem: its own get_mouse_position()
+	# already reports window-local coordinates, the space the grid rects live in.
+	_update_hover(get_mouse_position())
+
+
+# The engine mouse_entered/exited pair can stop driving the grid hover after a
+# click inside the embedded window (the selection highlight is a Control that
+# claims the pointer), which froze the preview on the selected card and blocked
+# hovering the remaining choices. Tracking the hover here with a rect hit-test
+# keeps the preview following the pointer regardless of the engine hover state.
+func _update_hover(mouse: Vector2) -> void:
+	if not visible:
+		if is_instance_valid(_hovered_grid_obj):
+			_hovered_grid_obj.preview_popup.hide_preview_card()
+			_hovered_grid_obj = null
+		return
+	var hovered = null
+	for obj in _card_grid.get_children():
+		if obj.get_global_rect().has_point(mouse):
+			hovered = obj
+	if hovered == _hovered_grid_obj:
+		return
+	if is_instance_valid(_hovered_grid_obj):
+		_hovered_grid_obj.preview_popup.hide_preview_card()
+	_hovered_grid_obj = hovered
+	if is_instance_valid(_hovered_grid_obj):
+		_hovered_grid_obj.preview_popup.show_preview_card(
+				_hovered_grid_obj.display_card.definition_key())
 
 
 # Populates the selection window with duplicates of the possible cards
@@ -77,6 +108,10 @@ func initiate_selection(
 	selection_count = _selection_count
 	selection_type = _selection_type
 	is_selection_optional = _selection_optional
+	# The deck search closes as soon as the card is clicked, so an OK button
+	# would only repeat what the click already did.
+	if close_on_selection:
+		get_ok_button().hide()
 	# If the selection is optional, we allow the player to cancel out
 	# of the popup
 	if is_selection_optional:
@@ -123,9 +158,6 @@ func initiate_selection(
 			title = "Press OK to continue"
 	for c in _card_grid.get_children():
 		c.queue_free()
-	# We use this to quickly store a copy of a card object to use to get
-	# the card sizes for adjusting the size of the popup
-	var card_sample: Card
 	# for each card that the player needs to select amonst
 	# we create a duplicate card inside a Card Grid object
 	for card in card_array:
@@ -142,8 +174,7 @@ func initiate_selection(
 			dupe_selection.definitions_key = card.definition_key()
 			dupe_selection.canonical_name = card.canonical_name
 			dupe_selection.properties = card.properties.duplicate()
-		dupe_selection.thumbnail_scale = SEARCH_CARD_SCALE
-		card_sample = dupe_selection
+		dupe_selection.thumbnail_scale = _card_scale()
 		var card_grid_obj = grid_card_object_scene.instantiate()
 		_card_grid.add_child(card_grid_obj)
 		# This is necessary setup for the card grid container
@@ -158,19 +189,16 @@ func initiate_selection(
 		# We connect each card grid's gui input into a call which will handle
 		# The selections
 		card_grid_obj.gui_input.connect(on_selection_gui_input.bind(dupe_selection, card))
-	# We don't want to show a popup longer than the cards. So the width is based on the lowest
-	# between the grid columns or the amount of cards
-	var shown_columns = min(_card_grid.columns, card_array.size())
-	var card_size = CFConst.CARD_SIZE
-	var thumbnail_scale = CFConst.THUMBNAIL_SCALE
-	if card_sample as Card:
-		card_size = card_sample.canonical_size
-		thumbnail_scale = card_sample.thumbnail_scale
-	var popup_size_x = (card_size.x * thumbnail_scale * shown_columns * cfc.curr_scale)\
-			+ _card_grid.get("theme_override_constants/v_separation") * shown_columns
-	# The height will be automatically adjusted based on the amount of cards
-	size = Vector2(popup_size_x,0)
-	popup_centered_clamped()
+	# The window is sized to the grid, but a long deck would push it past the
+	# screen: the grid scrolls and the window stops short of the edges, leaving
+	# room for the title and the button row.
+	var view := _parent_view_size()
+	var content: Vector2 = _card_grid.get_combined_minimum_size()
+	var popup_size := Vector2(
+			min(content.x + 32.0, view.x * 0.94),
+			min(content.y + 84.0, view.y * 0.92))
+	size = popup_size
+	popup_centered(Vector2i(popup_size))
 	# Spawning all the duplicates is a bit heavy, so we wait a beat before the
 	# window is shown to avoid it looking choppy. A Window has no modulate, so the
 	# old alpha-fade tween is dropped and the dialog simply appears.
@@ -185,9 +213,31 @@ func initiate_selection(
 		print("DEBUG INFO:SelectionWindow: Started Card Display with a %s card selection" % [_card_grid.get_child_count()])
 
 
+# The resources viewer draws its cards at the hand card scale, so the choices
+# here follow the hand the player is actually holding instead of a fixed size.
+func _card_scale() -> float:
+	var hand = cfc.NMAP.get("hand", null)
+	if is_instance_valid(hand) and hand.get("card_display_scale") != null:
+		return float(hand.card_display_scale)
+	return SEARCH_CARD_SCALE
+
+
+# The window is embedded in its parent's viewport, and both the board's
+# SubViewport and the game main report the visible area at the 1280x720 design
+# size, which is the space the window's own rectangle lives in.
+func _parent_view_size() -> Vector2:
+	var parent = get_parent()
+	if parent and parent.is_inside_tree():
+		var viewport = parent.get_viewport()
+		if viewport:
+			return viewport.get_visible_rect().size
+	return Vector2(1280, 720)
+
+
 # Overridable function for games to extend processing of dupe card
-# after adding it to the scene
-func _extra_dupe_ready(dupe_selection: Card, _card: Card) -> void:
+# after adding it to the scene. The origin is a card instance or, when the
+# window opens straight from card names, the name itself.
+func _extra_dupe_ready(dupe_selection: Card, _card) -> void:
 	dupe_selection.targeting_arrow.visible = false
 
 
@@ -210,6 +260,12 @@ func on_selection_gui_input(event: InputEvent, dupe_selection: Card, origin_card
 		if selection_type in ["equal", "max"]  and selected_cards.size() > selection_count:
 			_card_dupe_map[selected_cards[0]].highlight.set_highlight(false)
 			selected_cards.remove_at(0)
+		# Choosing a card resets its preview: the highlight underneath becomes
+		# visible and the pointer is free to evaluate the remaining choices.
+		for obj in _card_grid.get_children():
+			if obj.display_card == dupe_selection:
+				obj.preview_popup.hide_preview_card()
+				break
 		if close_on_selection \
 				and selected_cards.size() == selection_count:
 			emit_signal("confirmed")

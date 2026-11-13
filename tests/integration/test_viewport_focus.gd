@@ -248,6 +248,37 @@ func test_preview_sits_beside_the_hovered_card():
 	assert_lt(vbc.get_global_rect().end.x, rect.position.x,
 			"The preview flips to the left near the right edge")
 
+# The board is rasterised at Full HD on the desktop default and drawn back into
+# the 1280x720 design rectangle, so a card has to map to its own design position.
+# Multiplying only by the host scale used to shrink and shift the rect, which is
+# why the preview landed over the hovered card instead of beside it.
+func test_source_rect_keeps_the_design_position_at_full_hd():
+	var previous = cfc.game_settings.get(RenderResolution.SETTING,
+			RenderResolution.FULL_HD)
+	cfc.game_settings[RenderResolution.SETTING] = RenderResolution.FULL_HD
+	main._apply_render_density()
+	var card: Card = cards[0]
+	hand.remove_child(card)
+	board.add_child(card)
+	card.network_mirror = true
+	card.set_state(Card.CardState.ON_PLAY_BOARD)
+	card.scale = Vector2.ONE
+	card.position = Vector2(320, 240)
+	var control: Control = card.get_node("Control")
+	var rect: Rect2 = main._source_screen_rect(card)
+	var origin: Vector2 = main._board_host.position \
+			+ control.get_global_transform() * Vector2.ZERO
+	assert_almost_eq(rect.position.x, origin.x, 0.5,
+			"The card maps to its design x, not to a scaled-down one")
+	assert_almost_eq(rect.position.y, origin.y, 0.5,
+			"The card maps to its design y, not to a scaled-down one")
+	assert_almost_eq(rect.size.x, control.size.x, 0.5,
+			"The rect keeps the design width")
+	assert_almost_eq(rect.size.y, control.size.y, 0.5,
+			"The rect keeps the design height")
+	cfc.game_settings[RenderResolution.SETTING] = previous
+
+
 # The preview and the table rasterise at the chosen density but keep the
 # 1280x720 (and 300x450) design coordinates. The containers must keep `stretch`
 # off: with it on, the engine forces the SubViewport back to the container size

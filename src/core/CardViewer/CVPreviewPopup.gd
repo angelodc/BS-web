@@ -165,7 +165,6 @@ func show_preview_card(card) -> void:
 # We're modulating to 0 instead of hide() because that messes with the rich text labels formatting
 func hide_preview_card() -> void:
 	modulate.a = 0
-	
 	_visible = false
 
 func _on_placement_initialized() -> void:

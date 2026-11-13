@@ -74,12 +74,23 @@ func _apply_render_density() -> void:
 	_focus_viewport.size_2d_override_stretch = true
 
 
+# The previews are positioned in this scene's coordinates, which stay at the
+# 1280x720 design size while the stretch mode scales the whole canvas to the
+# window. The board viewport's override is that design size, so it is the area
+# to clamp against instead of the window's pixel rect.
+func _canvas_area() -> Vector2:
+	var design := Vector2(_board_viewport.size_2d_override)
+	if design.x > 0.0 and design.y > 0.0:
+		return design
+	return get_viewport().get_visible_rect().size
+
+
 # Where the preview of a card on the table goes: beside the hovered card, on
 # the side with room, never on top of it. The board is drawn inside its own
 # SubViewport at the 1280x720 design size, so a card point maps to the main
-# scene through the host container, which carries the render density scale.
+# scene through the host container, which carries the render density.
 func beside_card_position(card: Card, panel: Vector2) -> Vector2:
-	var area := get_viewport().get_visible_rect().size
+	var area := _canvas_area()
 	var rect := _source_screen_rect(card)
 	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
 		return (area - panel) * 0.5
@@ -115,11 +126,21 @@ func _source_screen_rect(card: Card) -> Rect2:
 		control.size,
 		Vector2(0.0, control.size.y),
 	]
+	# The board viewport draws its 1280x720 design space into the host raster, so
+	# a design point is first stretched to the raster and then drew back into the
+	# design rectangle by the host transform. Multiplying only by `scale` left the
+	# rect at the raster factor instead of the design size, which put the preview
+	# on top of the hovered card.
+	var design_size := Vector2(_board_viewport.size_2d_override)
+	if design_size.x <= 0.0 or design_size.y <= 0.0:
+		design_size = Vector2(_board_viewport.size)
+	var raster := Vector2(_board_host.size)
+	var host: Transform2D = _board_host.get_transform()
 	var min_point := Vector2(INF, INF)
 	var max_point := Vector2(-INF, -INF)
 	for corner in corners:
-		var screen: Vector2 = _board_host.position \
-				+ (transform * corner) * _board_host.scale
+		var design: Vector2 = transform * corner
+		var screen: Vector2 = host * (design / design_size * raster)
 		min_point = min_point.min(screen)
 		max_point = max_point.max(screen)
 	return Rect2(min_point, max_point - min_point)
@@ -168,7 +189,7 @@ func _process(_delta) -> void:
 		elif _current_is_hand:
 			$VBC.position = hand_panel_position(
 					get_global_mouse_position(), focus_info.size,
-					get_viewport().get_visible_rect().size)
+					_canvas_area())
 		else:
 			$VBC.position = beside_card_position(
 					_current_focus_source, _preview_panel_size())
@@ -312,7 +333,7 @@ func focus_card_pinned(card: Card) -> void:
 # Beside the pointer, on the half opposite the hovered card: a card on the right
 # half opens its closeup on the left, and the other way round.
 func _pinned_position(panel: Vector2) -> Vector2:
-	var area := get_viewport().get_visible_rect().size
+	var area := _canvas_area()
 	var mouse := get_global_mouse_position()
 	var gap := 24.0
 	var x := mouse.x + gap

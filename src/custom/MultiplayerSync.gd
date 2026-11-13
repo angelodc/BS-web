@@ -6,7 +6,7 @@
 # the opponent mouse is in, drawn as a lens over the mirrored zone.
 extends Control
 
-const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
+const CARD_GRID_PANEL = preload("res://src/custom/CardGridPanel.gd")
 const _Snapshot = preload("res://src/core/table/TableSnapshot.gd")
 const _Table = preload("res://src/core/table/TableState.gd")
 const DRAG_SEND_INTERVAL := 0.08
@@ -1015,12 +1015,12 @@ func _show_remote_zone_cards(zone: String) -> void:
 			board.show_resource_message(
 					"O oponente não tem cartas nesta área.")
 		return
-	var window = SELECTION_WINDOW_SCENE.instantiate()
-	board.add_child(window)
-	window.confirmed.connect(window.queue_free)
-	window.initiate_selection(names, 0, "display", false)
-	window.title = "Prêmios do oponente" if zone == "prizes" \
-			else "Recursos do oponente"
+	var panel := CARD_GRID_PANEL.new()
+	board.add_child(panel)
+	panel.open(names, {
+		"title": "Prêmios do oponente" if zone == "prizes" \
+				else "Recursos do oponente",
+	})
 
 
 func _update_remote_zone_labels() -> void:

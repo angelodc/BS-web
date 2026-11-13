@@ -3,7 +3,7 @@ extends Pile
 
 signal draw_card(deck)
 
-const SELECTION_WINDOW_SCENE = preload("res://src/core/SelectionWindow.tscn")
+const CARD_GRID_PANEL = preload("res://src/custom/CardGridPanel.gd")
 const CLARIVIDENCIA_VIEW = preload("res://src/custom/ClarividenciaView.gd")
 
 # The deck lies sideways in the bottom-left corner inside a box with a fixed
@@ -285,20 +285,27 @@ func _on_search_pressed() -> void:
 			cards_by_name[card.canonical_name] = card
 	var card_options := cards_by_name.values()
 	card_options.sort_custom(Callable(CFUtils, "sort_scriptables_by_name"))
-	var selection_window = SELECTION_WINDOW_SCENE.instantiate()
-	cfc.NMAP.board.add_child(selection_window)
-	selection_window.card_selected.connect(_on_search_card_selected)
-	selection_window.confirmed.connect(_on_search_window_closed.bind(selection_window))
-	selection_window.confirmed.connect(selection_window.queue_free)
-	selection_window.close_on_selection = true
-	selection_window.initiate_selection(card_options, 1, "equal", true)
+	var board = cfc.NMAP.get("board", null)
+	if not is_instance_valid(board):
+		return
+	# The search is a panel of the table, like the resources viewer: its cards
+	# sit on the board canvas, so the hover closeup is the pinned one and the
+	# grid needs no window of its own.
+	var panel := CARD_GRID_PANEL.new()
+	board.add_child(panel)
+	panel.card_picked.connect(_on_search_card_picked)
+	panel.closed.connect(_on_search_panel_closed)
+	panel.open(card_options, {
+		"title": "Buscar carta no deck",
+		"selectable": true,
+	})
 
 
 # Closing the search without a card leaves the deck in the order the player just
 # browsed, so it is shuffled right away. A chosen card keeps the deck untouched
 # until it finally reaches the hand, or the slow reveal would lose its point.
-func _on_search_window_closed(window) -> void:
-	if is_instance_valid(window) and window.is_cancelled:
+func _on_search_panel_closed(picked: bool) -> void:
+	if not picked:
 		_shuffle_search_deck()
 
 
@@ -310,12 +317,8 @@ func _shuffle_search_deck() -> void:
 	board.report_intent(board.apply_intent({"op": "embaralhar", "pile": "deck"}))
 
 
-func _on_search_card_selected(
-		_selection_window, _signal_name: String, details: Dictionary) -> void:
-	var selected_cards: Array = details.get("selected_cards", [])
-	if selected_cards.is_empty():
-		return
-	_reveal_searched_card(selected_cards[0])
+func _on_search_card_picked(card: Card) -> void:
+	_reveal_searched_card(card)
 
 
 func _reveal_searched_card(card: Card) -> void:
@@ -335,9 +338,9 @@ func _reveal_searched_card(card: Card) -> void:
 	if not is_instance_valid(card):
 		_deck_action_in_progress = false
 		return
-	# The board can refuse the card and send it back to the deck (a scenario
-	# only enters its own slot). It stays revealed face up over the deck for
-	# the same three seconds and then goes to the hand as any other search.
+	# The board can still refuse the card and send it back to the deck. It stays
+	# revealed face up over the deck for the same three seconds and then goes to
+	# the hand as any other search.
 	if reached_board and card.get_parent() != cfc.NMAP.board:
 		_deck_action_in_progress = false
 		_shuffle_search_deck()

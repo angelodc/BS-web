@@ -74,8 +74,9 @@ func _ready() -> void:
 	_send_deck_panel.pressed.connect(_on_SendDeck_pressed)
 	_arrange_panel_buttons(swap_button, add_perso_button)
 	_build_popup_actions()
-	# A message written here belongs to the open viewer, so it goes away with it.
-	pile_popup.popup_hide.connect(_on_viewer_popup_hide)
+	# The viewer is a panel over the field: while it is open the field cards
+	# must not keep the hover (and its closeup) behind it.
+	pile_popup.visibility_changed.connect(_on_viewer_popup_visibility_changed)
 	# The pile's own remove_child() override is never called in Godot 4, so the
 	# grid cards get their mouse detection back through the tree signal.
 	child_exiting_tree.connect(_restore_card_monitorable)
@@ -121,14 +122,11 @@ func _keep_popup_fitted() -> void:
 			changed = true
 	if not pile_popup.visible and not changed:
 		return
-	# The popup is a Window in Godot 4, so its size and position are Vector2i.
-	var previous_size: Vector2i = $ViewPopup.size
-	$ViewPopup.reset_size()
-	if not pile_popup.visible or $ViewPopup.size == previous_size:
-		return
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
-	$ViewPopup.position = Vector2i(
-			(viewport_size - Vector2($ViewPopup.size)) * 0.5)
+	# The viewer is a panel of the table now: resizing keeps it centered.
+	if pile_popup.visible:
+		_center_popup()
+	else:
+		$ViewPopup.reset_size()
 
 
 # Resources in the popup use the hand card scale and wrap to the viewport width.
@@ -321,6 +319,19 @@ func _on_viewer_popup_hide() -> void:
 		_viewer_message.text = ""
 
 
+func _on_viewer_popup_visibility_changed() -> void:
+	if pile_popup.visible:
+		_on_viewer_popup_about_to_show()
+	else:
+		_on_viewer_popup_hide()
+
+
+func _on_viewer_popup_about_to_show() -> void:
+	var board = cfc.NMAP.get("board", null)
+	if is_instance_valid(board) and board.has_method("set_table_input_blocked"):
+		board.set_table_input_blocked(true)
+
+
 func _add_popup_button(button_name: String, text: String,
 		toggle := false) -> Button:
 	var button := Button.new()
@@ -483,14 +494,12 @@ func _update_preview() -> void:
 	_unfocus_pile_cards()
 
 
-# The viewer cards live inside its window, which would clip a closeup drawn
-# there. The hover is detected with the window's own pointer coordinates and
-# the closeup is pinned on the table, beside the pointer.
-func _update_popup_preview() -> void:
+# The viewer is a panel of the table and its cards share the board canvas, so
+# the closeup is pinned beside the pointer on that same canvas.
+func _update_popup_preview(mouse := get_global_mouse_position()) -> void:
 	if not pile_popup.visible or cfc.card_drag_ongoing:
 		_set_preview(null)
 		return
-	var mouse: Vector2 = pile_popup.get_mouse_position()
 	var hovered: Card = null
 	for card in pre_sorted_order:
 		if not is_instance_valid(card) or not card.visible:

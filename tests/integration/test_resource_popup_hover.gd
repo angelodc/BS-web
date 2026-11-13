@@ -19,9 +19,9 @@ func _popup_cards() -> Array:
 	return popup_cards
 
 
-# The popup cards belong to the popup Window, which has its own physics world,
-# so the board pointer can never reach them. Their GUI hover drives the same
-# card state machine and has to open the preview.
+# The viewer is a panel over the field and the board pointer is switched off
+# while it is open, so the popup cards are reached only by their GUI hover. That
+# hover drives the same card state machine and has to open the preview.
 func test_popup_card_gui_hover_opens_the_preview():
 	for card in cards:
 		await card.move_to(discard)
@@ -50,3 +50,34 @@ func test_popup_card_gui_hover_opens_the_preview():
 	assert_eq(target.state, Card.CardState.IN_POPUP,
 			"Leaving the card returns it to IN_POPUP")
 	assert_null(main._current_focus_source, "The preview closes")
+
+
+# The viewer used to be a Window, which hides itself when the table is clicked.
+# The panel keeps that through the outside click, and the cards go back to the
+# pile on the way out.
+func test_clicking_the_table_closes_the_viewer():
+	for card in cards:
+		await card.move_to(discard)
+	await yield_for(0.3)
+	discard.populate_popup()
+	await yield_for(0.3)
+	var vp: Viewport = discard.pile_popup.get_viewport()
+	var outside := Vector2(4, 4)
+	assert_false(discard.pile_popup.get_global_rect().has_point(outside),
+			"The chosen point is off the panel")
+
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = outside
+	down.global_position = outside
+	vp.push_input(down, true)
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = outside
+	up.global_position = outside
+	vp.push_input(up, true)
+	await yield_for(0.3)
+	assert_false(discard.pile_popup.visible, "The table click closes the viewer")
+	assert_null(main._current_focus_source, "The preview closes with the viewer")
